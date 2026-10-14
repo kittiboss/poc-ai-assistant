@@ -2,8 +2,8 @@ import 'reflect-metadata';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { REQUIRED_ROLES } from './auth';
-import { AdminController } from './controllers';
+import { AdminController } from './admin/admin.controller';
+import { REQUIRED_ROLES } from './common/auth/auth.decorators';
 
 const root = resolve(process.cwd(), '../..');
 
