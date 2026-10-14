@@ -27,6 +27,8 @@ The web client uses Authorization Code Flow with S256 PKCE. The API obtains the 
 
 On authenticated requests, the API mirrors the Keycloak subject and current roles to PostgreSQL. Passwords remain in Keycloak. Conversation queries always include the mirrored user ID; foreign user-supplied IDs cannot override it. Admin controller metadata is enforced by a global guard.
 
+API documentation is generated from the controllers and DTOs with `@nestjs/swagger` and served at `/api/docs`. Swagger UI uses its own public Keycloak client (`enterprise-ai-swagger`, PKCE, redirect limited to the docs page), so documentation logins get exactly the same token validation and RBAC as the web client. A unit test fails if a route lacks an operation summary, a documented response, or a security requirement.
+
 ## Chat lifecycle
 
 1. The API checks conversation ownership, model state, role/user permission, and external-provider gates.

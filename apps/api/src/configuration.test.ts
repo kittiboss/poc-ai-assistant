@@ -20,6 +20,15 @@ describe('security and provider configuration', () => {
     expect(realm.roles.realm.map((role: { name: string }) => role.name)).toEqual(['ADMIN', 'USER']);
   });
 
+  it('gives Swagger UI its own public PKCE client limited to the docs redirect', () => {
+    const realm = JSON.parse(readFileSync(resolve(root, 'infra/keycloak/enterprise-ai-realm.json'), 'utf8'));
+    const swagger = realm.clients.find((client: { clientId: string }) => client.clientId === 'enterprise-ai-swagger');
+    expect(swagger).toMatchObject({ publicClient: true, standardFlowEnabled: true, directAccessGrantsEnabled: false, implicitFlowEnabled: false });
+    expect(swagger.attributes['pkce.code.challenge.method']).toBe('S256');
+    expect(swagger.redirectUris).toEqual(['http://localhost:3001/api/docs/oauth2-redirect.html']);
+    expect(swagger.protocolMappers[0].config['included.client.audience']).toBe('enterprise-ai-api');
+  });
+
   it('keeps external providers out of the default LiteLLM routes', () => {
     const config = readFileSync(resolve(root, 'infra/litellm/config.yaml'), 'utf8');
     expect(config).toContain('model_name: local-mock');
