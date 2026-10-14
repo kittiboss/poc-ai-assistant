@@ -8,6 +8,7 @@
     "test": "npm run test -w @enterprise/shared && npm run test -w @enterprise/mock-provider && npm run test -w @enterprise/gemini-proxy && npm run test -w @enterprise/api",
     "test:e2e": "node scripts/e2e-smoke.mjs",
     "test:gemini": "node --env-file=.env scripts/gemini-smoke.mjs",
+    "keycloak:sync-clients": "node scripts/keycloak-sync-clients.mjs",
     "lint": "npm run lint -ws --if-present",
     "format": "prettier --write .",
     "db:generate": "npm run prisma:generate -w @enterprise/api",

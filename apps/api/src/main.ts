@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { setupSwagger, swaggerEnabled } from './swagger';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { logger: ['log', 'warn', 'error'] });
@@ -13,6 +14,7 @@ async function bootstrap() {
     credentials: false,
   });
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+  if (swaggerEnabled()) setupSwagger(app);
   app.enableShutdownHooks();
   await app.listen(Number(process.env.API_PORT || 3001), '0.0.0.0');
 }

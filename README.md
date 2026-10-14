@@ -33,6 +33,7 @@ Open:
 - Web application: <http://localhost:3000>
 - Keycloak: <http://localhost:8080>
 - API health: <http://localhost:3001/api/health>
+- API documentation (Swagger UI): <http://localhost:3001/api/docs>
 
 Demo accounts:
 
@@ -154,6 +155,27 @@ Everything in the default stack is local: the mock provider, Ollama, PostgreSQL,
 | Default test suite blocks non-loopback network access | Tests calling a provider |
 
 The POC cannot read a Google project's billing status. The guarantee of **$0** comes from step 1 above: a key from a project without a billing account. The daily ceiling only bounds the worst case if a billed key is used by mistake (at the list price above, 100,000 tokens/day is at most about $0.25/day).
+
+## API documentation (Swagger)
+
+Interactive OpenAPI docs are served by the API at **<http://localhost:3001/api/docs>** (raw spec: `/api/docs-json`). Every endpoint lists its request body, parameters, response schema, and error codes; the SSE endpoint documents its `token` / `done` / `error` events.
+
+To call endpoints from the page:
+
+1. Click **Authorize**.
+2. Under `keycloak (OAuth2, authorizationCode)`, leave the client secret empty and click **Authorize**.
+3. Sign in through Keycloak in the popup (for example `admin` / `Admin123!`).
+4. Open an endpoint → **Try it out** → **Execute**.
+
+Swagger UI signs in with Authorization Code + PKCE through its own public Keycloak client, `enterprise-ai-swagger`, so the same JWT, audience, RBAC, and ownership checks apply as in the web app. You can also paste an access token under `bearer`. Sending a message with an external model from Swagger calls that provider exactly like the chat UI does, within the same limits.
+
+Installs created before this client existed (Keycloak imports the realm file only once) add it with:
+
+```bash
+npm run keycloak:sync-clients
+```
+
+The script only creates clients that are missing and leaves existing ones unchanged. Swagger is enabled for the local POC; set `SWAGGER_ENABLED=false` for customer deployments.
 
 ## API summary
 
