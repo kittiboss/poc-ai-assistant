@@ -33,8 +33,13 @@ describe('security and provider configuration', () => {
     expect(config).toContain('api_key: local-gemini-proxy');
     expect(config).not.toContain('api_key: os.environ/GEMINI_API_KEY');
     expect(overlay).toContain('gemini-proxy:');
-    expect(overlay).toContain('ENABLE_EXTERNAL_PROVIDERS: "true"');
     expect(overlay).toMatch(/GEMINI_API_KEY:\s*\$\{GEMINI_API_KEY:\?/);
+    // The overlay does not flip the global switch itself; the operator must set it explicitly in .env.
+    expect(overlay).toContain('ENABLE_EXTERNAL_PROVIDERS: ${ENABLE_EXTERNAL_PROVIDERS:-false}');
+    expect(overlay).not.toMatch(/ENABLE_EXTERNAL_PROVIDERS:\s*"?true/);
+    // Only the credential proxy may reach the internet; LiteLLM stays on the internal network.
+    const litellm = overlay.slice(overlay.indexOf('\n  litellm:'), overlay.indexOf('\n  backend:'));
+    expect(litellm).not.toContain('edge');
   });
 
   it('makes Ollama opt-in and protects every admin endpoint with ADMIN', () => {

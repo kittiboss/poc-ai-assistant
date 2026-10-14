@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, HttpException, HttpStatus, Injectable, Logger, NotFoundException, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { MessageRole, MessageStatus, PricingStrategy, Prisma, Provider, RequestStatus, UsageKind } from '@prisma/client';
 import { calculatePrice, estimateTokens } from '@enterprise/shared';
 import Big from 'big.js';
@@ -8,11 +8,42 @@ import type { AuthUser } from './auth';
 import type { PreviewPricingDto, SendMessageDto, UpdatePricingDto } from './dto';
 import { GatewayService } from './gateway.service';
 import { PrismaService } from './prisma.service';
-import { externalProviderAllowed, isExternalProvider, modelAllowedForUser } from './policies';
+import { EXTERNAL_PROVIDERS, externalBudgetExhausted, externalDailyLimits, externalProviderAllowed, isExternalProvider, modelAllowedForUser, startOfUtcDay, toGatewayHistory } from './policies';
+
+/** Longer than any gateway timeout; a stream this old cannot still be attached to a client. */
+export const STALE_STREAM_MS = 10 * 60_000;
+
+export type SummaryFilters = { from?: string; to?: string; provider?: Provider; modelId?: string };
 
 @Injectable()
-export class AppService {
+export class AppService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(AppService.name);
+  private sweepTimer?: NodeJS.Timeout;
+
   constructor(private readonly prisma: PrismaService, private readonly gateway: GatewayService) {}
+
+  onModuleInit() {
+    void this.interruptStaleStreams();
+    this.sweepTimer = setInterval(() => void this.interruptStaleStreams(), 60_000);
+    this.sweepTimer.unref();
+  }
+
+  onModuleDestroy() { clearInterval(this.sweepTimer); }
+
+  /** SSE streams do not survive an API restart; mark abandoned assistant messages instead of leaving them STREAMING forever. */
+  async interruptStaleStreams(now = Date.now()) {
+    try {
+      const { count } = await this.prisma.message.updateMany({
+        where: { status: { in: [MessageStatus.PENDING, MessageStatus.STREAMING] }, updatedAt: { lt: new Date(now - STALE_STREAM_MS) } },
+        data: { status: MessageStatus.INTERRUPTED },
+      });
+      if (count) this.logger.warn(`Marked ${count} abandoned streaming message(s) as INTERRUPTED`);
+      return count;
+    } catch (error) {
+      this.logger.error(`Stale stream sweep failed: ${(error as Error).message}`);
+      return 0;
+    }
+  }
 
   async syncUser(auth: AuthUser) {
     const user = await this.prisma.user.upsert({
@@ -31,36 +62,59 @@ export class AppService {
   async listModels(auth: AuthUser) {
     const user = await this.syncUser(auth);
     const models = await this.prisma.aIModel.findMany({
-      include: { permissions: { where: { userId: user.id } }, pricing: { include: { versions: { orderBy: { version: 'desc' }, take: 1 } } } },
+      include: { permissions: { where: { userId: user.id } } },
       orderBy: [{ local: 'desc' }, { displayName: 'asc' }],
     });
     const externalSwitch = process.env.ENABLE_EXTERNAL_PROVIDERS === 'true';
-    return Promise.all(models.map(async (model) => {
-      const credential = this.credentialFor(model.provider);
+    const reachable = await this.reachability(models.filter((model) => model.enabled));
+    const budgetExhausted = models.some((model) => model.enabled && isExternalProvider(model.provider)) && await this.externalBudgetExhausted();
+    return models.map((model) => {
       const permitted = modelAllowedForUser(model.allowedRoles, auth.roles, model.permissions[0]?.allowed);
-      const configured = externalProviderAllowed(model.provider, externalSwitch, credential);
-      const available = model.enabled && permitted && configured && (model.provider === Provider.OLLAMA ? await this.ollamaAvailable(model.providerModelId) : await this.gateway.available(model.id));
-      const price = model.pricing?.versions[0];
+      const configured = externalProviderAllowed(model.provider, externalSwitch, this.credentialFor(model.provider));
+      const limited = isExternalProvider(model.provider) && budgetExhausted;
+      const available = model.enabled && permitted && configured && !limited && reachable(model);
       return {
         id: model.id, displayName: model.displayName, provider: model.provider, providerModelId: model.providerModelId,
         enabled: model.enabled, permitted, available, local: model.local, contextWindow: model.contextWindow,
-        capabilities: model.capabilities, status: !model.enabled ? 'Disabled' : !permitted ? 'Not permitted' : !configured ? 'Not configured' : available ? 'Available' : 'Unavailable',
-        externalApiCost: model.local ? '0' : price?.providerInputRate.toString() || null,
+        capabilities: model.capabilities,
+        status: !model.enabled ? 'Disabled' : !permitted ? 'Not permitted' : !configured ? 'Not configured' : limited ? 'Daily limit reached' : available ? 'Available' : 'Unavailable',
       };
-    }));
+    });
+  }
+
+  /** One gateway route lookup per call; Ollama is asked only when an Ollama model is in scope. Neither reaches a paid provider. */
+  private async reachability(models: Array<{ provider: Provider }>) {
+    const [routes, ollama] = await Promise.all([
+      models.length ? this.gateway.routes() : Promise.resolve(new Set<string>()),
+      models.some((model) => model.provider === Provider.OLLAMA) ? this.ollamaModels() : Promise.resolve(new Set<string>()),
+    ]);
+    return (model: { id: string; provider: Provider; providerModelId: string }) =>
+      routes.has(model.id) && (model.provider !== Provider.OLLAMA || ollama.has(model.providerModelId));
+  }
+
+  private async externalUsageToday() {
+    const usage = await this.prisma.usageRecord.aggregate({
+      where: { provider: { in: [...EXTERNAL_PROVIDERS] as Provider[] }, createdAt: { gte: startOfUtcDay() } },
+      _count: true, _sum: { totalTokens: true },
+    });
+    return { requests: usage._count, tokens: usage._sum.totalTokens || 0 };
+  }
+
+  private async externalBudgetExhausted() {
+    return externalBudgetExhausted(await this.externalUsageToday(), externalDailyLimits());
   }
 
   private credentialFor(provider: Provider) {
     return provider === Provider.OPENAI ? process.env.OPENAI_API_KEY : provider === Provider.ANTHROPIC ? process.env.ANTHROPIC_API_KEY : provider === Provider.GEMINI ? process.env.GEMINI_API_KEY : 'local';
   }
 
-  private async ollamaAvailable(providerModelId: string) {
+  private async ollamaModels() {
     try {
       const response = await fetch(`${process.env.OLLAMA_URL || 'http://localhost:11434'}/api/tags`, { signal: AbortSignal.timeout(1200) });
-      if (!response.ok) return false;
+      if (!response.ok) return new Set<string>();
       const payload = await response.json() as { models?: Array<{ name?: string; model?: string }> };
-      return Boolean(payload.models?.some((model) => model.name === providerModelId || model.model === providerModelId));
-    } catch { return false; }
+      return new Set((payload.models || []).flatMap((model) => [model.name, model.model]).filter((name): name is string => Boolean(name)));
+    } catch { return new Set<string>(); }
   }
 
   async createConversation(auth: AuthUser, title?: string) {
@@ -111,6 +165,9 @@ export class AppService {
     if (!externalProviderAllowed(model.provider, process.env.ENABLE_EXTERNAL_PROVIDERS === 'true', this.credentialFor(model.provider))) {
       throw new ForbiddenException('External provider is not explicitly enabled and configured');
     }
+    if (isExternalProvider(model.provider) && await this.externalBudgetExhausted()) {
+      throw new HttpException('The daily external-provider limit for this installation has been reached. Local models remain available.', HttpStatus.TOO_MANY_REQUESTS);
+    }
     const requestId = dto.requestId || randomUUID();
     const [duplicateUsage, duplicateMessage] = await Promise.all([
       this.prisma.usageRecord.findUnique({ where: { requestId } }),
@@ -122,7 +179,8 @@ export class AppService {
       this.prisma.message.create({ data: { conversationId, role: MessageRole.ASSISTANT, content: '', status: MessageStatus.STREAMING, modelId: model.id, requestId } }),
       this.prisma.conversation.update({ where: { id: conversationId }, data: { updatedAt: new Date(), ...(conversation.title === 'New conversation' ? { title: dto.content.slice(0, 70) } : {}) } }),
     ]);
-    const messages = (await this.prisma.message.findMany({ where: { conversationId, id: { not: assistant.id } }, orderBy: { createdAt: 'desc' }, take: 50 })).reverse();
+    const history = toGatewayHistory((await this.prisma.message.findMany({ where: { conversationId, id: { not: assistant.id } }, orderBy: { createdAt: 'desc' }, take: 50 })).reverse());
+    const input = history.map((message) => message.content).join(' ');
 
     response.status(200).set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
     response.flushHeaders();
@@ -135,20 +193,20 @@ export class AppService {
     try {
       usage = await this.gateway.stream(
         model.id,
-        messages.map((message) => ({ role: message.role.toLowerCase() as 'user' | 'assistant' | 'system', content: message.content })),
+        history,
         aborter.signal,
         (text) => { content += text; response.write(`event: token\ndata: ${JSON.stringify({ text })}\n\n`); },
       );
       status = RequestStatus.COMPLETED;
       await this.prisma.message.update({ where: { id: assistant.id }, data: { content, status: MessageStatus.COMPLETED } });
-      await this.recordUsage({ requestId, userId: user.id, conversationId, model, input: messages.map((m) => m.content).join(' '), output: content, durationMs: Date.now() - started, status, usage });
+      await this.recordUsage({ requestId, userId: user.id, conversationId, model, input, output: content, durationMs: Date.now() - started, status, usage });
       response.write(`event: done\ndata: ${JSON.stringify({ requestId, messageId: assistant.id })}\n\n`);
       response.end();
     } catch (error) {
       const cancelled = aborter.signal.aborted;
       status = cancelled ? RequestStatus.CANCELLED : RequestStatus.ERROR;
       await this.prisma.message.update({ where: { id: assistant.id }, data: { content, status: cancelled ? MessageStatus.INTERRUPTED : MessageStatus.ERROR } });
-      await this.recordUsage({ requestId, userId: user.id, conversationId, model, input: messages.map((m) => m.content).join(' '), output: content, durationMs: Date.now() - started, status, usage }).catch(() => undefined);
+      await this.recordUsage({ requestId, userId: user.id, conversationId, model, input, output: content, durationMs: Date.now() - started, status, usage }).catch(() => undefined);
       if (!cancelled && !response.writableEnded) {
         response.write(`event: error\ndata: ${JSON.stringify({ message: error instanceof Error ? error.message : 'Generation failed' })}\n\n`);
         response.end();
@@ -194,19 +252,55 @@ export class AppService {
     return { totals, byModel, records };
   }
 
-  async adminSummary() {
-    const [users, requests, tokens, byProvider, byModel, costs] = await Promise.all([
-      this.prisma.user.count(), this.prisma.usageRecord.count(),
-      this.prisma.usageRecord.aggregate({ _sum: { inputTokens: true, outputTokens: true, totalTokens: true } }),
-      this.prisma.usageRecord.groupBy({ by: ['provider'], _count: true, _sum: { totalTokens: true } }),
-      this.prisma.usageRecord.groupBy({ by: ['modelId'], _count: true, _sum: { totalTokens: true } }),
-      this.prisma.usageRecord.aggregate({ _sum: { actualProviderCost: true, customerCharge: true, simulatedProviderCost: true, simulatedCustomerCharge: true } }),
+  async adminSummary(filters: SummaryFilters = {}) {
+    const createdAt = filters.from || filters.to ? { ...(filters.from ? { gte: new Date(filters.from) } : {}), ...(filters.to ? { lte: new Date(filters.to) } : {}) } : undefined;
+    const where: Prisma.UsageRecordWhereInput = { ...(filters.provider ? { provider: filters.provider } : {}), ...(filters.modelId ? { modelId: filters.modelId } : {}), ...(createdAt ? { createdAt } : {}) };
+    const conditions = [Prisma.sql`TRUE`];
+    if (filters.from) conditions.push(Prisma.sql`"createdAt" >= ${new Date(filters.from)}`);
+    if (filters.to) conditions.push(Prisma.sql`"createdAt" <= ${new Date(filters.to)}`);
+    if (filters.provider) conditions.push(Prisma.sql`"provider" = ${filters.provider}::"Provider"`);
+    if (filters.modelId) conditions.push(Prisma.sql`"modelId" = ${filters.modelId}`);
+    const costSum = { actualProviderCost: true, customerCharge: true, simulatedProviderCost: true, simulatedCustomerCharge: true } as const;
+    const [users, activeUsers, requests, tokens, byProvider, byModel, byKind, costs, daily, models, externalToday] = await Promise.all([
+      this.prisma.user.count(),
+      this.prisma.usageRecord.groupBy({ by: ['userId'], where }).then((rows) => rows.length),
+      this.prisma.usageRecord.count({ where }),
+      this.prisma.usageRecord.aggregate({ where, _sum: { inputTokens: true, outputTokens: true, totalTokens: true } }),
+      this.prisma.usageRecord.groupBy({ by: ['provider'], where, _count: true, _sum: { totalTokens: true, ...costSum } }),
+      this.prisma.usageRecord.groupBy({ by: ['modelId'], where, _count: true, _sum: { totalTokens: true, ...costSum } }),
+      this.prisma.usageRecord.groupBy({ by: ['usageKind'], where, _count: true, _sum: { totalTokens: true } }),
+      this.prisma.usageRecord.aggregate({ where, _sum: costSum }),
+      this.prisma.$queryRaw<Array<{ day: Date; requests: number; tokens: bigint }>>`
+        SELECT date_trunc('day', "createdAt") AS day, COUNT(*)::int AS requests, COALESCE(SUM("totalTokens"), 0)::bigint AS tokens
+        FROM "UsageRecord" WHERE ${Prisma.join(conditions, ' AND ')} GROUP BY 1 ORDER BY 1`,
+      this.prisma.aIModel.findMany({ select: { id: true, displayName: true } }),
+      this.externalUsageToday(),
     ]);
-    return { users, requests, tokens: tokens._sum, byProvider, byModel, costs: costs._sum };
+    const names = new Map(models.map((model) => [model.id, model.displayName]));
+    return {
+      users, activeUsers, requests, tokens: tokens._sum, byProvider, byKind, costs: costs._sum,
+      byModel: byModel.map((row) => ({ ...row, displayName: names.get(row.modelId) || row.modelId })),
+      daily: daily.map((row) => ({ day: row.day.toISOString().slice(0, 10), requests: row.requests, tokens: Number(row.tokens) })),
+      externalToday: { used: externalToday, limits: externalDailyLimits() },
+    };
   }
 
   async adminModels() {
-    return this.prisma.aIModel.findMany({ include: { pricing: { include: { versions: { orderBy: { version: 'desc' }, take: 1 } } } }, orderBy: { displayName: 'asc' } });
+    const models = await this.prisma.aIModel.findMany({ include: { pricing: { include: { versions: { orderBy: { version: 'desc' }, take: 1 } } } }, orderBy: { displayName: 'asc' } });
+    const externalSwitch = process.env.ENABLE_EXTERNAL_PROVIDERS === 'true';
+    const reachable = await this.reachability(models);
+    return models.map((model) => {
+      const configured = externalProviderAllowed(model.provider, externalSwitch, this.credentialFor(model.provider));
+      const routed = reachable(model);
+      return { ...model, configured, reachable: routed, status: !configured ? 'Not configured' : !routed ? 'Unavailable' : model.enabled ? 'Available' : 'Ready (disabled)' };
+    });
+  }
+
+  async auditLog(entityType?: string) {
+    return this.prisma.auditLog.findMany({
+      where: entityType ? { entityType } : {}, orderBy: { createdAt: 'desc' }, take: 100,
+      include: { actor: { select: { username: true } } },
+    });
   }
 
   async updateModel(auth: AuthUser, id: string, data: { enabled?: boolean; allowedRoles?: string[] }) {

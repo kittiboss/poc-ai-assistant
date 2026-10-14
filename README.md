@@ -71,7 +71,10 @@ docker compose down --volumes
 - Pass-through, percentage markup, fixed-rate, and simulation strategies
 - Immutable pricing versions, usage price snapshots, and pricing/model audit logs
 - User usage and aggregate admin dashboards; admin APIs never return chat content
-- OpenAI/Anthropic/Gemini registry placeholders, all disabled by default
+- OpenAI/Anthropic registry placeholders and an opt-in Gemini route, all disabled by default
+- Layered external-cost guardrails: credential proxy allowlist, output-token cap, daily request/token ceiling (see [Cost safety](#cost-safety))
+- Admin console filters (date range, provider, model), per-day/provider/model charts, cost breakdown, model availability, pricing overview, and audit log
+- Database-enforced immutability of pricing versions; abandoned streams are marked `INTERRUPTED` after an API restart
 
 The mock provider supports deterministic test controls:
 
@@ -97,31 +100,60 @@ With the Compose stack running, exercise real PKCE login, all three demo users, 
 npm run test:e2e
 ```
 
-The default suite never needs external credentials and has no active paid-provider route. The Ollama integration test remains skipped unless an operator explicitly supplies `OLLAMA_TEST_URL`.
+The default suite never needs external credentials and has no active paid-provider route. The API test setup also replaces `fetch` with a guard that fails any non-loopback request, so a test cannot reach a paid provider even by mistake. The Ollama integration test remains skipped unless an operator explicitly supplies `OLLAMA_TEST_URL`. `npm run test:e2e` additionally checks the admin console APIs and the pricing example below (3,000 in / 700 out → `$0` actual, `$0.01` simulated provider cost, `$0.015` simulated charge).
 
-### Explicit Gemini free-tier connectivity test
+## Using Google Gemini on the free tier
 
-Google lists `gemini-3.5-flash-lite` text generation as free of charge for eligible free-tier projects. Project billing status cannot be inferred from an API key, so confirm **Free tier** in Google AI Studio before running this test. Free-tier inputs and outputs may be used by Google to improve its products.
+Gemini is the only external provider with a ready route. It stays off until you take every one of these steps; adding a key alone changes nothing.
 
-Put the credential only in the ignored `.env` file (never in Git):
+1. **Use a key from a free-tier project.** In [Google AI Studio](https://aistudio.google.com/apikey), the project behind the key must be on the **Free** plan with **no billing account linked**. Google cannot charge a project that has no billing account; over-limit requests fail with HTTP 429 instead. If the project shows a paid tier, every request is billed: do not use that key here.
+2. Put the credential and the switch in the ignored `.env` file (never in Git):
 
-```dotenv
-GEMINI_API_KEY=your-key
-GEMINI_MODEL=gemini-3.5-flash-lite
-```
+   ```dotenv
+   GEMINI_API_KEY=your-key
+   GEMINI_MODEL=gemini-3.5-flash-lite
+   ENABLE_EXTERNAL_PROVIDERS=true
+   ```
 
-Start the explicit Gemini overlay and run one no-tools request capped at 32 output tokens:
+3. Start the stack with the Gemini overlay:
+
+   ```bash
+   docker compose -f docker-compose.yml -f docker-compose.gemini.yml up --build -d
+   ```
+
+4. Sign in as `admin` → **Admin console** → **Model registry** and enable **Gemini 3.5 Flash-Lite**. By default only `ADMIN` may use it; tick `USER` to open it to employees.
+
+Free-tier prompts and responses may be used by Google to improve its products, and the chat UI shows a notice whenever an external model is selected. Do not send confidential data. Free-tier rate limits are per project and are shown in AI Studio; when they are hit, the chat shows a rate-limit message and local models keep working.
+
+Usage is recorded as `ACTUAL` (Google's token counts). The seeded Gemini pricing records actual provider cost as `$0` (free tier) and sets the simulation rates to Google's published paid-tier list price for `gemini-3.5-flash-lite` ($0.30 input / $2.50 output per 1M tokens, checked 2026-10-14). Dashboards therefore show what the same usage *would* cost on a paid tier, clearly labelled as simulated. If the project's tier changes, create a new pricing version in the admin console.
+
+Optional connectivity check: it validates the key with Google's model-list endpoint, briefly enables Gemini through the audited admin API, sends one streamed `Reply with exactly: GEMINI_OK` request, checks the persisted usage, and restores the registry state:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.gemini.yml up --build -d litellm backend
 npm run test:gemini
 ```
 
-The probe validates the credential with Google's model-list endpoint, temporarily enables Gemini through the audited admin API, sends one streamed request through `NestJS → LiteLLM → internal credential proxy → Gemini`, checks persisted usage, and restores the registry state. The proxy keeps the real provider credential out of LiteLLM URLs and logs. Return the running services to the default mock-only configuration afterward:
+Return to the default mock-only stack at any time:
 
 ```bash
-docker compose up -d --force-recreate litellm backend
+docker compose up -d --force-recreate --remove-orphans litellm backend
 ```
+
+## Cost safety
+
+Everything in the default stack is local: the mock provider, Ollama, PostgreSQL, Keycloak, Valkey, and LiteLLM are open-source containers and make no paid calls. OpenAI and Anthropic have no gateway route and no credential. The only path that can reach a paid service is the opt-in Gemini overlay, and it is constrained in layers:
+
+| Layer | What it prevents |
+|---|---|
+| Base `docker-compose.yml` has no external route; LiteLLM sits on an internal-only network | Any provider call in the default stack, including during startup, migrations, health checks, and model discovery |
+| `ENABLE_EXTERNAL_PROVIDERS=true` **and** a server-side credential **and** an admin enabling the model **and** per-user permission | Accidental activation by just adding a key |
+| `gemini-proxy` is the only container with internet egress for a provider and holds the key | LiteLLM or the browser ever seeing the credential |
+| `gemini-proxy` allowlist: only `generateContent` / `streamGenerateContent` / `countTokens` for `GEMINI_MODEL`; rejects `tools`, `toolConfig`, `cachedContent` | Other (possibly paid-only) models, search grounding, context-cache storage, batch jobs |
+| Output tokens capped by `AI_MAX_OUTPUT_TOKENS` in the API **and** again in the proxy; `candidateCount` forced to 1 | Long or multi-candidate generations |
+| `EXTERNAL_DAILY_REQUEST_LIMIT` (default 100) and `EXTERNAL_DAILY_TOKEN_LIMIT` (default 100,000) per UTC day across all external providers; `0` blocks external use | Runaway usage; the admin console shows today's consumption |
+| Default test suite blocks non-loopback network access | Tests calling a provider |
+
+The POC cannot read a Google project's billing status. The guarantee of **$0** comes from step 1 above: a key from a project without a billing account. The daily ceiling only bounds the worst case if a billed key is used by mistake (at the list price above, 100,000 tokens/day is at most about $0.25/day).
 
 ## API summary
 
@@ -138,7 +170,19 @@ POST   /api/conversations/:id/messages  (SSE response)
 GET    /api/usage/me
 ```
 
-Admin endpoints under `/api/admin` provide aggregate summary, model management, user model permissions, pricing preview, pricing version creation, and history. Every route is guarded with `ADMIN` on the backend.
+Admin endpoints under `/api/admin` (every route guarded with `ADMIN` on the backend):
+
+```text
+GET    /api/admin/summary?from=&to=&provider=&modelId=   aggregate usage, costs, daily series, external guardrail status
+GET    /api/admin/models                                  registry with configuration and availability
+PATCH  /api/admin/models/:id                              enable/disable, allowed roles (audited)
+GET    /api/admin/users
+PATCH  /api/admin/users/:userId/models/:modelId           explicit per-user permission (audited)
+GET    /api/admin/pricing?modelId=                        all pricing versions
+POST   /api/admin/pricing/:modelId                        create a new immutable version (audited)
+POST   /api/admin/pricing/preview/calculate               preview without saving
+GET    /api/admin/audit?entityType=                       latest 100 audit entries
+```
 
 ## Optional Ollama — not needed for this machine
 
@@ -157,7 +201,7 @@ A small 1.5B quantized model commonly needs roughly 2–4 GB free memory plus ap
 
 ## External providers
 
-OpenAI, Anthropic, and Gemini are inert by default. Gemini has a separately activated test overlay; the base Compose file still contains no external-provider route:
+OpenAI, Anthropic, and Gemini are inert by default. Gemini has a separately activated overlay (see above); the base Compose file contains no external-provider route:
 
 ```dotenv
 ENABLE_EXTERNAL_PROVIDERS=false
@@ -174,7 +218,7 @@ Adding a key alone does not enable anything. A future administrator must perform
 4. Configure/version provider and customer pricing.
 5. Enable the model in the admin registry.
 
-The backend rejects external enablement unless both the global switch and matching credential exist. Default startup, migrations, tests, health checks, and model discovery never call a paid provider.
+The backend rejects external enablement unless both the global switch and matching credential exist, and refuses external requests once the daily ceiling is reached. Default startup, migrations, tests, health checks, and model discovery never call a paid provider. OpenAI and Anthropic would need a credential proxy and allowlist like Gemini's before use.
 
 ## Documentation
 

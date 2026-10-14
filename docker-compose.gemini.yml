@@ -1,5 +1,9 @@
-# Explicit opt-in overlay for a Gemini connectivity test. The default Compose
-# file remains mock-only and has no active external-provider route.
+# Explicit opt-in overlay for Google Gemini. The default Compose file remains
+# mock-only and has no external-provider route. Using Gemini requires ALL of:
+#   1. GEMINI_API_KEY in the ignored .env (from a free-tier project with no billing account)
+#   2. ENABLE_EXTERNAL_PROVIDERS=true in .env (this overlay does not set it for you)
+#   3. Starting the stack with this overlay
+#   4. An administrator enabling google-gemini in the model registry
 services:
   gemini-proxy:
     build:
@@ -8,11 +12,15 @@ services:
     environment:
       PORT: 4020
       GEMINI_API_KEY: ${GEMINI_API_KEY:?Set GEMINI_API_KEY in the ignored .env file}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      GEMINI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-1024}
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4020/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 5s
       timeout: 3s
       retries: 20
+    # The only container granted internet egress for a model provider. It holds the
+    # credential and forwards nothing but text generation for GEMINI_MODEL.
     networks: [backend, edge]
     restart: unless-stopped
 
@@ -22,16 +30,12 @@ services:
       GEMINI_LITELLM_MODEL: gemini/${GEMINI_MODEL:-gemini-3.5-flash-lite}
     volumes:
       - ./infra/litellm/config.gemini.yaml:/app/config.yaml:ro
-    # The base service is isolated on the internal network. External egress is
-    # granted only while this explicit provider overlay is active.
-    networks: [backend, edge]
     depends_on:
       gemini-proxy:
         condition: service_healthy
 
   backend:
     environment:
-      ENABLE_EXTERNAL_PROVIDERS: "true"
+      ENABLE_EXTERNAL_PROVIDERS: ${ENABLE_EXTERNAL_PROVIDERS:-false}
       GEMINI_API_KEY: ${GEMINI_API_KEY:?Set GEMINI_API_KEY in the ignored .env file}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
-      AI_MAX_OUTPUT_TOKENS: "32"

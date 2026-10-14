@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { AuthProvider } from '../components/auth-provider';
+import 'highlight.js/styles/github-dark.css';
 import './globals.css';
 
 export const metadata: Metadata = { title: 'Enterprise AI', description: 'Self-hosted enterprise AI assistant POC' };

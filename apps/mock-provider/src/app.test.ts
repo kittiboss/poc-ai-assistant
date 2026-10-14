@@ -27,5 +27,13 @@ describe('OpenAI-compatible mock provider', () => {
     });
     expect(failure.status).toBe(503);
   });
-});
 
+  it('streams exactly the same text as the non-streamed response, including code and blank lines', async () => {
+    const messages = [{ role: 'user', content: 'Show code\n\n```js\nconst total = items.reduce((sum, x) => sum + x, 0);\n```' }];
+    const whole = await request(createApp()).post('/v1/chat/completions').send({ messages });
+    const stream = await request(createApp()).post('/v1/chat/completions').send({ stream: true, messages });
+    const streamedText = stream.text.split('\n').filter((line) => line.startsWith('data: {')).map((line) => JSON.parse(line.slice(6)).choices?.[0]?.delta?.content || '').join('');
+    expect(streamedText).toBe(whole.body.choices[0].message.content);
+    expect(streamedText).toContain('items.reduce');
+  });
+});

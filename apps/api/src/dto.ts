@@ -37,3 +37,12 @@ export class PreviewPricingDto extends UpdatePricingDto {
   @IsInt() @Min(0) @Max(1000000000) outputTokens!: number;
 }
 
+export class SummaryQueryDto {
+  @IsOptional() @IsDateString() from?: string;
+  @IsOptional() @IsDateString() to?: string;
+  @IsOptional() @IsIn(['MOCK', 'OLLAMA', 'OPENAI', 'ANTHROPIC', 'GEMINI']) provider?: 'MOCK' | 'OLLAMA' | 'OPENAI' | 'ANTHROPIC' | 'GEMINI';
+  @IsOptional() @IsString() @Length(1, 100) modelId?: string;
+}
+export class AuditQueryDto {
+  @IsOptional() @IsIn(['AIModel', 'UserModelPermission', 'PricingConfiguration']) entityType?: string;
+}

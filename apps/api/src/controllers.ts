@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Res
 import type { Response } from 'express';
 import { AppService } from './app.service';
 import { CurrentUser, Public, Roles, type AuthUser } from './auth';
-import { CreateConversationDto, PreviewPricingDto, SendMessageDto, UpdateConversationDto, UpdateModelDto, UpdatePermissionDto, UpdatePricingDto } from './dto';
+import { AuditQueryDto, CreateConversationDto, PreviewPricingDto, SendMessageDto, UpdateConversationDto, UpdateModelDto, UpdatePermissionDto, UpdatePricingDto, SummaryQueryDto } from './dto';
 
 @Controller()
 export class HealthController {
@@ -44,7 +44,8 @@ export class UsageController {
 @Controller('admin')
 export class AdminController {
   constructor(private readonly app: AppService) {}
-  @Get('summary') summary() { return this.app.adminSummary(); }
+  @Get('summary') summary(@Query() query: SummaryQueryDto) { return this.app.adminSummary(query); }
+  @Get('audit') audit(@Query() query: AuditQueryDto) { return this.app.auditLog(query.entityType); }
   @Get('models') models() { return this.app.adminModels(); }
   @Patch('models/:id') updateModel(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: UpdateModelDto) { return this.app.updateModel(user, id, dto); }
   @Get('users') users() { return this.app.users(); }

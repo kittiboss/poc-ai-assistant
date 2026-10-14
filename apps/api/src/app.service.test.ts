@@ -1,7 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Provider, RequestStatus, UsageKind } from '@prisma/client';
-import { describe, expect, it, vi } from 'vitest';
-import { AppService } from './app.service';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { AppService, STALE_STREAM_MS } from './app.service';
 
 const auth = { sub: 'kc-user-1', username: 'employee1', roles: ['USER'] };
 const localUser = { id: '00000000-0000-0000-0000-000000000001', externalId: auth.sub, username: auth.username };
@@ -76,3 +76,60 @@ describe('application persistence and authorization', () => {
   });
 });
 
+
+describe('external provider cost guardrails and stream recovery', () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const admin = { sub: 'kc-admin', username: 'admin', roles: ['ADMIN', 'USER'] };
+  const models = [
+    { id: 'local-mock', displayName: 'Local Mock', provider: Provider.MOCK, providerModelId: 'mock-enterprise', enabled: true, allowedRoles: ['ADMIN', 'USER'], local: true, contextWindow: 8192, capabilities: [], permissions: [] },
+    { id: 'google-gemini', displayName: 'Gemini', provider: Provider.GEMINI, providerModelId: 'gemini-3.5-flash-lite', enabled: true, allowedRoles: ['ADMIN'], local: false, contextWindow: 1048576, capabilities: [], permissions: [] },
+  ];
+  const gateway = { routes: vi.fn().mockResolvedValue(new Set(['local-mock', 'google-gemini'])) };
+  const prismaWith = (used: { requests: number; tokens: number }) => ({ ...basePrisma(),
+    aIModel: { findMany: vi.fn().mockResolvedValue(models), findUnique: vi.fn().mockResolvedValue(models[1]) },
+    usageRecord: { aggregate: vi.fn().mockResolvedValue({ _count: used.requests, _sum: { totalTokens: used.tokens } }) },
+    conversation: { findFirst: vi.fn().mockResolvedValue({ id: 'conversation-1', userId: localUser.id, title: 'x' }) },
+  });
+
+  it('shows an external model as unavailable once the daily limit is reached, without touching local models', async () => {
+    vi.stubEnv('ENABLE_EXTERNAL_PROVIDERS', 'true');
+    vi.stubEnv('GEMINI_API_KEY', 'test-only');
+    vi.stubEnv('EXTERNAL_DAILY_REQUEST_LIMIT', '10');
+    const within = await new AppService(prismaWith({ requests: 9, tokens: 100 }) as never, gateway as never).listModels(admin);
+    expect(within.find((model) => model.id === 'google-gemini')).toMatchObject({ available: true, status: 'Available' });
+    const limited = await new AppService(prismaWith({ requests: 10, tokens: 100 }) as never, gateway as never).listModels(admin);
+    expect(limited.find((model) => model.id === 'google-gemini')).toMatchObject({ available: false, status: 'Daily limit reached' });
+    expect(limited.find((model) => model.id === 'local-mock')).toMatchObject({ available: true, status: 'Available' });
+  });
+
+  it('treats an API key alone as insufficient to use an external model', async () => {
+    vi.stubEnv('ENABLE_EXTERNAL_PROVIDERS', 'false');
+    vi.stubEnv('GEMINI_API_KEY', 'test-only');
+    const listed = await new AppService(prismaWith({ requests: 0, tokens: 0 }) as never, gateway as never).listModels(admin);
+    expect(listed.find((model) => model.id === 'google-gemini')).toMatchObject({ available: false, status: 'Not configured' });
+  });
+
+  it('refuses an external request over the daily limit before opening a stream or persisting messages', async () => {
+    vi.stubEnv('ENABLE_EXTERNAL_PROVIDERS', 'true');
+    vi.stubEnv('GEMINI_API_KEY', 'test-only');
+    vi.stubEnv('EXTERNAL_DAILY_TOKEN_LIMIT', '1000');
+    const prisma = { ...prismaWith({ requests: 1, tokens: 1000 }), message: { create: vi.fn() } };
+    const response = { status: vi.fn(), write: vi.fn() };
+    const error = await new AppService(prisma as never, gateway as never)
+      .streamMessage(admin, 'conversation-1', { content: 'hi', modelId: 'google-gemini' }, response as never).catch((cause) => cause);
+    expect(error.getStatus()).toBe(429);
+    expect(prisma.message.create).not.toHaveBeenCalled();
+    expect(response.status).not.toHaveBeenCalled();
+  });
+
+  it('marks streams abandoned by an API restart as INTERRUPTED', async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 2 });
+    const now = Date.parse('2026-10-14T12:00:00Z');
+    const count = await new AppService({ message: { updateMany } } as never, {} as never).interruptStaleStreams(now);
+    expect(count).toBe(2);
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { status: { in: ['PENDING', 'STREAMING'] }, updatedAt: { lt: new Date(now - STALE_STREAM_MS) } },
+      data: { status: 'INTERRUPTED' },
+    });
+  });
+});

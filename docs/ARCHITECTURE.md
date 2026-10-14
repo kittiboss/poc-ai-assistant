@@ -31,10 +31,12 @@ On authenticated requests, the API mirrors the Keycloak subject and current role
 
 1. The API checks conversation ownership, model state, role/user permission, and external-provider gates.
 2. A unique request ID and `STREAMING` assistant message are persisted before inference.
-3. The last 50 messages go through the gateway abstraction to LiteLLM.
+3. The last 50 messages go through the gateway abstraction to LiteLLM. Failed and empty turns stay in the user's history but are never replayed to a provider (some providers reject empty content).
 4. Tokens stream as SSE `token` events. Client disconnect aborts the gateway request.
 5. Completion, interruption, or error is persisted without discarding partial content.
 6. Usage is upserted by unique request ID with the pricing version and a complete price snapshot.
+
+SSE streams do not survive an API restart. A sweep at startup and every minute marks assistant messages still `STREAMING` after 10 minutes (longer than any gateway timeout) as `INTERRUPTED`.
 
 The mock exposes an OpenAI-compatible endpoint, but the API never calls it directly. LiteLLM performs the route.
 
@@ -42,7 +44,7 @@ The mock exposes an OpenAI-compatible endpoint, but the API never calls it direc
 
 PostgreSQL owns application state. LiteLLM has no application-table access and no gateway database in this POC, keeping schemas logically separated.
 
-`PricingVersion` rows are append-only through application APIs. `UsageRecord` references the version used and stores decimal cost/charge snapshots, so later changes cannot alter history. Monetary arithmetic uses `big.js`; database values use `DECIMAL(24,12)`.
+`PricingVersion` rows are append-only: the API only inserts, and a database trigger rejects `UPDATE` and `DELETE`. `UsageRecord` references the version used and stores decimal cost/charge snapshots, so later changes cannot alter history. Monetary arithmetic uses `big.js`; database values use `DECIMAL(24,12)`.
 
 Provider cost and customer charge are independent columns. Local models force actual external cost to zero. Simulation has separate provider/customer values and no invoice path.
 
@@ -52,12 +54,25 @@ Conversation deletion is a soft delete so usage and immutable pricing references
 
 The active LiteLLM file contains only `local-mock` and optional local Ollama. External registry rows start disabled. External use needs the global switch, a matching credential, an active gateway route, an enabled registry row, and user permission. The default network and test path therefore cannot accidentally spend paid API credits.
 
+The opt-in Gemini overlay adds one route through a credential proxy:
+
+```text
+NestJS ──► LiteLLM (internal network only) ──► gemini-proxy ──► generativelanguage.googleapis.com
+                                               holds the key, sends it as a header
+                                               allows only text generation for GEMINI_MODEL
+                                               rejects tools / grounding / cached content
+                                               clamps output tokens, forces one candidate
+```
+
+The API also enforces an installation-wide daily request and token ceiling across all external providers, computed from usage records, before a request is persisted or streamed. Model availability checks read LiteLLM's configured routes and Ollama's local tag list; they never call a provider.
+
 ## Repository layout
 
 ```text
 apps/web/              Next.js UI and local shadcn-style primitives
 apps/api/              NestJS REST/SSE API and Prisma domain logic
 apps/mock-provider/    Offline OpenAI-compatible deterministic provider
+apps/gemini-proxy/     Opt-in credential proxy and cost allowlist for Gemini
 packages/shared/       Shared pricing/token logic
 apps/api/prisma/       Schema, migration, and seed
 infra/keycloak/        Importable development realm

@@ -107,10 +107,29 @@ assert(record);
 assert.equal(record.usageKind, 'SYNTHETIC');
 assert.equal(Number(record.actualProviderCost), 0);
 
+// Admin console data: filters, availability, guardrail status, audit trail, and the spec's pricing example.
+const filtered = await (await request('/admin/summary?provider=MOCK', admin.token)).json();
+assert(filtered.requests > 0 && filtered.byProvider.every((row) => row.provider === 'MOCK'));
+assert(Array.isArray(filtered.daily) && filtered.daily.length > 0);
+assert(Number.isInteger(filtered.externalToday.limits.requests));
+assert.equal((await request('/admin/summary?provider=NOT_A_PROVIDER', admin.token)).status, 400);
+const adminModels = await (await request('/admin/models', admin.token)).json();
+assert.equal(adminModels.find((model) => model.id === 'local-mock').status, 'Available');
+assert.equal((await request('/admin/audit', admin.token)).status, 200);
+assert.equal((await request('/admin/audit', employee1.token)).status, 403);
+const preview = await (await request('/admin/pricing/preview/calculate', admin.token, {
+  method: 'POST',
+  body: JSON.stringify({ strategy: 'SIMULATION', providerInputRate: '0', providerOutputRate: '0', additionalFee: '0', customerInputRate: '0', customerOutputRate: '0', markupPercent: '50', simulationInputRate: '2.5', simulationOutputRate: '3.571428571428', currency: 'USD', inputTokens: 3000, outputTokens: 700 }),
+})).json();
+assert.equal(preview.actualProviderCost, '0.000000000000');
+assert.equal(preview.simulatedProviderCost, '0.010000000000');
+assert.equal(preview.simulatedCustomerCharge, '0.015000000000');
+
 console.log(JSON.stringify({
   oidc: 'authorization-code-pkce',
   authenticatedUsers: ['employee1', 'employee2', 'admin'],
-  ownershipIsolation: 'passed', adminRbac: 'passed',
+  ownershipIsolation: 'passed', adminRbac: 'passed', adminConsole: 'passed',
+  pricingSimulation: { actualProviderCost: preview.actualProviderCost, simulatedProviderCost: preview.simulatedProviderCost, simulatedCustomerCharge: preview.simulatedCustomerCharge },
   gatewayModel: 'local-mock', streamedResponse: output,
   usage: { kind: record.usageKind, totalTokens: record.totalTokens, actualProviderCost: record.actualProviderCost },
 }, null, 2));

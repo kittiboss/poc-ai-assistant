@@ -9,7 +9,9 @@ This repository is an enterprise-shaped POC, not a production security or billin
 - Upgrade to a currently supported Keycloak release validated on the target runtime. The local Compose file pins Keycloak 24/Java 17 only because Java 21 ARM images crash on the tested older Apple Docker virtualization.
 - Configure Keycloak with a production PostgreSQL database, backups, recovery, HA expectations, MFA, corporate federation, and session policy.
 - Pin container images by reviewed digest; add image signing, SBOM generation, vulnerability gates, and patch operations.
-- Replace in-memory throttling with a Valkey-backed distributed limiter; add per-user/model budgets and concurrency controls.
+- Replace in-memory throttling with a Valkey-backed distributed limiter; add per-user/model/department budgets and concurrency controls. The external daily ceiling is installation-wide and check-then-act, so concurrent requests can overshoot it slightly.
+- Add provider billing guardrails outside the application: provider-side budgets/alerts and, for paid tiers, hard quota caps. The POC cannot read a provider project's billing status; its $0 guarantee for Gemini depends on the operator using a free-tier project without a billing account.
+- Give OpenAI and Anthropic the same credential-proxy + allowlist treatment as Gemini before enabling them.
 - Add a production job/outbox strategy for audit/usage durability across abrupt process loss.
 - Define retention, legal hold, export/deletion, data residency, encryption, and backup policies.
 - Add centralized metrics/traces/security events without logging prompt or response bodies by default.
@@ -28,7 +30,8 @@ This repository is an enterprise-shaped POC, not a production security or billin
 - Single-customer/single-installation architecture only; this is intentional.
 - No RAG, agents, connectors, BYOK workflow, department budgets, license enforcement, or subscription plans yet.
 - No attachment ingestion, malware scanning, DLP, moderation policy, or data-classification workflow.
-- Streaming recovery is request-oriented; it does not resume an SSE stream across API restarts.
+- Streaming recovery is request-oriented; it does not resume an SSE stream across API restarts. Abandoned messages are marked `INTERRUPTED`, but no usage record is written for a request lost mid-stream.
+- Free-tier Gemini prompts and responses may be used by Google to improve its products; enterprise use requires a paid tier or a provider with appropriate data terms, plus a DLP/classification policy.
 - Valkey is provisioned for the future shared cache/rate limiter but is not yet in the critical request path.
 - Dashboards provide core totals and charts, not a full analytics warehouse or scheduled audit reports.
 - Ollama capacity, model license, model provenance, and security must be assessed separately per customer. It is disabled in the default POC.

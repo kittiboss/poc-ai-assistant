@@ -53,7 +53,8 @@ export function createApp() {
       Connection: 'keep-alive',
     });
     res.flushHeaders();
-    const chunks = content.match(/.{1,12}(?:\s|$)/g) || [content];
+    // Word-sized chunks that together reproduce the content exactly, including newlines and long tokens.
+    const chunks = content.match(/\S+\s*|\s+/g) || [content];
     for (const chunk of chunks) {
       if (res.destroyed) return;
       res.write(`data: ${JSON.stringify({ id, object: 'chat.completion.chunk', created, model: 'mock-enterprise', choices: [{ index: 0, delta: { content: chunk }, finish_reason: null }] })}\n\n`);
