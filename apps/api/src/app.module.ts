@@ -1,22 +1,27 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
-import { AppService } from './app.service';
-import { AuthGuard } from './auth';
-import { AdminController, ConversationsController, HealthController, ModelsController, UsageController } from './controllers';
-import { GatewayService } from './gateway.service';
-import { PrismaService } from './prisma.service';
+import { AdminModule } from './admin/admin.module';
+import { AuthGuard } from './common/auth/auth.guard';
+import { PrismaModule } from './common/prisma/prisma.module';
+import { ConversationsModule } from './conversations/conversations.module';
+import { HealthModule } from './health/health.module';
+import { ModelsModule } from './models/models.module';
+import { UsageModule } from './usage/usage.module';
 
 @Module({
-  imports: [ThrottlerModule.forRoot([{ ttl: 60_000, limit: 60 }])],
-  controllers: [HealthController, ModelsController, ConversationsController, UsageController, AdminController],
+  imports: [
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 60 }]),
+    PrismaModule,
+    HealthModule,
+    ModelsModule,
+    ConversationsModule,
+    UsageModule,
+    AdminModule,
+  ],
   providers: [
-    PrismaService,
-    GatewayService,
-    AppService,
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
 export class AppModule {}
-

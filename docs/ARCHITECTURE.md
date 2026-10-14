@@ -71,16 +71,43 @@ The API also enforces an installation-wide daily request and token ceiling acros
 ## Repository layout
 
 ```text
-apps/web/              Next.js UI and local shadcn-style primitives
-apps/api/              NestJS REST/SSE API and Prisma domain logic
-apps/mock-provider/    Offline OpenAI-compatible deterministic provider
-apps/gemini-proxy/     Opt-in credential proxy and cost allowlist for Gemini
-packages/shared/       Shared pricing/token logic
-apps/api/prisma/       Schema, migration, and seed
-infra/keycloak/        Importable development realm
-infra/litellm/         Active local routes and disabled external examples
-scripts/               Live end-to-end smoke verification
+apps/
+  api/                    NestJS REST/SSE API
+    prisma/               schema, migrations (incl. pricing immutability trigger), seed
+    src/
+      main.ts, app.module.ts
+      common/
+        auth/             JWT guard, @Public/@Roles/@CurrentUser
+        prisma/           PrismaService (global module)
+        swagger/          OpenAPI setup, shared doc decorators and schema types
+      users/              mirror of the Keycloak subject and roles
+      audit/              append-only audit log (writes + admin listing)
+      gateway/            the only inference boundary (LiteLLM client)
+      pricing/            versioned pricing, preview, version-in-effect lookup
+      usage/              usage records, price snapshots, external daily limits
+      models/             registry, provider/permission policy, availability
+      conversations/      conversation CRUD and SSE chat (ChatService)
+      admin/              aggregate dashboard, user permissions, admin routes
+      health/             public liveness endpoint
+      testing/            unit-test fixtures (excluded from the build)
+    test/                 vitest setup (offline network guard)
+  web/                    Next.js app
+    app/                  routes only (/, /usage, /admin, /settings)
+    features/             one folder per screen: chat, usage, admin, settings
+    components/           shared: auth (OIDC provider, gate), layout (shell), ui (primitives, charts)
+    lib/                  API client and shared types
+  mock-provider/          offline OpenAI-compatible deterministic provider
+  gemini-proxy/           opt-in credential proxy and cost allowlist for Gemini
+packages/shared/          pricing and token logic shared by API and web
+infra/keycloak/           importable development realm
+infra/litellm/            active local routes and disabled external examples
+scripts/                  e2e/Gemini smoke tests, Keycloak client sync
+docs/                     architecture and production gap analysis
 ```
 
-This keeps deployment-specific configuration out of business modules while retaining one straightforward local workspace.
+Reasons for this layout:
 
+- **Feature modules in the API.** Each folder owns its controller, service, DTOs (`*.dto.ts`) and OpenAPI response schemas (`*.schemas.ts`), and is a Nest module that exports only its service. Dependencies point one way (`admin` → `models` → `usage` → `pricing`; `conversations` → `models`/`usage`/`gateway`), so a future feature (RAG, agents, budgets) is a new folder, not more lines in a shared service. Pure rules (`model-policies.ts`, `external-limits.ts`, `chat-history.ts`) are plain functions next to the module that owns them, and are unit-tested without Nest.
+- **Tests next to the code.** `*.test.ts` sits beside the file it covers; shared fixtures live in `src/testing/` and are excluded from the production build.
+- **Routes stay thin in the web app.** `app/` only composes an auth gate and a feature, so moving to different routing or adding pages doesn't touch feature code.
+- **Dockerfiles stay with each app** instead of a central `infra/docker/`: each image builds from the repository root (for the shared workspace package) but is owned and versioned with the app it packages. `infra/` holds only deployment configuration (identity realm, gateway routes) that a customer environment would replace.
