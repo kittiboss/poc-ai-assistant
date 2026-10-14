@@ -1,0 +1,18 @@
+# Documentation-only examples. Do NOT merge these into config.yaml until an
+# administrator has set ENABLE_EXTERNAL_PROVIDERS=true, supplied credentials,
+# reviewed prices, and enabled the corresponding registry entry.
+#
+# model_list:
+#   - model_name: openai-gpt
+#     litellm_params:
+#       model: openai/<administrator-selected-model>
+#       api_key: os.environ/OPENAI_API_KEY
+#   - model_name: anthropic-claude
+#     litellm_params:
+#       model: anthropic/<administrator-selected-model>
+#       api_key: os.environ/ANTHROPIC_API_KEY
+#   - model_name: google-gemini
+#     litellm_params:
+#       model: gemini/<administrator-selected-model>
+#       api_key: os.environ/GEMINI_API_KEY
+

@@ -1,0 +1,21 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+@theme {
+  --color-ink: #101828;
+  --color-brand: #6d5dfc;
+  --color-brand-dark: #5846ef;
+}
+
+:root { color-scheme: light; }
+.dark { color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #f7f8fc; color: #172033; }
+.dark body { background: #0d1017; color: #eef1f7; }
+::selection { background: #dcd8ff; }
+.dark ::selection { background: #4c3ec4; }
+.prose pre { overflow-x: auto; border-radius: 12px; background: #111827; color: #e5e7eb; padding: 1rem; }
+.prose code:not(pre code) { border-radius: 5px; background: rgba(109,93,252,.12); padding: .1rem .3rem; }
+.prose p { margin: .6rem 0; }
+.prose ul, .prose ol { padding-left: 1.25rem; }
+.prose a { color: #6d5dfc; text-decoration: underline; }
+

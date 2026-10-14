@@ -1,0 +1,231 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Provider {
+  MOCK
+  OLLAMA
+  OPENAI
+  ANTHROPIC
+  GEMINI
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+enum MessageStatus {
+  PENDING
+  STREAMING
+  COMPLETED
+  INTERRUPTED
+  ERROR
+}
+
+enum RequestStatus {
+  PENDING
+  STREAMING
+  COMPLETED
+  CANCELLED
+  ERROR
+}
+
+enum UsageKind {
+  ACTUAL
+  ESTIMATED
+  SYNTHETIC
+}
+
+enum PricingStrategy {
+  PASS_THROUGH
+  PERCENTAGE_MARKUP
+  FIXED_RATE
+  SIMULATION
+}
+
+model User {
+  id           String         @id @default(uuid()) @db.Uuid
+  externalId   String         @unique
+  username     String
+  email        String?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  roles        UserRole[]
+  conversations Conversation[]
+  usageRecords UsageRecord[]
+  modelPermissions UserModelPermission[]
+  auditLogs    AuditLog[]
+}
+
+model Role {
+  id          String           @id @default(uuid()) @db.Uuid
+  name        String           @unique
+  users       UserRole[]
+  permissions RolePermission[]
+}
+
+model Permission {
+  id    String @id @default(uuid()) @db.Uuid
+  name  String @unique
+  roles RolePermission[]
+}
+
+model UserRole {
+  userId String @db.Uuid
+  roleId String @db.Uuid
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  @@id([userId, roleId])
+}
+
+model RolePermission {
+  roleId       String @db.Uuid
+  permissionId String @db.Uuid
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  @@id([roleId, permissionId])
+}
+
+model AIModel {
+  id              String   @id
+  displayName     String
+  provider        Provider
+  providerModelId String
+  enabled         Boolean  @default(false)
+  allowedRoles    String[]
+  contextWindow   Int
+  capabilities    String[]
+  local           Boolean
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  messages        Message[]
+  usageRecords    UsageRecord[]
+  pricing         PricingConfiguration?
+  permissions     UserModelPermission[]
+  @@index([provider, enabled])
+}
+
+model UserModelPermission {
+  userId String @db.Uuid
+  modelId String
+  allowed Boolean
+  user  User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  model AIModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  @@id([userId, modelId])
+}
+
+model Conversation {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  title     String    @default("New conversation")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  Message[]
+  usageRecords UsageRecord[]
+  @@index([userId, deletedAt, updatedAt])
+}
+
+model Message {
+  id             String        @id @default(uuid()) @db.Uuid
+  conversationId String        @db.Uuid
+  role           MessageRole
+  content        String        @db.Text
+  status         MessageStatus @default(COMPLETED)
+  modelId        String?
+  requestId      String?       @unique
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  model        AIModel?      @relation(fields: [modelId], references: [id])
+  @@index([conversationId, createdAt])
+}
+
+model UsageRecord {
+  id             String        @id @default(uuid()) @db.Uuid
+  requestId      String        @unique
+  userId         String        @db.Uuid
+  conversationId String        @db.Uuid
+  modelId        String
+  pricingVersionId String?     @db.Uuid
+  provider       Provider
+  inputTokens    Int
+  outputTokens   Int
+  totalTokens    Int
+  durationMs     Int
+  status         RequestStatus
+  usageKind      UsageKind
+  currency       String        @default("USD")
+  actualProviderCost Decimal   @db.Decimal(24, 12)
+  customerCharge Decimal       @db.Decimal(24, 12)
+  simulatedProviderCost Decimal @db.Decimal(24, 12)
+  simulatedCustomerCharge Decimal @db.Decimal(24, 12)
+  pricingSnapshot Json
+  createdAt      DateTime      @default(now())
+  user         User         @relation(fields: [userId], references: [id])
+  conversation Conversation @relation(fields: [conversationId], references: [id])
+  model        AIModel      @relation(fields: [modelId], references: [id])
+  pricingVersion PricingVersion? @relation(fields: [pricingVersionId], references: [id])
+  @@index([userId, createdAt])
+  @@index([modelId, createdAt])
+}
+
+model PricingConfiguration {
+  id        String   @id @default(uuid()) @db.Uuid
+  modelId   String   @unique
+  createdAt DateTime @default(now())
+  model     AIModel  @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  versions  PricingVersion[]
+}
+
+model PricingVersion {
+  id                String          @id @default(uuid()) @db.Uuid
+  configurationId   String          @db.Uuid
+  version           Int
+  strategy          PricingStrategy
+  providerInputRate Decimal         @db.Decimal(24, 12)
+  providerOutputRate Decimal        @db.Decimal(24, 12)
+  cachedInputRate   Decimal?        @db.Decimal(24, 12)
+  additionalFee     Decimal         @default(0) @db.Decimal(24, 12)
+  customerInputRate Decimal         @default(0) @db.Decimal(24, 12)
+  customerOutputRate Decimal        @default(0) @db.Decimal(24, 12)
+  markupPercent     Decimal         @default(0) @db.Decimal(12, 6)
+  simulationInputRate Decimal       @default(0) @db.Decimal(24, 12)
+  simulationOutputRate Decimal      @default(0) @db.Decimal(24, 12)
+  currency          String          @default("USD")
+  effectiveAt       DateTime        @default(now())
+  createdBy         String?
+  createdAt         DateTime        @default(now())
+  configuration PricingConfiguration @relation(fields: [configurationId], references: [id], onDelete: Cascade)
+  usageRecords UsageRecord[]
+  @@unique([configurationId, version])
+  @@index([configurationId, effectiveAt])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String?  @db.Uuid
+  action     String
+  entityType String
+  entityId   String
+  before     Json?
+  after      Json?
+  createdAt  DateTime @default(now())
+  actor User? @relation(fields: [actorId], references: [id])
+  @@index([entityType, entityId, createdAt])
+}
+
+model ApplicationSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt
+}
+

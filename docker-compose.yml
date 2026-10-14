@@ -1,0 +1,186 @@
+name: enterprise-ai-assistant
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-enterprise_ai}
+      POSTGRES_USER: ${POSTGRES_USER:-enterprise_ai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_dev_only}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [backend]
+    restart: unless-stopped
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    command: ["valkey-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - valkey-data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [backend]
+    restart: unless-stopped
+
+  keycloak:
+    # Keycloak 24 uses Java 17 and remains compatible with older Apple ARM Docker
+    # virtualization where the Java 21 image can fail with SIGILL.
+    image: quay.io/keycloak/keycloak:24.0.5
+    command: ["start-dev", "--import-realm", "--health-enabled=true"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-local_admin_only}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-local_admin_only}
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ./infra/keycloak/enterprise-ai-realm.json:/opt/keycloak/data/import/enterprise-ai-realm.json:ro
+      - keycloak-data:/opt/keycloak/data
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080; printf \"GET /health/ready HTTP/1.1\\r\\nhost: localhost\\r\\nConnection: close\\r\\n\\r\\n\" >&3; grep -q \"200 OK\" <&3'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    networks: [backend, edge]
+    restart: unless-stopped
+
+  mock-provider:
+    build:
+      context: .
+      dockerfile: apps/mock-provider/Dockerfile
+    environment:
+      PORT: 4010
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4010/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [backend]
+    restart: unless-stopped
+
+  litellm:
+    # Newer images use CPU instructions unavailable in this machine's older
+    # Apple Docker virtualization, so keep the last verified compatible pin.
+    image: ghcr.io/berriai/litellm:main-v1.72.6-stable
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-local-litellm-key-change-me}
+      MOCK_PROVIDER_URL: http://mock-provider:4010/v1
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:1.5b}
+      OLLAMA_LITELLM_MODEL: ollama_chat/${OLLAMA_MODEL:-qwen2.5:1.5b}
+    volumes:
+      - ./infra/litellm/config.yaml:/app/config.yaml:ro
+    depends_on:
+      mock-provider:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/readiness', timeout=2)"]
+      interval: 5s
+      timeout: 4s
+      retries: 30
+      start_period: 15s
+    networks: [backend]
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-enterprise_ai}:${POSTGRES_PASSWORD:-local_dev_only}@postgres:5432/${POSTGRES_DB:-enterprise_ai}?schema=public
+      API_PORT: 3001
+      KEYCLOAK_URL: ${KEYCLOAK_URL:-http://localhost:8080}
+      KEYCLOAK_INTERNAL_URL: http://keycloak:8080
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-enterprise-ai}
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-enterprise-ai-api}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+      LITELLM_URL: http://litellm:4000
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-local-litellm-key-change-me}
+      OLLAMA_URL: http://ollama:11434
+      VALKEY_URL: redis://valkey:6379
+      ENABLE_EXTERNAL_PROVIDERS: ${ENABLE_EXTERNAL_PROVIDERS:-false}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      AI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-512}
+      LOG_CONTENT: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      keycloak:
+        condition: service_healthy
+      litellm:
+        condition: service_healthy
+    ports:
+      - "3001:3001"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 15s
+    networks: [backend, edge]
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001/api}
+        NEXT_PUBLIC_KEYCLOAK_URL: ${NEXT_PUBLIC_KEYCLOAK_URL:-http://localhost:8080}
+        NEXT_PUBLIC_KEYCLOAK_REALM: ${NEXT_PUBLIC_KEYCLOAK_REALM:-enterprise-ai}
+        NEXT_PUBLIC_OIDC_CLIENT_ID: ${NEXT_PUBLIC_OIDC_CLIENT_ID:-enterprise-ai-web}
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000"]
+      interval: 10s
+      timeout: 4s
+      retries: 20
+    networks: [edge]
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:0.9.0
+    profiles: ["ollama"]
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks: [backend]
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  valkey-data:
+  keycloak-data:
+  ollama-data:
+
+networks:
+  edge:
+  backend:
+    internal: true

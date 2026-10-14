@@ -1,0 +1,22 @@
+{
+  "name": "enterprise-ai-assistant",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "build": "npm run build -w @enterprise/shared && npm run build -w @enterprise/mock-provider && npm run build -w @enterprise/gemini-proxy && npm run build -w @enterprise/api && npm run build -w @enterprise/web",
+    "test": "npm run test -w @enterprise/shared && npm run test -w @enterprise/mock-provider && npm run test -w @enterprise/gemini-proxy && npm run test -w @enterprise/api",
+    "test:e2e": "node scripts/e2e-smoke.mjs",
+    "test:gemini": "node --env-file=.env scripts/gemini-smoke.mjs",
+    "lint": "npm run lint -ws --if-present",
+    "format": "prettier --write .",
+    "db:generate": "npm run prisma:generate -w @enterprise/api",
+    "db:migrate": "npm run prisma:migrate -w @enterprise/api",
+    "db:seed": "npm run prisma:seed -w @enterprise/api"
+  },
+  "devDependencies": {
+    "prettier": "3.6.2"
+  },
+  "engines": { "node": ">=22" }
+}
+

@@ -1,0 +1,30 @@
+'use client';
+import { Activity, Coins, Cpu, Database, Hash, Timer } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import { useApi } from '../lib/api';
+import { Shell } from './shell';
+import { Badge, Card } from './ui';
+
+type UsageRecord = { id: string; requestId: string; modelId: string; provider: string; inputTokens: number; outputTokens: number; totalTokens: number; durationMs: number; status: string; usageKind: 'ACTUAL' | 'ESTIMATED' | 'SYNTHETIC'; currency: string; actualProviderCost: string; customerCharge: string; simulatedProviderCost: string; simulatedCustomerCharge: string; createdAt: string; model: { displayName: string } };
+type UsageData = { totals: { _count: number; _sum: Record<string, number | string | null> }; byModel: Array<{ modelId: string; _count: number; _sum: { totalTokens: number | null } }>; records: UsageRecord[] };
+const money = (value: unknown, currency = 'USD') => new Intl.NumberFormat('en-US', { style: 'currency', currency, minimumFractionDigits: 4, maximumFractionDigits: 8 }).format(Number(value || 0));
+const number = (value: unknown) => new Intl.NumberFormat().format(Number(value || 0));
+
+export function UsageDashboard() {
+  const api = useApi();
+  const [data, setData] = useState<UsageData | null>(null);
+  const [error, setError] = useState('');
+  useEffect(() => { api.request<UsageData>('/usage/me').then(setData).catch((cause) => setError(cause.message)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const totals = data?.totals._sum || {};
+  return <Shell active="usage"><div className="mx-auto max-w-7xl space-y-6 p-8">
+    <div><p className="text-sm font-medium text-brand">YOUR ACCOUNT</p><h1 className="mt-1 text-3xl font-semibold tracking-tight">Usage dashboard</h1><p className="mt-2 text-sm text-slate-500">Actual, estimated, and simulated amounts are kept separate.</p></div>
+    {error && <Card className="border-red-200 p-4 text-red-600">{error}</Card>}
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Metric icon={<Activity/>} label="AI requests" value={number(data?.totals._count)}/><Metric icon={<Hash/>} label="Total tokens" value={number(totals.totalTokens)}/><Metric icon={<Database/>} label="Actual external API cost" value={money(totals.actualProviderCost)}/><Metric icon={<Coins/>} label="Simulated customer charge" value={money(totals.simulatedCustomerCharge)}/></div>
+    <div className="grid gap-6 lg:grid-cols-3"><Card className="p-5 lg:col-span-2"><h2 className="font-semibold">Tokens by model</h2><p className="mb-5 text-xs text-slate-500">Input and output combined</p><div className="h-64"><ResponsiveContainer width="100%" height="100%"><BarChart data={data?.byModel || []}><CartesianGrid strokeDasharray="3 3" vertical={false}/><XAxis dataKey="modelId" tick={{ fontSize: 12 }}/><YAxis tick={{ fontSize: 12 }}/><Tooltip/><Bar dataKey="_sum.totalTokens" fill="#6d5dfc" radius={[8, 8, 0, 0]}/></BarChart></ResponsiveContainer></div></Card><Card className="p-5"><h2 className="font-semibold">Cost classification</h2><div className="mt-5 space-y-4"><Cost label="Actual provider cost" value={money(totals.actualProviderCost)} note="Externally payable amount"/><Cost label="Customer charge" value={money(totals.customerCharge)} note="Current non-simulated pricing"/><Cost label="Simulated provider cost" value={money(totals.simulatedProviderCost)} note="Scenario only; not payable"/><Cost label="Simulated customer charge" value={money(totals.simulatedCustomerCharge)} note="Scenario only; never invoiced"/></div></Card></div>
+    <Card className="overflow-hidden"><div className="border-b border-slate-200 p-5 dark:border-slate-800"><h2 className="font-semibold">Request history</h2><p className="text-xs text-slate-500">Latest 100 requests; prompt and response content are intentionally excluded.</p></div><div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-slate-950"><tr>{['Time','Model','Provider','Tokens','Duration','Usage','Status','Actual cost','Simulation'].map((item) => <th key={item} className="px-4 py-3 font-medium">{item}</th>)}</tr></thead><tbody className="divide-y divide-slate-100 dark:divide-slate-800">{data?.records.map((record) => <tr key={record.id}><td className="whitespace-nowrap px-4 py-3">{new Date(record.createdAt).toLocaleString()}</td><td className="px-4 py-3 font-medium">{record.model.displayName}</td><td className="px-4 py-3">{record.provider}</td><td className="px-4 py-3">{number(record.totalTokens)} <span className="text-xs text-slate-400">({record.inputTokens} in / {record.outputTokens} out)</span></td><td className="px-4 py-3"><Timer className="mr-1 inline" size={13}/>{record.durationMs} ms</td><td className="px-4 py-3"><Badge tone={record.usageKind === 'ACTUAL' ? 'green' : record.usageKind === 'SYNTHETIC' ? 'purple' : 'amber'}>{record.usageKind}</Badge></td><td className="px-4 py-3">{record.status}</td><td className="px-4 py-3">{money(record.actualProviderCost, record.currency)}</td><td className="px-4 py-3">{money(record.simulatedCustomerCharge, record.currency)}</td></tr>)}</tbody></table></div></Card>
+  </div></Shell>;
+}
+function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) { return <Card className="p-5"><div className="mb-4 inline-flex rounded-xl bg-violet-50 p-2 text-brand dark:bg-violet-950">{icon}</div><div className="text-2xl font-semibold">{value}</div><div className="mt-1 text-xs text-slate-500">{label}</div></Card>; }
+function Cost({ label, value, note }: { label: string; value: string; note: string }) { return <div><div className="flex justify-between gap-4"><span className="text-sm text-slate-600 dark:text-slate-300">{label}</span><span className="font-mono text-sm font-semibold">{value}</span></div><p className="text-[11px] text-slate-400">{note}</p></div>; }
+

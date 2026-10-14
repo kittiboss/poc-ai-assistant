@@ -1,0 +1,37 @@
+# Explicit opt-in overlay for a Gemini connectivity test. The default Compose
+# file remains mock-only and has no active external-provider route.
+services:
+  gemini-proxy:
+    build:
+      context: .
+      dockerfile: apps/gemini-proxy/Dockerfile
+    environment:
+      PORT: 4020
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?Set GEMINI_API_KEY in the ignored .env file}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4020/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [backend, edge]
+    restart: unless-stopped
+
+  litellm:
+    environment:
+      GEMINI_PROXY_URL: http://gemini-proxy:4020/v1beta/models/${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      GEMINI_LITELLM_MODEL: gemini/${GEMINI_MODEL:-gemini-3.5-flash-lite}
+    volumes:
+      - ./infra/litellm/config.gemini.yaml:/app/config.yaml:ro
+    # The base service is isolated on the internal network. External egress is
+    # granted only while this explicit provider overlay is active.
+    networks: [backend, edge]
+    depends_on:
+      gemini-proxy:
+        condition: service_healthy
+
+  backend:
+    environment:
+      ENABLE_EXTERNAL_PROVIDERS: "true"
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?Set GEMINI_API_KEY in the ignored .env file}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      AI_MAX_OUTPUT_TOKENS: "32"

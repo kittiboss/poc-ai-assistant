@@ -1,0 +1,91 @@
+{
+  "realm": "enterprise-ai",
+  "enabled": true,
+  "displayName": "Enterprise AI Development",
+  "registrationAllowed": false,
+  "resetPasswordAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "sslRequired": "external",
+  "roles": {
+    "realm": [
+      { "name": "ADMIN", "description": "Enterprise AI administrator" },
+      { "name": "USER", "description": "Enterprise AI user" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "enterprise-ai-web",
+      "name": "Enterprise AI Web",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "rootUrl": "http://localhost:3000",
+      "baseUrl": "http://localhost:3000",
+      "redirectUris": ["http://localhost:3000/*"],
+      "webOrigins": ["http://localhost:3000"],
+      "attributes": { "pkce.code.challenge.method": "S256" },
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "enterprise-ai-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "enterprise-ai-api",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "enterprise-ai-api",
+      "name": "Enterprise AI API audience",
+      "enabled": true,
+      "bearerOnly": true,
+      "publicClient": false,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "protocol": "openid-connect"
+    }
+  ],
+  "users": [
+    {
+      "username": "admin",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "admin@enterprise.local",
+      "firstName": "Local",
+      "lastName": "Administrator",
+      "credentials": [{ "type": "password", "value": "Admin123!", "temporary": false }],
+      "realmRoles": ["ADMIN", "USER"]
+    },
+    {
+      "username": "employee1",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "employee1@enterprise.local",
+      "firstName": "Demo",
+      "lastName": "Employee One",
+      "credentials": [{ "type": "password", "value": "Employee123!", "temporary": false }],
+      "realmRoles": ["USER"]
+    },
+    {
+      "username": "employee2",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "employee2@enterprise.local",
+      "firstName": "Demo",
+      "lastName": "Employee Two",
+      "credentials": [{ "type": "password", "value": "Employee123!", "temporary": false }],
+      "realmRoles": ["USER"]
+    }
+  ]
+}
+
