@@ -3,6 +3,7 @@ import Link from "next/link";
 import {
   BarChart3,
   Bot,
+  Gauge,
   LogOut,
   Moon,
   Settings,
@@ -20,7 +21,7 @@ export function Shell({
   sidebar,
 }: {
   children: React.ReactNode;
-  active: "chat" | "usage" | "admin" | "settings" | "workspace";
+  active: "chat" | "usage" | "live-usage" | "admin" | "settings";
   sidebar?: React.ReactNode;
 }) {
   const auth = useAuth();
@@ -55,18 +56,18 @@ export function Shell({
             Chat
           </Nav>
           <Nav
-            href="/workspace"
-            icon={<Bot size={17} />}
-            selected={active === "workspace"}
-          >
-            Projects & tools
-          </Nav>
-          <Nav
             href="/usage"
             icon={<BarChart3 size={17} />}
             selected={active === "usage"}
           >
             Usage dashboard
+          </Nav>
+          <Nav
+            href="/usage/live"
+            icon={<Gauge size={17} />}
+            selected={active === "live-usage"}
+          >
+            Live tokens
           </Nav>
           {roles.includes("ADMIN") && (
             <Nav

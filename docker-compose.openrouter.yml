@@ -1,0 +1,41 @@
+# Explicit opt-in overlay for OpenRouter's zero-price free model router.
+# The proxy only permits model=openrouter/free and blocks routing overrides.
+services:
+  openrouter-proxy:
+    build:
+      context: .
+      dockerfile: apps/openrouter-proxy/Dockerfile
+    environment:
+      PORT: 4040
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?Set OPENROUTER_API_KEY in the ignored .env file}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-openrouter/free}
+      OPENROUTER_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-1024}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4040/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [backend, edge]
+    restart: unless-stopped
+
+  litellm:
+    environment:
+      OPENROUTER_PROXY_URL: http://openrouter-proxy:4040/api/v1
+      OPENROUTER_LITELLM_MODEL: openai/${OPENROUTER_MODEL:-openrouter/free}
+    volumes:
+      - ./infra/litellm/config.openrouter.yaml:/app/config.yaml:ro
+    depends_on:
+      openrouter-proxy:
+        condition: service_healthy
+
+  backend:
+    environment:
+      ENABLE_EXTERNAL_PROVIDERS: ${ENABLE_EXTERNAL_PROVIDERS:-false}
+      OPENROUTER_CREDENTIAL_CONFIGURED: "true"
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-openrouter/free}

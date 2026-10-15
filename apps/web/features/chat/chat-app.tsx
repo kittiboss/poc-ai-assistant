@@ -1,18 +1,11 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import { useApi } from "../../lib/api";
 import { download } from "../../lib/download";
-import type {
-  Conversation,
-  Message,
-  Model,
-  Project,
-  PromptTemplate,
-} from "../../lib/types";
+import type { Conversation, Message, Model } from "../../lib/types";
 import { Shell } from "../../components/layout/shell";
 import {
   Badge,
@@ -25,19 +18,12 @@ import {
 
 export function ChatApp() {
   const api = useApi();
-  const [localTool, setLocalTool] = useState("");
   const sending = useRef(false);
   const [conversations, setConversations] = useState<Conversation[]>([]),
     [active, setActive] = useState<Conversation | null>(null);
-  const [comparison, setComparison] = useState<Conversation | null>(null),
-    [models, setModels] = useState<Model[]>([]),
+  const [models, setModels] = useState<Model[]>([]),
     [modelId, setModelId] = useState("");
-  const [projects, setProjects] = useState<Project[]>([]),
-    [projectId, setProjectId] = useState(""),
-    [templates, setTemplates] = useState<PromptTemplate[]>([]),
-    [templateId, setTemplateId] = useState("");
-  const [compareId, setCompareId] = useState(""),
-    [input, setInput] = useState(""),
+  const [input, setInput] = useState(""),
     [search, setSearch] = useState(""),
     [archived, setArchived] = useState(false);
   const [generating, setGenerating] = useState(false),
@@ -49,28 +35,19 @@ export function ChatApp() {
   async function refreshChats() {
     const seq = ++loadSequence.current;
     const params = new URLSearchParams({ search, archived: String(archived) });
-    if (projectId) params.set("projectId", projectId);
     const list = await api.request<Conversation[]>(`/conversations?${params}`);
     if (seq === loadSequence.current) setConversations(list);
   }
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setProjectId(params.get("project") || "");
-    setTemplateId(params.get("template") || "");
     const draft = sessionStorage.getItem("chat-draft");
     if (draft) {
       setInput(draft);
       sessionStorage.removeItem("chat-draft");
     }
-    Promise.all([
-      api.request<Model[]>("/models"),
-      api.request<Project[]>("/workspace/projects"),
-      api.request<PromptTemplate[]>("/workspace/templates"),
-    ])
-      .then(([m, p, t]) => {
+    api
+      .request<Model[]>("/models")
+      .then((m) => {
         setModels(m);
-        setProjects(p);
-        setTemplates(t);
         setModelId(m.find((x) => x.available)?.id || "");
       })
       .catch((e) => setError(e.message));
@@ -83,16 +60,11 @@ export function ChatApp() {
       refreshChats().catch((e) => setError(e.message));
     }, 200);
     return () => clearTimeout(timer);
-  }, [search, projectId, archived]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [search, archived]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: "smooth" });
   }, [active?.messages]);
   const selectedModel = models.find((m) => m.id === modelId);
-  const template = templates.find((t) => t.id === templateId);
-  const modelFits = (id: string) =>
-    !template ||
-    !template.allowedModels.length ||
-    template.allowedModels.includes(id);
   async function guarded(fn: () => Promise<unknown>) {
     try {
       setError("");
@@ -104,12 +76,11 @@ export function ChatApp() {
   async function open(id: string) {
     const chat = await api.request<Conversation>(`/conversations/${id}`);
     setActive(chat);
-    setComparison(null);
   }
   async function create() {
     return api.request<Conversation>("/conversations", {
       method: "POST",
-      body: JSON.stringify(projectId ? { projectId } : {}),
+      body: JSON.stringify({}),
     });
   }
   async function update(
@@ -178,7 +149,6 @@ export function ChatApp() {
           content: prompt,
           modelId: model,
           requestId,
-          ...(templateId ? { templateId } : {}),
           acknowledgeSensitive,
         }),
       });
@@ -253,87 +223,24 @@ export function ChatApp() {
       if (saved) setter(saved);
     }
   }
-  async function send(
-    prompt = input.trim(),
-    target = active,
-    compare = Boolean(compareId),
-  ) {
-    if (
-      sending.current ||
-      generating ||
-      (!prompt && !["time", "usage", "prices"].includes(localTool))
-    )
-      return;
-    if (localTool) {
-      sending.current = true;
-      setGenerating(true);
-      setError("");
-      setComparison(null);
-      try {
-        const chat = target || (await create());
-        setActive(
-          await api.request<Conversation>(`/conversations/${chat.id}/tools`, {
-            method: "POST",
-            body: JSON.stringify({ tool: localTool, input: prompt }),
-          }),
-        );
-        setInput("");
-        await refreshChats();
-      } catch (cause) {
-        setError((cause as Error).message);
-      } finally {
-        sending.current = false;
-        setGenerating(false);
-      }
-      return;
-    }
+  async function send(prompt = input.trim(), target = active) {
+    if (sending.current || generating || !prompt) return;
     if (!selectedModel?.available) return;
-    if (!modelFits(modelId) || (compare && !modelFits(compareId))) {
-      setError("Choose models allowed by the selected persona.");
-      return;
-    }
     setInput("");
     sending.current = true;
     setError("");
     setGenerating(true);
-    setComparison(null);
     try {
       const primary = target || (await create());
-      const secondary = compare
-        ? primary.messages?.length
-          ? await branch(primary, primary.messages[primary.messages.length - 1])
-          : await api.request<Conversation>("/conversations", {
-              method: "POST",
-              body: JSON.stringify({
-                title: `${primary.title} (comparison)`,
-                ...(primary.projectId ? { projectId: primary.projectId } : {}),
-              }),
-            })
-        : null;
-      const results = await Promise.allSettled([
-        stream(primary, prompt, modelId, setActive),
-        ...(secondary
-          ? [stream(secondary, prompt, compareId, setComparison)]
-          : []),
-      ]);
-      const failures = results.filter(
-        (r): r is PromiseRejectedResult => r.status === "rejected",
-      );
-      if (failures.length) {
-        setError(
-          failures
-            .map((r) =>
-              r.reason.name === "AbortError"
-                ? "Generation stopped. Partial text is saved."
-                : r.reason.message,
-            )
-            .join(" · "),
-        );
-        setInput(prompt);
-      }
+      await stream(primary, prompt, modelId, setActive);
       await refreshChats();
     } catch (e) {
-      setError((e as Error).message);
+      const cause = e as Error;
+      setError(
+        cause.name === "AbortError"
+          ? "Generation stopped. Partial text is saved."
+          : cause.message,
+      );
       setInput(prompt);
     } finally {
       sending.current = false;
@@ -347,7 +254,7 @@ export function ChatApp() {
     if (!content) return;
     const chat = await branch(conversation, message, true);
     setActive(chat);
-    await send(content, chat, false);
+    await send(content, chat);
   }
   async function regenerate(conversation: Conversation, message: Message) {
     const index =
@@ -359,7 +266,7 @@ export function ChatApp() {
     if (!userMessage) return;
     const chat = await branch(conversation, userMessage, true);
     setActive(chat);
-    await send(userMessage.content, chat, false);
+    await send(userMessage.content, chat);
   }
   function exportChat(format: "md" | "json") {
     if (!active) return;
@@ -388,7 +295,6 @@ export function ChatApp() {
           guarded(async () => {
             const next = await branch(chat, message);
             setActive(next);
-            setComparison(null);
             await refreshChats();
           })
         }
@@ -439,8 +345,7 @@ export function ChatApp() {
                   const refreshed = await api.request<Conversation>(
                     `/conversations/${chat.id}`,
                   );
-                  if (active?.id === chat.id) setActive(refreshed);
-                  else setComparison(refreshed);
+                  setActive(refreshed);
                 })
               }
             >
@@ -459,30 +364,11 @@ export function ChatApp() {
           className="w-full"
           onClick={() => {
             setActive(null);
-            setComparison(null);
             setError("");
           }}
         >
           + New chat
         </Button>
-        <Select
-          aria-label="Filter project"
-          className="w-full"
-          disabled={generating}
-          value={projectId}
-          onChange={(e) => {
-            setProjectId(e.target.value);
-            setActive(null);
-            setComparison(null);
-          }}
-        >
-          <option value="">All chats / no project for new chats</option>
-          {projects.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </Select>
         <input
           aria-label="Search conversation content"
           value={search}
@@ -571,174 +457,65 @@ export function ChatApp() {
             <h1 className="font-semibold">
               {active?.title || "New conversation"}
             </h1>
-            <div className="flex gap-3 text-xs">
-              <Link href="/workspace">Projects & tools</Link>
-              {active && (
-                <>
-                  <button onClick={() => exportChat("md")}>
-                    Export Markdown
-                  </button>
-                  <button onClick={() => exportChat("json")}>
-                    Export JSON
-                  </button>
-                </>
-              )}
-            </div>
+            {active && (
+              <div className="flex gap-3 text-xs">
+                <button onClick={() => exportChat("md")}>
+                  Export Markdown
+                </button>
+                <button onClick={() => exportChat("json")}>Export JSON</button>
+              </div>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
             <Select
-              aria-label="Response mode"
-              disabled={generating}
-              value={localTool}
-              onChange={(e) => setLocalTool(e.target.value)}
-            >
-              <option value="">AI response</option>
-              {[
-                "calculator",
-                "time",
-                "search",
-                "faq",
-                "usage",
-                "prices",
-                "csv",
-                "markdown",
-              ].map((tool) => (
-                <option key={tool} value={tool}>
-                  Local tool: {tool}
-                </option>
-              ))}
-            </Select>
-            <Select
               aria-label="Chat model"
-              disabled={generating || Boolean(localTool)}
+              disabled={generating}
               value={modelId}
               onChange={(e) => setModelId(e.target.value)}
             >
               {models.map((m) => (
-                <option
-                  key={m.id}
-                  value={m.id}
-                  disabled={!m.available || !modelFits(m.id)}
-                >
+                <option key={m.id} value={m.id} disabled={!m.available}>
                   {m.displayName} · {m.status}
                 </option>
               ))}
             </Select>
-            <Select
-              aria-label="Prompt persona"
-              disabled={generating || Boolean(localTool)}
-              value={templateId}
-              onChange={(e) => setTemplateId(e.target.value)}
-            >
-              <option value="">Default assistant</option>
-              {templates.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </Select>
-            <Select
-              aria-label="Comparison model"
-              disabled={generating || Boolean(localTool)}
-              value={compareId}
-              onChange={(e) => setCompareId(e.target.value)}
-            >
-              <option value="">Single response</option>
-              {models.map((m) => (
-                <option
-                  key={m.id}
-                  value={m.id}
-                  disabled={!m.available || !modelFits(m.id)}
-                >
-                  Compare: {m.displayName}
-                </option>
-              ))}
-            </Select>
-            {active && (
-              <Select
-                aria-label="Move chat to project"
-                value={active.projectId || ""}
-                disabled={generating}
-                onChange={(e) =>
-                  guarded(() =>
-                    update(active, { projectId: e.target.value || null }),
-                  )
-                }
-              >
-                <option value="">No project</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </Select>
-            )}
           </div>
-          {compareId && !localTool && (
-            <p className="text-xs text-amber-700">
-              Comparison creates two saved responses and consumes quota for each
-              model.
-            </p>
-          )}
         </header>
         <section className="flex-1 overflow-auto p-5">
           {!active?.messages?.length && (
             <div className="py-16 text-center">
               <h2 className="text-2xl font-semibold">How can I help?</h2>
               <p className="mt-3 text-sm text-slate-500">
-                {projectId
-                  ? `Project: ${projects.find((p) => p.id === projectId)?.name || "selected"}. Relevant document excerpts will be included.`
-                  : "Select a model and start a conversation."}
+                Select a model and start a conversation.
               </p>
             </div>
           )}
-          <div
-            className={
-              comparison
-                ? "grid items-start gap-5 xl:grid-cols-2"
-                : "mx-auto max-w-3xl"
-            }
-          >
-            {[active, comparison]
-              .filter((c): c is Conversation => Boolean(c))
-              .map((chat) => (
-                <div key={chat.id} className="min-w-0 space-y-5">
-                  {comparison && (
-                    <div className="sticky top-0 z-10 rounded-xl bg-slate-100 p-2 text-xs dark:bg-slate-800">
-                      {chat.id === active?.id ? "Primary" : "Comparison"} ·{" "}
-                      {
-                        chat.messages
-                          ?.filter((m) => m.role === "ASSISTANT")
-                          .at(-1)?.modelId
-                      }
-                    </div>
-                  )}
-                  {chat.messages?.map((m) => (
-                    <MessageBubble
-                      key={m.id}
-                      message={m}
-                      actions={
-                        m.status === "STREAMING" ? undefined : actions(chat, m)
-                      }
-                    />
-                  ))}
-                </div>
-              ))}
+          <div className="mx-auto max-w-3xl">
+            {active && (
+              <div className="min-w-0 space-y-5">
+                {active.messages?.map((m) => (
+                  <MessageBubble
+                    key={m.id}
+                    message={m}
+                    actions={
+                      m.status === "STREAMING" ? undefined : actions(active, m)
+                    }
+                  />
+                ))}
+              </div>
+            )}
           </div>
           <div ref={bottom} />
         </section>
         <footer className="border-t bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
           <div className="mx-auto max-w-3xl">
-            {!localTool &&
-              ((selectedModel && !selectedModel.local) ||
-                (compareId &&
-                  !models.find((m) => m.id === compareId)?.local)) && (
-                <p className="mb-2 rounded-xl bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
-                  External model: conversation context, instructions, enabled
-                  memories and retrieved excerpts are sent to the selected
-                  provider. Use non-confidential demo data.
-                </p>
-              )}
+            {selectedModel && !selectedModel.local && (
+              <p className="mb-2 rounded-xl bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                External model: conversation context and server-configured
+                context are sent to the selected provider. Use non-confidential
+                demo data.
+              </p>
+            )}
             {error && (
               <p
                 role="alert"
@@ -778,16 +555,9 @@ export function ChatApp() {
               ) : (
                 <Button
                   onClick={() => send()}
-                  disabled={
-                    localTool
-                      ? !input.trim() &&
-                        !["time", "usage", "prices"].includes(localTool)
-                      : !input.trim() ||
-                        !selectedModel?.available ||
-                        !modelFits(modelId)
-                  }
+                  disabled={!input.trim() || !selectedModel?.available}
                 >
-                  {localTool ? "Run tool" : "Send"}
+                  Send
                 </Button>
               )}
             </Card>

@@ -13,6 +13,8 @@ enum Provider {
   OPENAI
   ANTHROPIC
   GEMINI
+  GROQ
+  OPENROUTER
 }
 
 enum MessageRole {

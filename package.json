@@ -2,14 +2,19 @@
   "name": "enterprise-ai-assistant",
   "version": "0.1.0",
   "private": true,
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "build": "npm run build -w @enterprise/shared && npm run build -w @enterprise/mock-provider && npm run build -w @enterprise/gemini-proxy && npm run build -w @enterprise/api && npm run build -w @enterprise/web",
-    "test": "npm run test -w @enterprise/shared && npm run test -w @enterprise/mock-provider && npm run test -w @enterprise/gemini-proxy && npm run test -w @enterprise/api",
+    "build": "npm run build -w @enterprise/shared && npm run build -w @enterprise/mock-provider && npm run build -w @enterprise/gemini-proxy && npm run build -w @enterprise/groq-proxy && npm run build -w @enterprise/openrouter-proxy && npm run build -w @enterprise/api && npm run build -w @enterprise/web",
+    "test": "npm run test -w @enterprise/shared && npm run test -w @enterprise/mock-provider && npm run test -w @enterprise/gemini-proxy && npm run test -w @enterprise/groq-proxy && npm run test -w @enterprise/openrouter-proxy && npm run test -w @enterprise/api",
     "test:e2e": "node scripts/e2e-smoke.mjs",
     "test:workspace": "node scripts/workspace-smoke.mjs",
     "test:browser": "node scripts/browser-smoke.mjs",
     "test:gemini": "node --env-file=.env scripts/gemini-smoke.mjs",
+    "test:groq": "node --env-file=.env scripts/groq-smoke.mjs",
+    "test:openrouter": "node --env-file=.env scripts/openrouter-smoke.mjs",
     "keycloak:sync-clients": "node scripts/keycloak-sync-clients.mjs",
     "lint": "npm run lint -ws --if-present",
     "format": "prettier --write .",
@@ -21,6 +26,7 @@
     "playwright-core": "1.64.0",
     "prettier": "3.6.2"
   },
-  "engines": { "node": ">=22" }
+  "engines": {
+    "node": ">=22"
+  }
 }
-

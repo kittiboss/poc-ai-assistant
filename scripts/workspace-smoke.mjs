@@ -246,6 +246,15 @@ try {
   assert.equal(answer.citations[0].filename, "handbook.txt");
   assert(answer.usage);
   assert.equal(answer.usage.usageKind, "SYNTHETIC");
+  const liveUsage = await json("/usage/me/live", alice);
+  assert(
+    liveUsage.totals.totalTokens >=
+      answer.usage.inputTokens + answer.usage.outputTokens,
+  );
+  assert.equal(liveUsage.active.requests, 0);
+  assert(
+    liveUsage.recent.some((record) => record.requestId === answer.requestId),
+  );
   await json(
     `/conversations/${conversation.id}/messages/${answer.id}/feedback`,
     alice,
@@ -348,6 +357,7 @@ try {
         memories: "passed",
         templatePermissions: "passed",
         citationsAndUsage: "passed",
+        liveTokenUsage: "passed",
         branching: "passed",
         archiveAndFullTextSearch: "passed",
         feedbackAnalytics: "passed",

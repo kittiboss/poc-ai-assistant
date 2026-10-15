@@ -11,10 +11,7 @@ const browser = await chromium.launch({
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const web = process.env.WEB_URL || "http://localhost:3000";
 const api = process.env.API_URL || "http://localhost:3001/api";
-const tag = `browser-smoke-${Date.now()}`;
-let projectId;
 let conversationId;
-let memoryId;
 try {
   await page.goto(web);
   await page.getByRole("button", { name: "Continue with company SSO" }).click();
@@ -23,69 +20,55 @@ try {
     .locator("#password")
     .fill(process.env.EMPLOYEE_DEMO_PASSWORD || "Employee123!");
   await page.locator("#kc-login").click();
-  const workspaceLink = page
-    .getByRole("navigation")
-    .getByRole("link", { name: "Projects & tools" });
-  await workspaceLink.waitFor();
-  await workspaceLink.click();
-  await page.getByRole("heading", { name: "Create a project" }).waitFor();
-  await page.getByText("Name", { exact: true }).locator("input").fill(tag);
-  await page
-    .getByText("Instructions", { exact: true })
-    .locator("textarea")
-    .fill("Answer using the uploaded handbook.");
-  const created = page.waitForResponse(
-    (response) =>
-      response.url().endsWith("/workspace/projects") &&
-      response.request().method() === "POST",
+  await page.getByRole("heading", { name: "New conversation" }).waitFor();
+  assert.equal(
+    await page
+      .getByRole("navigation")
+      .getByRole("link", { name: "Projects & tools" })
+      .count(),
+    0,
   );
-  await page.getByRole("button", { name: "Save project" }).click();
-  projectId = (await (await created).json()).id;
-  assert(projectId);
-  await page.getByLabel("Upload project document").setInputFiles({
-    name: "handbook.txt",
-    mimeType: "text/plain",
-    buffer: Buffer.from("Annual leave allowance is 18 days."),
-  });
-  await page.getByText("Document indexed").waitFor();
-  await page.getByRole("button", { name: "Instructions & memory" }).click();
-  await page.getByPlaceholder("Preferred language: Thai").fill(tag);
-  const memoryCreated = page.waitForResponse(
-    (response) =>
-      response.url().endsWith("/workspace/memories") &&
-      response.request().method() === "POST",
-  );
-  await page.getByRole("button", { name: "Add memory" }).click();
-  memoryId = (await (await memoryCreated).json()).id;
-  await page.getByText(tag, { exact: true }).waitFor();
-  await page.getByRole("button", { name: "CSV analysis" }).click();
-  await page.getByLabel("Upload CSV for analysis").setInputFiles({
-    name: "sample.csv",
-    mimeType: "text/csv",
-    buffer: Buffer.from("team,score\nA,2\nB,4"),
-  });
-  await page.getByLabel("Numeric column").selectOption("1");
-  await page
-    .getByText("2 rows · 2 numeric values · Sum 6", {
-      exact: false,
-    })
-    .waitFor();
-  await page.getByRole("button", { name: "Projects", exact: true }).click();
-  await page.getByRole("link", { name: "Chat in project" }).click();
-  await page.getByLabel("Response mode").selectOption("search");
-  await page.getByLabel("Message").fill("leave allowance");
+  for (const label of [
+    "Response mode",
+    "Prompt persona",
+    "Comparison model",
+    "Filter project",
+    "Move chat to project",
+  ]) {
+    assert.equal(
+      await page.getByLabel(label).count(),
+      0,
+      `${label} was removed`,
+    );
+  }
+  await page.getByLabel("Chat model").selectOption("local-mock");
+  await page.getByLabel("Message").fill("Explain Docker Compose");
   const chatCreated = page.waitForResponse(
     (response) =>
       response.url().endsWith("/conversations") &&
       response.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "Run tool" }).click();
+  await page.getByRole("button", { name: "Send" }).click();
   conversationId = (await (await chatCreated).json()).id;
-  await page.getByText("Local tool: search · no model call").waitFor();
-  await page.getByText("18 days", { exact: false }).first().waitFor();
   await page
-    .getByText("Retrieved sources · verify against these excerpts")
+    .getByText("This is a mock AI response for local POC testing.", {
+      exact: true,
+    })
     .waitFor();
+  await page
+    .getByRole("navigation")
+    .getByRole("link", { name: "Live tokens" })
+    .click();
+  await page
+    .getByRole("heading", { name: "Token usage in real time" })
+    .waitFor();
+  await page.getByText("All-time completed tokens").waitFor();
+  const firstBar = page.locator(".live-token-bar").first();
+  await firstBar.waitFor();
+  assert(
+    ((await firstBar.boundingBox())?.height || 0) > 0,
+    "Live token bars must have visible height",
+  );
   const adminPage = await browser.newPage();
   await adminPage.goto(`${web}/admin`);
   await adminPage
@@ -115,7 +98,7 @@ try {
   await adminPage.getByText("Quotas & simulated budgets").waitFor();
   await adminPage.close();
   console.log(
-    "Browser UI smoke: project, upload, memory, CSV, chat tool, citation, admin controls passed",
+    "Browser UI smoke: simplified chat, removed Projects & tools UI, live tokens, and admin controls passed",
   );
 } finally {
   const token = await page
@@ -131,8 +114,6 @@ try {
   if (token) {
     for (const path of [
       conversationId ? `/conversations/${conversationId}` : null,
-      memoryId ? `/workspace/memories/${memoryId}` : null,
-      projectId ? `/workspace/projects/${projectId}` : null,
     ].filter(Boolean)) {
       await fetch(`${api}${path}`, {
         method: "DELETE",

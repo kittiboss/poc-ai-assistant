@@ -7,12 +7,13 @@ import {
   type OnModuleDestroy,
   type OnModuleInit,
 } from "@nestjs/common";
-import { Prisma } from "@prisma/client";
+import { Prisma, Provider } from "@prisma/client";
 import { sensitiveFindings, toCsv } from "@enterprise/shared";
 import Big from "big.js";
 import { AuditService } from "../audit/audit.service";
 import type { AuthUser } from "../common/auth/auth.decorators";
 import { PrismaService } from "../common/prisma/prisma.service";
+import { EXTERNAL_PROVIDERS } from "../models/model-policies";
 import { UsersService } from "../users/users.service";
 import { externalDailyLimits, startOfUtcDay } from "../usage/external-limits";
 import type { GovernanceDto, QuotaDto } from "./workspace.dto";
@@ -236,7 +237,7 @@ export class GovernanceService implements OnModuleInit, OnModuleDestroy {
             tx.usageRecord.aggregate({
               where: {
                 createdAt: today,
-                provider: { in: ["GEMINI", "OPENAI", "ANTHROPIC"] },
+                provider: { in: [...EXTERNAL_PROVIDERS] as Provider[] },
               },
               _count: true,
               _sum: { totalTokens: true },

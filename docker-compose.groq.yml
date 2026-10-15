@@ -1,0 +1,44 @@
+# Explicit opt-in overlay for Groq. The default Compose file remains mock-only.
+# It requires GROQ_API_KEY, ENABLE_EXTERNAL_PROVIDERS=true, and an administrator
+# enabling groq-llama in the model registry.
+services:
+  groq-proxy:
+    build:
+      context: .
+      dockerfile: apps/groq-proxy/Dockerfile
+    environment:
+      PORT: 4030
+      GROQ_API_KEY: ${GROQ_API_KEY:?Set GROQ_API_KEY in the ignored .env file}
+      GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-20b}
+      GROQ_FREE_TIER_CONFIRMED: ${GROQ_FREE_TIER_CONFIRMED:-false}
+      GROQ_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-1024}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4030/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [backend, edge]
+    restart: unless-stopped
+
+  litellm:
+    environment:
+      GROQ_PROXY_URL: http://groq-proxy:4030/openai/v1
+      GROQ_LITELLM_MODEL: openai/${GROQ_MODEL:-openai/gpt-oss-20b}
+    volumes:
+      - ./infra/litellm/config.groq.yaml:/app/config.yaml:ro
+    depends_on:
+      groq-proxy:
+        condition: service_healthy
+
+  backend:
+    environment:
+      ENABLE_EXTERNAL_PROVIDERS: ${ENABLE_EXTERNAL_PROVIDERS:-false}
+      GROQ_CREDENTIAL_CONFIGURED: "true"
+      GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-20b}
+      GROQ_FREE_TIER_CONFIRMED: ${GROQ_FREE_TIER_CONFIRMED:-false}
