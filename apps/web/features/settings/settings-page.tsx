@@ -15,7 +15,7 @@ export function SettingsPage() {
   };
   return (
     <Shell active="settings">
-      <div className="mx-auto max-w-4xl space-y-6 p-8">
+      <div className="mx-auto max-w-4xl space-y-6 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:p-8">
         <div>
           <p className="text-sm font-medium text-primary">SETTINGS</p>
           <h1 className="mt-1 text-3xl font-semibold">Account & deployment</h1>

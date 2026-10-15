@@ -46,7 +46,7 @@ export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectE
   return (
     <select
       className={cn(
-        'h-10 rounded-brand border border-line bg-surface px-3 text-sm outline-none focus:border-primary',
+        'h-10 max-w-full min-w-0 rounded-brand border border-line bg-surface px-3 text-sm outline-none focus:border-primary',
         className,
       )}
       {...props}
@@ -67,9 +67,11 @@ export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTex
 export function Badge({
   children,
   tone = 'neutral',
+  className,
 }: {
   children: React.ReactNode;
   tone?: 'neutral' | 'success' | 'error' | 'warning' | 'primary';
+  className?: string;
 }) {
   return (
     <span
@@ -80,6 +82,7 @@ export function Badge({
         tone === 'error' && 'bg-error-soft text-error-text',
         tone === 'warning' && 'bg-warning-soft text-warning-text',
         tone === 'primary' && 'bg-primary-soft text-primary-text',
+        className,
       )}
     >
       {children}

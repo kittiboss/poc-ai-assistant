@@ -255,7 +255,7 @@ export function AdminDashboard() {
 
   return (
     <Shell active="admin">
-      <div className="mx-auto max-w-7xl space-y-7 p-8">
+      <div className="mx-auto max-w-7xl space-y-7 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:p-8">
         <div>
           <p className="text-sm font-medium text-primary">ADMIN CONSOLE</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">Platform operations</h1>

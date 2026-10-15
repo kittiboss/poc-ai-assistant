@@ -52,7 +52,7 @@ export function UsageDashboard() {
   const totals = data?.totals._sum || {};
   return (
     <Shell active="usage">
-      <div className="mx-auto max-w-7xl space-y-6 p-8">
+      <div className="mx-auto max-w-7xl space-y-6 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:p-8">
         <div>
           <p className="text-sm font-medium text-primary">YOUR ACCOUNT</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">Usage dashboard</h1>

@@ -1,5 +1,5 @@
 import { AntdRegistry } from '@ant-design/nextjs-registry';
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { cookies } from 'next/headers';
 import { getBrand } from '@/config/brands';
 import { cn } from '@/lib/cn';
@@ -20,6 +20,15 @@ export function generateMetadata(): Metadata {
     icons: { icon: brand.favicon },
   };
 }
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  // Draw under notches and home indicators; the shell pads with env(safe-area-inset-*).
+  viewportFit: 'cover',
+  // Android: shrink the layout when the keyboard opens so the chat input stays visible.
+  interactiveWidget: 'resizes-content',
+};
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const brand = getBrand();

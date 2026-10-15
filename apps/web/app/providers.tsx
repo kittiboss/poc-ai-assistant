@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react';
 import { AuthProvider } from '@/components/auth/auth-provider';
 import { BrandProvider } from '@/components/brand/brand-provider';
+import { UIStoreProvider } from '@/stores/ui-store-provider';
 import { AntdProvider } from '@/theme/antd-provider';
 import type { ResolvedTheme, ThemeMode } from '@/theme/theme-mode';
 import { ThemeModeProvider } from '@/theme/theme-mode-provider';
@@ -30,7 +31,9 @@ export function AppProviders({
         defaultMode={brand.theme.defaultMode}
       >
         <AntdProvider>
-          <AuthProvider>{children}</AuthProvider>
+          <UIStoreProvider>
+            <AuthProvider>{children}</AuthProvider>
+          </UIStoreProvider>
         </AntdProvider>
       </ThemeModeProvider>
     </BrandProvider>

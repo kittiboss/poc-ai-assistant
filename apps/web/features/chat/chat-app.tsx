@@ -9,9 +9,11 @@ import type { Conversation, Message, Model } from '@/lib/types';
 import { Shell } from '@/components/layout/shell';
 import { Badge, Button, Card, Select, Textarea } from '@/components/ui/primitives';
 import { cn } from '@/lib/cn';
+import { useUIStore } from '@/stores/ui-store-provider';
 
 export function ChatApp() {
   const api = useApi();
+  const setMobileNavOpen = useUIStore((state) => state.setMobileNavOpen);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [active, setActive] = useState<Conversation | null>(null);
   const [models, setModels] = useState<Model[]>([]);
@@ -42,6 +44,7 @@ export function ChatApp() {
   }, [active?.messages]);
 
   const open = async (id: string) => {
+    setMobileNavOpen(false);
     try {
       setError('');
       setActive(await api.request<Conversation>(`/conversations/${id}`));
@@ -50,6 +53,7 @@ export function ChatApp() {
     }
   };
   const create = async () => {
+    setMobileNavOpen(false);
     try {
       const conversation = await api.request<Conversation>('/conversations', { method: 'POST', body: '{}' });
       setConversations((items) => [conversation, ...items]);
@@ -219,14 +223,14 @@ export function ChatApp() {
             <button
               title="Rename"
               onClick={() => rename(conversation)}
-              className="hidden p-1 text-fg-tertiary group-hover:block hover:text-primary"
+              className="hidden p-1 text-fg-tertiary group-focus-within:block group-hover:block hover:text-primary pointer-coarse:block"
             >
               <Pencil size={14} />
             </button>
             <button
               title="Delete"
               onClick={() => remove(conversation)}
-              className="hidden p-1 text-fg-tertiary group-hover:block hover:text-error"
+              className="hidden p-1 text-fg-tertiary group-focus-within:block group-hover:block hover:text-error pointer-coarse:block"
             >
               <Trash2 size={14} />
             </button>
@@ -236,32 +240,40 @@ export function ChatApp() {
     </>
   );
 
+  const header = (
+    <>
+      <div className="min-w-0 flex-1">
+        <h1 className="truncate font-semibold">{active?.title || 'New conversation'}</h1>
+        <p className="hidden truncate text-xs text-fg-secondary sm:block">Private to your company account</p>
+      </div>
+      <div className="flex shrink-0 items-center gap-3">
+        <Select
+          aria-label="Model"
+          className="w-40 sm:w-64 lg:w-auto"
+          value={modelId}
+          onChange={(event) => setModelId(event.target.value)}
+        >
+          {models.map((model) => (
+            <option key={model.id} value={model.id} disabled={!model.available}>
+              {model.displayName} · {model.provider} · {model.local ? 'Local · $0 external API' : 'External'} ·{' '}
+              {model.status}
+            </option>
+          ))}
+        </Select>
+        {selectedModel && (
+          <Badge className="hidden xl:inline-flex" tone={selectedModel.available ? 'success' : 'error'}>
+            {selectedModel.local ? 'LOCAL' : 'EXTERNAL'} · {selectedModel.status}
+          </Badge>
+        )}
+      </div>
+    </>
+  );
+
   return (
-    <Shell active="chat" sidebar={sidebar}>
+    <Shell active="chat" sidebar={sidebar} header={header}>
       <div className="flex h-full flex-col">
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-line-secondary bg-header px-6">
-          <div>
-            <h1 className="font-semibold">{active?.title || 'New conversation'}</h1>
-            <p className="text-xs text-fg-secondary">Private to your company account</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <Select value={modelId} onChange={(event) => setModelId(event.target.value)}>
-              {models.map((model) => (
-                <option key={model.id} value={model.id} disabled={!model.available}>
-                  {model.displayName} · {model.provider} · {model.local ? 'Local · $0 external API' : 'External'} ·{' '}
-                  {model.status}
-                </option>
-              ))}
-            </Select>
-            {selectedModel && (
-              <Badge tone={selectedModel.available ? 'success' : 'error'}>
-                {selectedModel.local ? 'LOCAL' : 'EXTERNAL'} · {selectedModel.status}
-              </Badge>
-            )}
-          </div>
-        </header>
         <section className="flex-1 overflow-auto">
-          <div className="mx-auto max-w-3xl space-y-7 px-6 py-10">
+          <div className="mx-auto max-w-3xl space-y-7 px-4 py-6 md:px-6 md:py-10">
             {!active?.messages?.length && <EmptyState models={models} />}{' '}
             {active?.messages?.map((message) => (
               <MessageBubble key={message.id} message={message} />
@@ -269,7 +281,7 @@ export function ChatApp() {
             <div ref={bottomRef} />
           </div>
         </section>
-        <footer className="shrink-0 bg-gradient-to-t from-layout via-layout p-5 pt-2">
+        <footer className="shrink-0 bg-gradient-to-t from-layout via-layout px-3 pt-2 pb-[calc(1.25rem+env(safe-area-inset-bottom))] md:px-5">
           <div className="mx-auto max-w-3xl">
             {selectedModel && !selectedModel.local && (
               <div className="mb-2 rounded-brand bg-warning-soft px-3 py-2 text-xs text-warning-text">
@@ -364,7 +376,7 @@ function MessageBubble({ message }: { message: Message }) {
               setCopied(true);
               setTimeout(() => setCopied(false), 1200);
             }}
-            className="absolute top-1 -right-9 hidden rounded-brand-sm p-2 text-fg-tertiary group-hover:block hover:bg-fill-tertiary"
+            className="absolute top-1 -right-9 hidden rounded-brand-sm p-2 text-fg-tertiary group-focus-within:block group-hover:block hover:bg-fill-tertiary pointer-coarse:block"
             title="Copy response"
           >
             {copied ? <Check size={15} /> : <Copy size={15} />}
