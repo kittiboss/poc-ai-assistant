@@ -10,11 +10,11 @@ This repository is an enterprise-shaped POC, not a production security or billin
 - Configure Keycloak with a production PostgreSQL database, backups, recovery, HA expectations, MFA, corporate federation, and session policy.
 - Pin container images by reviewed digest; add image signing, SBOM generation, vulnerability gates, and patch operations.
 - Disable Swagger UI (`SWAGGER_ENABLED=false`) and the `enterprise-ai-swagger` Keycloak client, or restrict them to an internal network. `@nestjs/swagger` 11.x (the line compatible with NestJS 11) pulls `js-yaml` 5.3.0 (GHSA-2883-xcg3-v3hh, moderate); the POC serves only the JSON spec, so the YAML serializer is never invoked, and the advisory concerns parsing, which Swagger does not do. Upgrade to NestJS 12 / `@nestjs/swagger` 12 to clear it.
-- Replace in-memory throttling with a Valkey-backed distributed limiter; add per-user/model/department budgets and concurrency controls. The external daily ceiling is installation-wide and check-then-act, so concurrent requests can overshoot it slightly.
+- Replace in-memory HTTP throttling with a Valkey-backed distributed limiter. POC chat quota admission is serialized in PostgreSQL and reserves estimated tokens/cost, but production still needs load-tested distributed concurrency controls, provider reconciliation, and retry/idempotency policy.
 - Add provider billing guardrails outside the application: provider-side budgets/alerts and, for paid tiers, hard quota caps. The POC cannot read a provider project's billing status; its $0 guarantee for Gemini depends on the operator using a free-tier project without a billing account.
 - Give OpenAI and Anthropic the same credential-proxy + allowlist treatment as Gemini before enabling them.
 - Add a production job/outbox strategy for audit/usage durability across abrupt process loss.
-- Define retention, legal hold, export/deletion, data residency, encryption, and backup policies.
+- Define retention, legal hold, export/deletion, data residency, encryption, and backup policies. The POC's hourly retention sweep only purges inactive chat text, citations, and feedback; project documents, explicit memories, and usage records have separate lifecycles.
 - Add centralized metrics/traces/security events without logging prompt or response bodies by default.
 - Add browser CSP/security headers, ingress request limits, WAF controls where appropriate, and formal threat modeling.
 - Perform penetration testing and dependency/container/license review.
@@ -29,8 +29,10 @@ This repository is an enterprise-shaped POC, not a production security or billin
 ## Platform limitations
 
 - Single-customer/single-installation architecture only; this is intentional.
-- No RAG, agents, connectors, BYOK workflow, department budgets, license enforcement, or subscription plans yet.
-- No attachment ingestion, malware scanning, DLP, moderation policy, or data-classification workflow.
+- POC RAG is PostgreSQL full-text/substring retrieval over bounded, locally extracted text. It has no embeddings, OCR, semantic ranking, citation-grounding evaluation, document versioning, or enterprise search connectors.
+- POC document ingestion supports TXT/MD/CSV/JSON/text PDF/DOCX with size/page/count limits and an isolated parser worker. It has no malware scanning, content-disarm, DLP, classification workflow, or secure enterprise file connector.
+- POC local tools are explicitly invoked allowlisted functions, not an autonomous agent or arbitrary code/shell execution. There is no connector permission framework, BYOK workflow, license enforcement, or subscription plan.
+- POC department/user/model/role quotas and simulated budgets are admission controls, not payment or invoice controls. Department and role totals use current membership rather than historical snapshots. Sensitive-content detection is regex best-effort, not enterprise DLP or moderation.
 - Streaming recovery is request-oriented; it does not resume an SSE stream across API restarts. Abandoned messages are marked `INTERRUPTED`, but no usage record is written for a request lost mid-stream.
 - Free-tier Gemini prompts and responses may be used by Google to improve its products; enterprise use requires a paid tier or a provider with appropriate data terms, plus a DLP/classification policy.
 - Valkey is provisioned for the future shared cache/rate limiter but is not yet in the critical request path.
@@ -43,4 +45,4 @@ This repository is an enterprise-shaped POC, not a production security or billin
 2. Add deployment overlays for AWS, Azure, and supported on-prem Kubernetes distributions while preserving single tenancy.
 3. Implement BYOK/provider onboarding with approval, connectivity tests, budgets, and kill switches.
 4. Build invoice-grade usage reconciliation and contract/version governance.
-5. Add RAG and enterprise integrations behind the existing gateway and authorization boundaries.
+5. Harden RAG and document ingestion, then add enterprise integrations behind the existing gateway and authorization boundaries.

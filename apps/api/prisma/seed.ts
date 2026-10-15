@@ -75,6 +75,20 @@ async function main() {
   await prisma.applicationSetting.upsert({
     where: { key: 'externalProvidersEnabled' }, update: {}, create: { key: 'externalProvidersEnabled', value: false },
   });
+  const personas = [
+    ['HR Assistant', 'Answer HR questions from project reference documents. Cite sources and say when a policy is missing.'],
+    ['IT Helpdesk', 'Help troubleshoot technical issues with clear, numbered steps. Ask for missing error details.'],
+    ['Document Summarizer', 'Summarize the supplied references with key points, decisions and open questions. Cite sources.'],
+    ['SQL Assistant', 'Explain and draft SQL. Never claim queries were executed. Prefer read-only examples.'],
+    ['Email Writer', 'Draft clear professional emails. Ask for the audience and objective when unclear.'],
+    ['Thai–English Translator', 'Translate between Thai and English while preserving meaning, names and tone.'],
+  ];
+  for (const [i, [name, systemPrompt]] of personas.entries()) {
+    await prisma.promptTemplate.upsert({ where: { id: `a1000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}` }, update: {}, create: {
+      id: `a1000000-0000-4000-8000-${String(i + 1).padStart(12, '0')}`, name, description: systemPrompt,
+      systemPrompt, allowedModels: [], allowedRoles: ['ADMIN', 'USER'],
+    } });
+  }
 }
 
 function pricingData(modelId: string) {

@@ -8,6 +8,7 @@ import { ChatService } from './chat.service';
 import { CreateConversationDto, SendMessageDto, UpdateConversationDto } from './conversations.dto';
 import { ConversationDetail, ConversationSummary, ConversationView } from './conversations.schemas';
 import { ConversationsService } from './conversations.service';
+import { BranchDto, FeedbackDto, ToolDto } from '../workspace/workspace.dto';
 
 const ConversationId = () => ApiParam({ name: 'id', format: 'uuid', description: 'Conversation ID owned by the caller.' });
 
@@ -16,22 +17,31 @@ const ConversationId = () => ApiParam({ name: 'id', format: 'uuid', description:
 @Controller('conversations')
 export class ConversationsController {
   constructor(private readonly conversations: ConversationsService, private readonly chat: ChatService) {}
+  @Post(':id/tools') @ApiOperation({ summary: 'Run a selected local tool and save its result in this chat; no inference cost' }) @ApiCreatedResponse()
+  tool(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: ToolDto) { return this.chat.runTool(user, id, dto); }
   @ApiOperation({ summary: 'Create a conversation' })
   @ApiCreatedResponse({ type: ConversationView }) @Invalid()
-  @Post() create(@CurrentUser() user: AuthUser, @Body() dto: CreateConversationDto) { return this.conversations.create(user, dto.title); }
+  @Post() create(@CurrentUser() user: AuthUser, @Body() dto: CreateConversationDto) { return this.conversations.create(user, dto.title, dto.projectId); }
 
   @ApiOperation({ summary: "List the caller's conversations", description: 'Newest first; deleted conversations are excluded. Only the authenticated user\'s conversations are ever returned.' })
-  @ApiQuery({ name: 'search', required: false, description: 'Case-insensitive title filter.' })
+  @ApiQuery({ name: 'search', required: false, description: 'Search titles and message content (FTS with substring fallback).' })
+  @ApiQuery({ name: 'projectId', required: false, format: 'uuid' })
+  @ApiQuery({ name: 'archived', required: false, enum: ['true', 'false'] })
   @ApiOkResponse({ type: [ConversationSummary] })
-  @Get() list(@CurrentUser() user: AuthUser, @Query('search') search?: string) { return this.conversations.list(user, search); }
+  @Get() list(@CurrentUser() user: AuthUser, @Query('search') search?: string, @Query('projectId') projectId?: string, @Query('archived') archived?: string) { return this.conversations.list(user, search, projectId, archived === 'true'); }
 
   @ApiOperation({ summary: 'Get a conversation with its messages' })
   @ConversationId() @ApiOkResponse({ type: ConversationDetail }) @NotFound('Conversation')
   @Get(':id') get(@CurrentUser() user: AuthUser, @Param('id') id: string) { return this.conversations.get(user, id); }
 
-  @ApiOperation({ summary: 'Rename a conversation' })
+  @ApiOperation({ summary: 'Rename, pin, archive or move a conversation to a private project' })
   @ConversationId() @ApiOkResponse({ type: ConversationView }) @Invalid() @NotFound('Conversation')
-  @Patch(':id') rename(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: UpdateConversationDto) { return this.conversations.rename(user, id, dto.title); }
+  @Patch(':id') rename(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: UpdateConversationDto) { return this.conversations.update(user, id, dto); }
+
+  @Post(':id/branch') @ApiOperation({ summary: 'Branch before or after a message without duplicating usage' }) @ApiCreatedResponse()
+  branch(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: BranchDto) { return this.conversations.branch(user, id, dto.messageId, dto.before); }
+  @Post(':id/messages/:messageId/feedback') @ApiOperation({ summary: 'Rate an assistant response and optionally leave feedback for admins' }) @ApiOkResponse()
+  feedback(@CurrentUser() user: AuthUser, @Param('id') id: string, @Param('messageId') messageId: string, @Body() dto: FeedbackDto) { return this.conversations.feedback(user, id, messageId, dto.rating, dto.comment); }
 
   @ApiOperation({ summary: 'Delete a conversation', description: 'Soft delete: hidden from the user, while usage records keep their references.' })
   @ConversationId() @ApiNoContentResponse({ description: 'Deleted.' }) @NotFound('Conversation')

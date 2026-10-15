@@ -8,7 +8,7 @@ export function useApi() {
   async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const response = await fetch(`${API}${path}`, {
       ...init,
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.user?.access_token}`, ...init.headers },
+      headers: { ...(init.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }), Authorization: `Bearer ${auth.user?.access_token}`, ...init.headers },
     });
     if (!response.ok) {
       const body = await response.json().catch(() => ({})) as { message?: string | string[] };

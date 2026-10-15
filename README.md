@@ -76,6 +76,14 @@ docker compose down --volumes
 - Layered external-cost guardrails: credential proxy allowlist, output-token cap, daily request/token ceiling (see [Cost safety](#cost-safety))
 - Admin console filters (date range, provider, model), per-day/provider/model charts, cost breakdown, model availability, pricing overview, and audit log
 - Database-enforced immutability of pricing versions; abandoned streams are marked `INTERRUPTED` after an API restart
+- Private projects with custom instructions and document sources (TXT, MD, CSV, JSON, text PDF, DOCX); local PostgreSQL full-text retrieval with a Thai substring fallback and visible citations
+- Personal instructions and explicit, editable/disableable memories; admin-managed prompt personas with role/model limits
+- Conversation search, pin/archive, branch, edit-and-resend, regenerate, model comparison, feedback, and Markdown/JSON export
+- Browser-side CSV exploration (summary, filters, grouping, chart, safe CSV export) without executing uploaded code
+- Explicit local tools in the workspace and chat: calculator, clock, project search/FAQ, usage/prices lookup, CSV/Markdown creation; tool results in chat have no model call or inference charge
+- Admin quotas by user, role, model, and department; simulated budget limits, usage CSV, feedback aggregates, retention preview/policy, external-provider kill switch, and best-effort sensitive-data warnings/blocking
+
+These are POC features, not autonomous agents or production DLP. Documents are capped at 5 MB and 20 per project; PDFs require a text layer (no OCR). Retrieval uses PostgreSQL, so there is no embedding service or vector-model RAM requirement. A selected external model receives the relevant excerpts, instructions, enabled memories, and chat context; use only non-confidential demo documents. CSV analysis stays in the browser. Memory is added only when the user explicitly saves it. Quotas and budgets are admission controls based on conservative token estimates; simulated costs do not charge money. Retention removes old chat content, not project documents or memories, and usage totals remain.
 
 The mock provider supports deterministic test controls:
 
@@ -99,9 +107,13 @@ With the Compose stack running, exercise real PKCE login, all three demo users, 
 
 ```bash
 npm run test:e2e
+npm run test:workspace
+npm run test:browser   # optional: requires local Chrome
 ```
 
 The default suite never needs external credentials and has no active paid-provider route. The API test setup also replaces `fetch` with a guard that fails any non-loopback request, so a test cannot reach a paid provider even by mistake. The Ollama integration test remains skipped unless an operator explicitly supplies `OLLAMA_TEST_URL`. `npm run test:e2e` additionally checks the admin console APIs and the pricing example below (3,000 in / 700 out → `$0` actual, `$0.01` simulated provider cost, `$0.015` simulated charge).
+`npm run test:workspace` signs in with all three demo accounts and exercises ownership, retrieval, local tools, memories, templates, citations, branches, feedback, quotas, and CSV export against the running stack. It sends chat only to `local-mock`.
+The optional browser smoke checks project creation, document upload, explicit memory, browser CSV analysis, chat tool invocation, citations, and admin controls through the real UI; set `CHROME_PATH` if Chrome is installed elsewhere.
 
 ## Using Google Gemini on the free tier
 
@@ -189,7 +201,11 @@ GET    /api/conversations/:id
 PATCH  /api/conversations/:id
 DELETE /api/conversations/:id
 POST   /api/conversations/:id/messages  (SSE response)
+POST   /api/conversations/:id/tools     (explicit local tool result)
+POST   /api/conversations/:id/branch
+POST   /api/conversations/:id/messages/:messageId/feedback
 GET    /api/usage/me
+GET/POST/PATCH/DELETE /api/workspace/... (projects, sources, preferences, memories, templates, tools)
 ```
 
 Admin endpoints under `/api/admin` (every route guarded with `ADMIN` on the backend):
@@ -204,6 +220,7 @@ GET    /api/admin/pricing?modelId=                        all pricing versions
 POST   /api/admin/pricing/:modelId                        create a new immutable version (audited)
 POST   /api/admin/pricing/preview/calculate               preview without saving
 GET    /api/admin/audit?entityType=                       latest 100 audit entries
+GET/PATCH/POST /api/admin/workspace/...                    governance, quotas, departments, templates, usage CSV, retention preview
 ```
 
 ## Optional Ollama — not needed for this machine

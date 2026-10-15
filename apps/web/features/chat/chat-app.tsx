@@ -1,134 +1,889 @@
-'use client';
-import { Check, Copy, LoaderCircle, MessageSquare, MoreHorizontal, Pencil, Plus, Search, Send, Square, Trash2 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import rehypeHighlight from 'rehype-highlight';
-import remarkGfm from 'remark-gfm';
-import { useApi } from '../../lib/api';
-import type { Conversation, Message, Model } from '../../lib/types';
-import { Shell } from '../../components/layout/shell';
-import { Badge, Button, Card, Select, Textarea, cn } from '../../components/ui/primitives';
+"use client";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import ReactMarkdown from "react-markdown";
+import rehypeHighlight from "rehype-highlight";
+import remarkGfm from "remark-gfm";
+import { useApi } from "../../lib/api";
+import { download } from "../../lib/download";
+import type {
+  Conversation,
+  Message,
+  Model,
+  Project,
+  PromptTemplate,
+} from "../../lib/types";
+import { Shell } from "../../components/layout/shell";
+import {
+  Badge,
+  Button,
+  Card,
+  Select,
+  Textarea,
+  cn,
+} from "../../components/ui/primitives";
 
 export function ChatApp() {
   const api = useApi();
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [active, setActive] = useState<Conversation | null>(null);
-  const [models, setModels] = useState<Model[]>([]);
-  const [modelId, setModelId] = useState('');
-  const [input, setInput] = useState('');
-  const [search, setSearch] = useState('');
-  const [generating, setGenerating] = useState(false);
-  const [error, setError] = useState('');
-  const abortRef = useRef<AbortController | null>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const [localTool, setLocalTool] = useState("");
+  const sending = useRef(false);
+  const [conversations, setConversations] = useState<Conversation[]>([]),
+    [active, setActive] = useState<Conversation | null>(null);
+  const [comparison, setComparison] = useState<Conversation | null>(null),
+    [models, setModels] = useState<Model[]>([]),
+    [modelId, setModelId] = useState("");
+  const [projects, setProjects] = useState<Project[]>([]),
+    [projectId, setProjectId] = useState(""),
+    [templates, setTemplates] = useState<PromptTemplate[]>([]),
+    [templateId, setTemplateId] = useState("");
+  const [compareId, setCompareId] = useState(""),
+    [input, setInput] = useState(""),
+    [search, setSearch] = useState(""),
+    [archived, setArchived] = useState(false);
+  const [generating, setGenerating] = useState(false),
+    [error, setError] = useState("");
+  const aborters = useRef<AbortController[]>([]),
+    bottom = useRef<HTMLDivElement>(null);
+  const loadSequence = useRef(0);
 
-  const loadConversations = useCallback(async () => setConversations(await api.request<Conversation[]>('/conversations')), []); // eslint-disable-line react-hooks/exhaustive-deps
+  async function refreshChats() {
+    const seq = ++loadSequence.current;
+    const params = new URLSearchParams({ search, archived: String(archived) });
+    if (projectId) params.set("projectId", projectId);
+    const list = await api.request<Conversation[]>(`/conversations?${params}`);
+    if (seq === loadSequence.current) setConversations(list);
+  }
   useEffect(() => {
-    Promise.all([api.request<Model[]>('/models'), api.request<Conversation[]>('/conversations')]).then(([nextModels, nextConversations]) => {
-      setModels(nextModels); setConversations(nextConversations);
-      setModelId(nextModels.find((model) => model.available)?.id || nextModels[0]?.id || '');
-    }).catch((cause) => setError(cause.message));
+    const params = new URLSearchParams(window.location.search);
+    setProjectId(params.get("project") || "");
+    setTemplateId(params.get("template") || "");
+    const draft = sessionStorage.getItem("chat-draft");
+    if (draft) {
+      setInput(draft);
+      sessionStorage.removeItem("chat-draft");
+    }
+    Promise.all([
+      api.request<Model[]>("/models"),
+      api.request<Project[]>("/workspace/projects"),
+      api.request<PromptTemplate[]>("/workspace/templates"),
+    ])
+      .then(([m, p, t]) => {
+        setModels(m);
+        setProjects(p);
+        setTemplates(t);
+        setModelId(m.find((x) => x.available)?.id || "");
+      })
+      .catch((e) => setError(e.message));
+    return () => {
+      aborters.current.forEach((a) => a.abort());
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  // Braces matter: scroll methods return a Promise in current browsers, and React would treat it as the effect cleanup.
-  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [active?.messages]);
-
-  const open = async (id: string) => {
-    try { setError(''); setActive(await api.request<Conversation>(`/conversations/${id}`)); } catch (cause) { setError((cause as Error).message); }
-  };
-  const create = async () => {
-    try { const conversation = await api.request<Conversation>('/conversations', { method: 'POST', body: '{}' }); setConversations((items) => [conversation, ...items]); setActive({ ...conversation, messages: [] }); } catch (cause) { setError((cause as Error).message); }
-  };
-  const rename = async (conversation: Conversation) => {
-    const title = window.prompt('Conversation name', conversation.title)?.trim();
-    if (!title) return;
-    const updated = await api.request<Conversation>(`/conversations/${conversation.id}`, { method: 'PATCH', body: JSON.stringify({ title }) });
-    setConversations((items) => items.map((item) => item.id === updated.id ? { ...item, title: updated.title } : item));
-    if (active?.id === updated.id) setActive((value) => value ? { ...value, title: updated.title } : value);
-  };
-  const remove = async (conversation: Conversation) => {
-    if (!window.confirm(`Delete “${conversation.title}”? This cannot be undone.`)) return;
-    await api.request(`/conversations/${conversation.id}`, { method: 'DELETE' });
-    setConversations((items) => items.filter((item) => item.id !== conversation.id));
-    if (active?.id === conversation.id) setActive(null);
-  };
-
-  const send = async () => {
-    const prompt = input.trim();
-    if (!prompt || generating || !modelId) return;
-    setInput(''); setError(''); setGenerating(true);
-    let conversation = active;
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      refreshChats().catch((e) => setError(e.message));
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [search, projectId, archived]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    bottom.current?.scrollIntoView({ behavior: "smooth" });
+  }, [active?.messages]);
+  const selectedModel = models.find((m) => m.id === modelId);
+  const template = templates.find((t) => t.id === templateId);
+  const modelFits = (id: string) =>
+    !template ||
+    !template.allowedModels.length ||
+    template.allowedModels.includes(id);
+  async function guarded(fn: () => Promise<unknown>) {
     try {
-      if (!conversation) {
-        conversation = await api.request<Conversation>('/conversations', { method: 'POST', body: '{}' });
-        setConversations((items) => [conversation!, ...items]);
-      }
-      const userMessage: Message = { id: crypto.randomUUID(), role: 'USER', content: prompt, status: 'COMPLETED', createdAt: new Date().toISOString() };
-      const assistantId = crypto.randomUUID();
-      const assistant: Message = { id: assistantId, role: 'ASSISTANT', content: '', status: 'STREAMING', modelId, createdAt: new Date().toISOString() };
-      const optimistic = { ...conversation, messages: [...(conversation.messages || []), userMessage, assistant] };
-      setActive(optimistic);
-      abortRef.current = new AbortController();
-      const response = await fetch(`${api.apiBase}/conversations/${conversation.id}/messages`, {
-        method: 'POST', signal: abortRef.current.signal,
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${api.accessToken}` },
-        body: JSON.stringify({ content: prompt, modelId, requestId: crypto.randomUUID() }),
+      setError("");
+      await fn();
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+  async function open(id: string) {
+    const chat = await api.request<Conversation>(`/conversations/${id}`);
+    setActive(chat);
+    setComparison(null);
+  }
+  async function create() {
+    return api.request<Conversation>("/conversations", {
+      method: "POST",
+      body: JSON.stringify(projectId ? { projectId } : {}),
+    });
+  }
+  async function update(
+    conversation: Conversation,
+    data: Record<string, unknown>,
+  ) {
+    await api.request(`/conversations/${conversation.id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+    if (active?.id === conversation.id) setActive({ ...active, ...data });
+    await refreshChats();
+  }
+  async function branch(
+    conversation: Conversation,
+    message: Message,
+    before = false,
+  ) {
+    return api.request<Conversation>(
+      `/conversations/${conversation.id}/branch`,
+      {
+        method: "POST",
+        body: JSON.stringify({ messageId: message.id, before }),
+      },
+    );
+  }
+
+  async function stream(
+    chat: Conversation,
+    prompt: string,
+    model: string,
+    setter: React.Dispatch<React.SetStateAction<Conversation | null>>,
+  ) {
+    const assistantId = crypto.randomUUID(),
+      aborter = new AbortController();
+    aborters.current.push(aborter);
+    const messages: Message[] = [
+      ...(chat.messages || []),
+      {
+        id: crypto.randomUUID(),
+        role: "USER",
+        content: prompt,
+        status: "COMPLETED",
+        createdAt: new Date().toISOString(),
+      },
+      {
+        id: assistantId,
+        role: "ASSISTANT",
+        content: "",
+        status: "STREAMING",
+        modelId: model,
+        createdAt: new Date().toISOString(),
+      },
+    ];
+    setter({ ...chat, messages });
+    const requestId = crypto.randomUUID();
+    const request = (acknowledgeSensitive = false) =>
+      fetch(`${api.apiBase}/conversations/${chat.id}/messages`, {
+        method: "POST",
+        signal: aborter.signal,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${api.accessToken}`,
+        },
+        body: JSON.stringify({
+          content: prompt,
+          modelId: model,
+          requestId,
+          ...(templateId ? { templateId } : {}),
+          acknowledgeSensitive,
+        }),
       });
-      if (!response.ok || !response.body) {
-        const payload = await response.json().catch(() => ({})) as { message?: string };
-        throw new Error(payload.message || `Generation failed (${response.status})`);
+    try {
+      let response = await request();
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        if (
+          payload.code === "SENSITIVE_CONTEXT" &&
+          payload.canAcknowledge &&
+          window.confirm(
+            `${payload.message}\n\nSend this context to the external model anyway?`,
+          )
+        )
+          response = await request(true);
+        else
+          throw new Error(
+            Array.isArray(payload.message)
+              ? payload.message.join(", ")
+              : payload.message || `Generation failed (${response.status})`,
+          );
       }
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let assistantText = '';
+      if (!response.ok || !response.body) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(
+          payload.message || `Generation failed (${response.status})`,
+        );
+      }
+      const reader = response.body.getReader(),
+        decoder = new TextDecoder();
+      let buffer = "",
+        text = "",
+        completed = false;
       while (true) {
         const { value, done } = await reader.read();
         buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-        const frames = buffer.split('\n\n'); buffer = frames.pop() || '';
+        const frames = buffer.split("\n\n");
+        buffer = frames.pop() || "";
         for (const frame of frames) {
-          const event = frame.match(/^event:\s*(.+)$/m)?.[1];
-          const raw = frame.match(/^data:\s*(.+)$/m)?.[1];
+          const event = frame.match(/^event:\s*(.+)$/m)?.[1],
+            raw = frame.match(/^data:\s*(.+)$/m)?.[1];
           if (!raw) continue;
-          const data = JSON.parse(raw) as { text?: string; message?: string };
-          if (event === 'token' && data.text) {
-            assistantText += data.text;
-            setActive((current) => current ? { ...current, messages: current.messages?.map((message) => message.id === assistantId ? { ...message, content: assistantText } : message) } : current);
+          const data = JSON.parse(raw);
+          if (event === "error")
+            throw new Error(data.message || "Generation failed");
+          if (event === "done") completed = true;
+          if (event === "token" && data.text) {
+            text += data.text;
+            setter((current) =>
+              current?.id === chat.id
+                ? {
+                    ...current,
+                    messages: current.messages?.map((m) =>
+                      m.id === assistantId ? { ...m, content: text } : m,
+                    ),
+                  }
+                : current,
+            );
           }
-          if (event === 'error') throw new Error(data.message || 'Generation failed');
         }
         if (done) break;
       }
-      setActive((current) => current ? { ...current, messages: current.messages?.map((message) => message.id === assistantId ? { ...message, status: 'COMPLETED' } : message) } : current);
-      await loadConversations();
-    } catch (cause) {
-      const aborted = (cause as Error).name === 'AbortError';
-      setError(aborted ? 'Generation stopped. The partial response was preserved.' : (cause as Error).message);
-      setActive((current) => current ? { ...current, messages: current.messages?.map((message) => message.status === 'STREAMING' ? { ...message, status: aborted ? 'INTERRUPTED' : 'ERROR' } : message) } : current);
-    } finally { setGenerating(false); abortRef.current = null; }
-  };
-
-  const filtered = useMemo(() => conversations.filter((item) => item.title.toLowerCase().includes(search.toLowerCase())), [conversations, search]);
-  const selectedModel = models.find((model) => model.id === modelId);
-  const sidebar = <>
-    <div className="space-y-3 p-3"><Button className="w-full" onClick={create}><Plus size={17}/> New chat</Button><div className="relative"><Search className="absolute left-3 top-2.5 text-slate-400" size={16}/><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search conversations" className="h-10 w-full rounded-xl bg-slate-100 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-brand/30 dark:bg-slate-900"/></div></div>
-    <div className="flex-1 space-y-1 overflow-auto px-2 pb-3">{filtered.map((conversation) => <div key={conversation.id} className={cn('group flex items-center rounded-xl pr-1', active?.id === conversation.id ? 'bg-violet-50 dark:bg-violet-950/50' : 'hover:bg-slate-50 dark:hover:bg-slate-900')}><button onClick={() => open(conversation.id)} className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left text-sm"><MessageSquare size={15} className="shrink-0 text-slate-400"/><span className="truncate">{conversation.title}</span></button><button title="Rename" onClick={() => rename(conversation)} className="hidden p-1 text-slate-400 hover:text-brand group-hover:block"><Pencil size={14}/></button><button title="Delete" onClick={() => remove(conversation)} className="hidden p-1 text-slate-400 hover:text-red-600 group-hover:block"><Trash2 size={14}/></button></div>)}</div>
-  </>;
-
-  return <Shell active="chat" sidebar={sidebar}><div className="flex h-full flex-col">
-      <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 dark:border-slate-800 dark:bg-slate-950"><div><h1 className="font-semibold">{active?.title || 'New conversation'}</h1><p className="text-xs text-slate-500">Private to your company account</p></div><div className="flex items-center gap-3"><Select value={modelId} onChange={(event) => setModelId(event.target.value)}>{models.map((model) => <option key={model.id} value={model.id} disabled={!model.available}>{model.displayName} · {model.provider} · {model.local ? 'Local · $0 external API' : 'External'} · {model.status}</option>)}</Select>{selectedModel && <Badge tone={selectedModel.available ? 'green' : 'red'}>{selectedModel.local ? 'LOCAL' : 'EXTERNAL'} · {selectedModel.status}</Badge>}</div></header>
-    <section className="flex-1 overflow-auto"><div className="mx-auto max-w-3xl space-y-7 px-6 py-10">{!active?.messages?.length && <EmptyState models={models}/>} {active?.messages?.map((message) => <MessageBubble key={message.id} message={message}/>)}<div ref={bottomRef}/></div></section>
-    <footer className="shrink-0 bg-gradient-to-t from-[#f7f8fc] via-[#f7f8fc] p-5 pt-2 dark:from-[#0d1017] dark:via-[#0d1017]"><div className="mx-auto max-w-3xl">{selectedModel && !selectedModel.local && <div className="mb-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/60 dark:text-amber-200">External model: messages in this conversation are sent to {selectedModel.provider} under that provider’s data terms. Free-tier providers may use them to improve their products — do not send confidential data.</div>}{error && <div className="mb-2 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/60 dark:text-red-300">{error}</div>}<Card className="flex items-end gap-2 p-2 shadow-lg"><Textarea rows={1} value={input} disabled={generating} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); send(); } }} placeholder="Message your enterprise assistant…" className="max-h-40 min-h-11 border-0 shadow-none focus:ring-0"/>{generating ? <Button variant="secondary" className="h-11 w-11 shrink-0 px-0" onClick={() => abortRef.current?.abort()} title="Stop generation"><Square size={16}/></Button> : <Button className="h-11 w-11 shrink-0 px-0" onClick={send} disabled={!input.trim() || !selectedModel?.available} title="Send"><Send size={17}/></Button>}</Card><p className="mt-2 text-center text-[11px] text-slate-500">AI responses may be inaccurate. Local inference still uses compute, memory, disk, and electricity.</p></div></footer>
-  </div></Shell>;
+      if (!completed)
+        throw new Error(
+          "Connection ended before completion. Your saved response can be reopened.",
+        );
+    } finally {
+      aborters.current = aborters.current.filter((a) => a !== aborter);
+      const saved = await api
+        .request<Conversation>(`/conversations/${chat.id}`)
+        .catch(() => null);
+      if (saved) setter(saved);
+    }
+  }
+  async function send(
+    prompt = input.trim(),
+    target = active,
+    compare = Boolean(compareId),
+  ) {
+    if (
+      sending.current ||
+      generating ||
+      (!prompt && !["time", "usage", "prices"].includes(localTool))
+    )
+      return;
+    if (localTool) {
+      sending.current = true;
+      setGenerating(true);
+      setError("");
+      setComparison(null);
+      try {
+        const chat = target || (await create());
+        setActive(
+          await api.request<Conversation>(`/conversations/${chat.id}/tools`, {
+            method: "POST",
+            body: JSON.stringify({ tool: localTool, input: prompt }),
+          }),
+        );
+        setInput("");
+        await refreshChats();
+      } catch (cause) {
+        setError((cause as Error).message);
+      } finally {
+        sending.current = false;
+        setGenerating(false);
+      }
+      return;
+    }
+    if (!selectedModel?.available) return;
+    if (!modelFits(modelId) || (compare && !modelFits(compareId))) {
+      setError("Choose models allowed by the selected persona.");
+      return;
+    }
+    setInput("");
+    sending.current = true;
+    setError("");
+    setGenerating(true);
+    setComparison(null);
+    try {
+      const primary = target || (await create());
+      const secondary = compare
+        ? primary.messages?.length
+          ? await branch(primary, primary.messages[primary.messages.length - 1])
+          : await api.request<Conversation>("/conversations", {
+              method: "POST",
+              body: JSON.stringify({
+                title: `${primary.title} (comparison)`,
+                ...(primary.projectId ? { projectId: primary.projectId } : {}),
+              }),
+            })
+        : null;
+      const results = await Promise.allSettled([
+        stream(primary, prompt, modelId, setActive),
+        ...(secondary
+          ? [stream(secondary, prompt, compareId, setComparison)]
+          : []),
+      ]);
+      const failures = results.filter(
+        (r): r is PromiseRejectedResult => r.status === "rejected",
+      );
+      if (failures.length) {
+        setError(
+          failures
+            .map((r) =>
+              r.reason.name === "AbortError"
+                ? "Generation stopped. Partial text is saved."
+                : r.reason.message,
+            )
+            .join(" · "),
+        );
+        setInput(prompt);
+      }
+      await refreshChats();
+    } catch (e) {
+      setError((e as Error).message);
+      setInput(prompt);
+    } finally {
+      sending.current = false;
+      setGenerating(false);
+    }
+  }
+  async function edit(conversation: Conversation, message: Message) {
+    const content = window
+      .prompt("Edit and resend in a new branch", message.content)
+      ?.trim();
+    if (!content) return;
+    const chat = await branch(conversation, message, true);
+    setActive(chat);
+    await send(content, chat, false);
+  }
+  async function regenerate(conversation: Conversation, message: Message) {
+    const index =
+      conversation.messages?.findIndex((m) => m.id === message.id) ?? -1;
+    const userMessage = conversation.messages
+      ?.slice(0, index)
+      .reverse()
+      .find((m) => m.role === "USER");
+    if (!userMessage) return;
+    const chat = await branch(conversation, userMessage, true);
+    setActive(chat);
+    await send(userMessage.content, chat, false);
+  }
+  function exportChat(format: "md" | "json") {
+    if (!active) return;
+    download(
+      `conversation.${format}`,
+      format === "json"
+        ? JSON.stringify(active, null, 2)
+        : `# ${active.title}\n\n${active.messages?.map((m) => `## ${m.role}${m.modelId ? ` (${m.modelId})` : ""}\n\n${m.content}\n\n${m.citations?.map((s) => `[${s.label}] ${s.filename}${s.page ? `, page ${s.page}` : ""}\n> ${s.content.replace(/\n/g, "\n> ")}`).join("\n\n") || ""}`).join("\n\n")}`,
+      format === "json" ? "application/json" : "text/markdown",
+    );
+  }
+  const actions = (chat: Conversation, message: Message) => (
+    <div className="mt-3 flex flex-wrap gap-1 text-xs">
+      <button
+        className="rounded px-2 py-1 hover:bg-slate-200/30"
+        onClick={() =>
+          guarded(() => navigator.clipboard.writeText(message.content))
+        }
+      >
+        Copy
+      </button>
+      <button
+        disabled={generating}
+        className="rounded px-2 py-1 hover:bg-slate-200/30"
+        onClick={() =>
+          guarded(async () => {
+            const next = await branch(chat, message);
+            setActive(next);
+            setComparison(null);
+            await refreshChats();
+          })
+        }
+      >
+        Branch
+      </button>
+      {message.role === "USER" && !message.metadata?.tool ? (
+        <button
+          disabled={generating}
+          className="rounded px-2 py-1 hover:bg-slate-200/30"
+          onClick={() => guarded(() => edit(chat, message))}
+        >
+          Edit & resend
+        </button>
+      ) : message.role === "ASSISTANT" ? (
+        <>
+          {!message.metadata?.tool && (
+            <button
+              disabled={generating}
+              className="rounded px-2 py-1 hover:bg-slate-200/30"
+              onClick={() => guarded(() => regenerate(chat, message))}
+            >
+              Regenerate
+            </button>
+          )}
+          {[1, -1].map((rating) => (
+            <button
+              key={rating}
+              disabled={generating}
+              aria-label={
+                rating === 1 ? "Helpful response" : "Unhelpful response"
+              }
+              className={`rounded px-2 py-1 ${message.feedback === rating ? "bg-violet-200 text-violet-900" : "hover:bg-slate-200/30"}`}
+              onClick={() =>
+                guarded(async () => {
+                  const comment = window.prompt(
+                    "Optional feedback shared with administrators (chat text is not shared)",
+                    message.feedbackComment || "",
+                  );
+                  if (comment === null) return;
+                  await api.request(
+                    `/conversations/${chat.id}/messages/${message.id}/feedback`,
+                    {
+                      method: "POST",
+                      body: JSON.stringify({ rating, comment }),
+                    },
+                  );
+                  const refreshed = await api.request<Conversation>(
+                    `/conversations/${chat.id}`,
+                  );
+                  if (active?.id === chat.id) setActive(refreshed);
+                  else setComparison(refreshed);
+                })
+              }
+            >
+              {rating === 1 ? "👍" : "👎"}
+            </button>
+          ))}
+        </>
+      ) : null}
+    </div>
+  );
+  const sidebar = (
+    <>
+      <div className="space-y-3 p-3">
+        <Button
+          disabled={generating}
+          className="w-full"
+          onClick={() => {
+            setActive(null);
+            setComparison(null);
+            setError("");
+          }}
+        >
+          + New chat
+        </Button>
+        <Select
+          aria-label="Filter project"
+          className="w-full"
+          disabled={generating}
+          value={projectId}
+          onChange={(e) => {
+            setProjectId(e.target.value);
+            setActive(null);
+            setComparison(null);
+          }}
+        >
+          <option value="">All chats / no project for new chats</option>
+          {projects.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </Select>
+        <input
+          aria-label="Search conversation content"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search titles & messages"
+          className="h-10 w-full rounded-xl bg-slate-100 px-3 text-sm dark:bg-slate-900"
+        />
+        <label className="flex gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={archived}
+            onChange={(e) => setArchived(e.target.checked)}
+          />{" "}
+          Show archived
+        </label>
+      </div>
+      <div className="flex-1 space-y-2 overflow-auto p-2">
+        {conversations.map((c) => (
+          <div
+            key={c.id}
+            className={cn(
+              "rounded-xl p-2",
+              active?.id === c.id
+                ? "bg-violet-50 dark:bg-violet-950"
+                : "hover:bg-slate-100 dark:hover:bg-slate-900",
+            )}
+          >
+            <button
+              disabled={generating}
+              className="w-full truncate text-left text-sm"
+              onClick={() => guarded(() => open(c.id))}
+            >
+              {c.pinned ? "★ " : ""}
+              {c.title}
+            </button>
+            <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-slate-500">
+              <button
+                disabled={generating}
+                onClick={() => guarded(() => update(c, { pinned: !c.pinned }))}
+              >
+                {c.pinned ? "Unpin" : "Pin"}
+              </button>
+              <button
+                disabled={generating}
+                onClick={() =>
+                  guarded(() => update(c, { archived: !c.archived }))
+                }
+              >
+                {c.archived ? "Restore" : "Archive"}
+              </button>
+              <button
+                disabled={generating}
+                onClick={() => {
+                  const title = window.prompt("Conversation name", c.title);
+                  if (title?.trim()) void guarded(() => update(c, { title }));
+                }}
+              >
+                Rename
+              </button>
+              <button
+                disabled={generating}
+                onClick={() => {
+                  if (window.confirm(`Delete “${c.title}”?`))
+                    void guarded(async () => {
+                      await api.request(`/conversations/${c.id}`, {
+                        method: "DELETE",
+                      });
+                      if (active?.id === c.id) setActive(null);
+                      await refreshChats();
+                    });
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+  return (
+    <Shell active="chat" sidebar={sidebar}>
+      <div className="flex h-full flex-col">
+        <header className="space-y-3 border-b bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h1 className="font-semibold">
+              {active?.title || "New conversation"}
+            </h1>
+            <div className="flex gap-3 text-xs">
+              <Link href="/workspace">Projects & tools</Link>
+              {active && (
+                <>
+                  <button onClick={() => exportChat("md")}>
+                    Export Markdown
+                  </button>
+                  <button onClick={() => exportChat("json")}>
+                    Export JSON
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Select
+              aria-label="Response mode"
+              disabled={generating}
+              value={localTool}
+              onChange={(e) => setLocalTool(e.target.value)}
+            >
+              <option value="">AI response</option>
+              {[
+                "calculator",
+                "time",
+                "search",
+                "faq",
+                "usage",
+                "prices",
+                "csv",
+                "markdown",
+              ].map((tool) => (
+                <option key={tool} value={tool}>
+                  Local tool: {tool}
+                </option>
+              ))}
+            </Select>
+            <Select
+              aria-label="Chat model"
+              disabled={generating || Boolean(localTool)}
+              value={modelId}
+              onChange={(e) => setModelId(e.target.value)}
+            >
+              {models.map((m) => (
+                <option
+                  key={m.id}
+                  value={m.id}
+                  disabled={!m.available || !modelFits(m.id)}
+                >
+                  {m.displayName} · {m.status}
+                </option>
+              ))}
+            </Select>
+            <Select
+              aria-label="Prompt persona"
+              disabled={generating || Boolean(localTool)}
+              value={templateId}
+              onChange={(e) => setTemplateId(e.target.value)}
+            >
+              <option value="">Default assistant</option>
+              {templates.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </Select>
+            <Select
+              aria-label="Comparison model"
+              disabled={generating || Boolean(localTool)}
+              value={compareId}
+              onChange={(e) => setCompareId(e.target.value)}
+            >
+              <option value="">Single response</option>
+              {models.map((m) => (
+                <option
+                  key={m.id}
+                  value={m.id}
+                  disabled={!m.available || !modelFits(m.id)}
+                >
+                  Compare: {m.displayName}
+                </option>
+              ))}
+            </Select>
+            {active && (
+              <Select
+                aria-label="Move chat to project"
+                value={active.projectId || ""}
+                disabled={generating}
+                onChange={(e) =>
+                  guarded(() =>
+                    update(active, { projectId: e.target.value || null }),
+                  )
+                }
+              >
+                <option value="">No project</option>
+                {projects.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </div>
+          {compareId && !localTool && (
+            <p className="text-xs text-amber-700">
+              Comparison creates two saved responses and consumes quota for each
+              model.
+            </p>
+          )}
+        </header>
+        <section className="flex-1 overflow-auto p-5">
+          {!active?.messages?.length && (
+            <div className="py-16 text-center">
+              <h2 className="text-2xl font-semibold">How can I help?</h2>
+              <p className="mt-3 text-sm text-slate-500">
+                {projectId
+                  ? `Project: ${projects.find((p) => p.id === projectId)?.name || "selected"}. Relevant document excerpts will be included.`
+                  : "Select a model and start a conversation."}
+              </p>
+            </div>
+          )}
+          <div
+            className={
+              comparison
+                ? "grid items-start gap-5 xl:grid-cols-2"
+                : "mx-auto max-w-3xl"
+            }
+          >
+            {[active, comparison]
+              .filter((c): c is Conversation => Boolean(c))
+              .map((chat) => (
+                <div key={chat.id} className="min-w-0 space-y-5">
+                  {comparison && (
+                    <div className="sticky top-0 z-10 rounded-xl bg-slate-100 p-2 text-xs dark:bg-slate-800">
+                      {chat.id === active?.id ? "Primary" : "Comparison"} ·{" "}
+                      {
+                        chat.messages
+                          ?.filter((m) => m.role === "ASSISTANT")
+                          .at(-1)?.modelId
+                      }
+                    </div>
+                  )}
+                  {chat.messages?.map((m) => (
+                    <MessageBubble
+                      key={m.id}
+                      message={m}
+                      actions={
+                        m.status === "STREAMING" ? undefined : actions(chat, m)
+                      }
+                    />
+                  ))}
+                </div>
+              ))}
+          </div>
+          <div ref={bottom} />
+        </section>
+        <footer className="border-t bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
+          <div className="mx-auto max-w-3xl">
+            {!localTool &&
+              ((selectedModel && !selectedModel.local) ||
+                (compareId &&
+                  !models.find((m) => m.id === compareId)?.local)) && (
+                <p className="mb-2 rounded-xl bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                  External model: conversation context, instructions, enabled
+                  memories and retrieved excerpts are sent to the selected
+                  provider. Use non-confidential demo data.
+                </p>
+              )}
+            {error && (
+              <p
+                role="alert"
+                className="mb-3 rounded-xl bg-red-50 p-3 text-sm text-red-700"
+              >
+                {error}
+              </p>
+            )}
+            <Card className="flex items-end gap-2 p-2">
+              <Textarea
+                aria-label="Message"
+                rows={3}
+                maxLength={20000}
+                disabled={generating}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (
+                    e.key === "Enter" &&
+                    !e.shiftKey &&
+                    !e.nativeEvent.isComposing
+                  ) {
+                    e.preventDefault();
+                    void send();
+                  }
+                }}
+                placeholder="Message your assistant…"
+                className="border-0"
+              />
+              {generating ? (
+                <Button
+                  variant="secondary"
+                  onClick={() => aborters.current.forEach((a) => a.abort())}
+                >
+                  Stop
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => send()}
+                  disabled={
+                    localTool
+                      ? !input.trim() &&
+                        !["time", "usage", "prices"].includes(localTool)
+                      : !input.trim() ||
+                        !selectedModel?.available ||
+                        !modelFits(modelId)
+                  }
+                >
+                  {localTool ? "Run tool" : "Send"}
+                </Button>
+              )}
+            </Card>
+            <p className="mt-2 text-center text-[11px] text-slate-500">
+              AI responses may be inaccurate. Verify answers and source
+              excerpts.
+            </p>
+          </div>
+        </footer>
+      </div>
+    </Shell>
+  );
 }
 
-function EmptyState({ models }: { models: Model[] }) { return <div className="py-20 text-center"><div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-violet-100 text-brand dark:bg-violet-950"><MessageSquare/></div><h2 className="mt-5 text-2xl font-semibold">How can I help?</h2><p className="mx-auto mt-2 max-w-md text-sm text-slate-500">Choose an available model and start a private conversation. {models.filter((model) => model.available).length} model(s) available.</p></div>; }
-function MessageBubble({ message }: { message: Message }) {
-  const [copied, setCopied] = useState(false);
-  const mine = message.role === 'USER';
-  return <div className={cn('flex', mine ? 'justify-end' : 'justify-start')}><div className={cn('group relative max-w-[86%] rounded-2xl px-4 py-3 text-sm leading-6', mine ? 'bg-brand text-white' : 'border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900')}>
-    {mine ? <div className="whitespace-pre-wrap">{message.content}</div> : <div className="prose max-w-none dark:prose-invert"><ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>{message.content || (message.status === 'STREAMING' ? '…' : '')}</ReactMarkdown></div>}
-    {!mine && message.content && <button onClick={() => { navigator.clipboard.writeText(message.content); setCopied(true); setTimeout(() => setCopied(false), 1200); }} className="absolute -right-9 top-1 hidden rounded-lg p-2 text-slate-400 hover:bg-slate-100 group-hover:block dark:hover:bg-slate-800" title="Copy response">{copied ? <Check size={15}/> : <Copy size={15}/>}</button>}
-    {message.status !== 'COMPLETED' && <div className={cn('mt-2 flex items-center gap-1 text-[11px]', mine ? 'text-white/70' : message.status === 'ERROR' ? 'text-red-500' : 'text-slate-400')}>{message.status === 'STREAMING' && <LoaderCircle className="animate-spin" size={11}/>} {message.status.toLowerCase()}</div>}
-  </div></div>;
+function MessageBubble({
+  message,
+  actions,
+}: {
+  message: Message;
+  actions?: React.ReactNode;
+}) {
+  const mine = message.role === "USER";
+  return (
+    <div className={cn("flex", mine ? "justify-end" : "justify-start")}>
+      <div
+        className={cn(
+          "min-w-0 max-w-[95%] rounded-2xl px-4 py-3 text-sm",
+          mine
+            ? "bg-brand text-white"
+            : "w-full border bg-white dark:border-slate-800 dark:bg-slate-900",
+        )}
+      >
+        {mine ? (
+          <div className="whitespace-pre-wrap">{message.content}</div>
+        ) : (
+          <>
+            <div className="mb-2 flex gap-2 text-xs text-slate-500">
+              {message.metadata?.tool
+                ? `Local tool: ${message.metadata.tool} · no model call`
+                : message.modelId}
+              <Badge>{message.status.toLowerCase()}</Badge>
+            </div>
+            <div className="prose max-w-none overflow-auto dark:prose-invert">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeHighlight]}
+              >
+                {message.content || (message.status === "STREAMING" ? "…" : "")}
+              </ReactMarkdown>
+            </div>
+            {Boolean(message.citations?.length) && (
+              <details className="mt-4 rounded-xl bg-slate-50 p-3 dark:bg-slate-950">
+                <summary className="cursor-pointer text-xs font-semibold">
+                  Retrieved sources · verify against these excerpts
+                </summary>
+                {message.citations?.map((s) => (
+                  <details key={s.id} className="mt-3">
+                    <summary className="cursor-pointer text-xs">
+                      [{s.label}] {s.filename}
+                      {s.page ? ` · page ${s.page}` : ""}
+                    </summary>
+                    <p className="mt-2 whitespace-pre-wrap text-xs text-slate-500">
+                      {s.content}
+                    </p>
+                  </details>
+                ))}
+              </details>
+            )}
+            {message.usage && (
+              <p className="mt-3 text-[11px] text-slate-500">
+                {message.usage.inputTokens} in / {message.usage.outputTokens}{" "}
+                out · {message.usage.durationMs} ms · {message.usage.usageKind}{" "}
+                · provider {message.usage.currency}{" "}
+                {Number(message.usage.actualProviderCost).toFixed(6)} · charge{" "}
+                {Number(message.usage.customerCharge).toFixed(6)}
+              </p>
+            )}
+            {message.metadata?.filename && (
+              <Button
+                className="mt-3"
+                variant="secondary"
+                onClick={() =>
+                  download(
+                    message.metadata!.filename!,
+                    message.metadata!.content || "",
+                    message.metadata!.mime,
+                  )
+                }
+              >
+                Download {message.metadata.filename}
+              </Button>
+            )}
+          </>
+        )}
+        {actions}
+      </div>
+    </div>
+  );
 }
-
