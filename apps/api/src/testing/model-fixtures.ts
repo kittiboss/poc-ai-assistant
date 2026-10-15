@@ -6,8 +6,8 @@ import { basePrisma, usersWith } from './fixtures';
 
 /** A local mock and an external Gemini model, both enabled and routed by the gateway. */
 export const models = [
-  { id: 'local-mock', displayName: 'Local Mock', provider: Provider.MOCK, providerModelId: 'mock-enterprise', enabled: true, allowedRoles: ['ADMIN', 'USER'], local: true, contextWindow: 8192, capabilities: [], permissions: [] },
-  { id: 'google-gemini', displayName: 'Gemini', provider: Provider.GEMINI, providerModelId: 'gemini-3.5-flash-lite', enabled: true, allowedRoles: ['ADMIN'], local: false, contextWindow: 1048576, capabilities: [], permissions: [] },
+  { id: 'local-mock', displayName: 'Local Mock', provider: Provider.MOCK, providerModelId: 'mock-enterprise', enabled: true, allowedRoles: ['ADMIN', 'USER'], local: true, contextWindow: 8192, capabilities: ['chat', 'streaming'], permissions: [] },
+  { id: 'google-gemini', displayName: 'Gemini', provider: Provider.GEMINI, providerModelId: 'gemini-3.5-flash-lite', enabled: true, allowedRoles: ['ADMIN'], local: false, contextWindow: 1048576, capabilities: ['chat', 'streaming'], permissions: [] },
 ];
 export const gateway = { routes: vi.fn().mockResolvedValue(new Set(['local-mock', 'google-gemini'])) };
 export const prismaWith = (used: { requests: number; tokens: number }) => ({ ...basePrisma(),

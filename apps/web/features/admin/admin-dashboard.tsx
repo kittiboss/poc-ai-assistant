@@ -1,5 +1,6 @@
 "use client";
 import { WorkspaceControls } from "./workspace-controls";
+import { KnowledgePanel } from "./knowledge-panel";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -710,6 +711,8 @@ export function AdminDashboard() {
             </table>
           </div>
         </Card>
+
+        <KnowledgePanel refreshKey={models} />
 
         <Card className="overflow-hidden">
           <div className="border-b border-slate-200 p-5 dark:border-slate-800">

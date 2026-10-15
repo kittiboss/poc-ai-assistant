@@ -1,4 +1,7 @@
 import { PrismaClient, PricingStrategy, Provider } from "@prisma/client";
+import { parseProductCsv } from "@enterprise/shared";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 const prisma = new PrismaClient();
 
@@ -80,6 +83,32 @@ const modelSeeds = [
     capabilities: ["chat", "streaming"],
     local: false,
   },
+  // Embedding-only models power product-catalog retrieval and never appear as chat choices.
+  {
+    id: "mock-embedding",
+    displayName: "Mock Embedding",
+    provider: Provider.MOCK,
+    providerModelId: "mock-embedding",
+    enabled: true,
+    allowedRoles: ["ADMIN", "USER"],
+    contextWindow: 8192,
+    capabilities: ["embedding"],
+    local: true,
+  },
+  {
+    id: "gemini-embedding",
+    displayName: "Gemini Embedding 2",
+    provider: Provider.GEMINI,
+    providerModelId: process.env.GEMINI_EMBEDDING_MODEL || "gemini-embedding-2",
+    enabled: false,
+    // Every catalog-enabled chat embeds the user's question, so both roles need it.
+    allowedRoles: ["ADMIN", "USER"],
+    contextWindow: 8192,
+    // Gemini Embedding 2 takes the retrieval task as a text prefix instead of task_type,
+    // and returns 768-d vectors when asked (outputDimensionality).
+    capabilities: ["embedding", "task-prefix", "output-dimensions"],
+    local: false,
+  },
 ];
 
 type PricingSeed = {
@@ -104,6 +133,21 @@ const pricingSeeds: Record<string, PricingSeed> = {
     strategy: PricingStrategy.SIMULATION,
     simulationInputRate: 0.3,
     simulationOutputRate: 2.5,
+    markupPercent: 0,
+  },
+  // Free-tier project: actual cost $0. Simulation uses Google's paid-tier list price for gemini-embedding-2
+  // text input ($0.20 per 1M tokens, checked 2026-10-15); embeddings have no output tokens.
+  "gemini-embedding": {
+    strategy: PricingStrategy.SIMULATION,
+    simulationInputRate: 0.2,
+    simulationOutputRate: 0,
+    markupPercent: 0,
+  },
+  // Simulated at the same rate so local testing shows what Gemini embeddings would cost if billed.
+  "mock-embedding": {
+    strategy: PricingStrategy.SIMULATION,
+    simulationInputRate: 0.2,
+    simulationOutputRate: 0,
     markupPercent: 0,
   },
 };
@@ -233,6 +277,14 @@ async function main() {
     update: {},
     create: { key: "externalProvidersEnabled", value: false },
   });
+  // Bundled product catalog (prisma/data/products.csv). Loaded only into an empty table so admin
+  // imports are never overwritten on restart. Seeding never embeds: that may call a provider.
+  if ((await prisma.product.count()) === 0) {
+    const products = parseProductCsv(
+      readFileSync(join(__dirname, "data", "products.csv"), "utf8"),
+    );
+    await prisma.product.createMany({ data: products });
+  }
   const personas = [
     [
       "HR Assistant",

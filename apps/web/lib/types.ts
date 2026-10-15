@@ -18,6 +18,36 @@ export type Citation = {
   page: number | null;
   content: string;
   label?: string;
+  /** Product-catalog citations carry their similarity score (0–1). */
+  kind?: "product";
+  score?: number;
+};
+export type KnowledgeStatus = {
+  ready: boolean;
+  available: boolean;
+  problem: string | null;
+  embeddingModel: {
+    id: string;
+    displayName: string;
+    provider: string | null;
+    local: boolean | null;
+  };
+  products: number;
+  indexed: number;
+  stale: number;
+  orphaned: number;
+  indexing: boolean;
+  lastRun: IndexRun | null;
+};
+export type IndexRun = {
+  embeddingModel: string;
+  pending: number;
+  embedded: number;
+  removed: number;
+  batches: number;
+  startedAt: string;
+  finishedAt: string | null;
+  error: string | null;
 };
 export type Message = {
   id: string;

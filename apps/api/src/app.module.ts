@@ -6,6 +6,7 @@ import { AuthGuard } from './common/auth/auth.guard';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { HealthModule } from './health/health.module';
+import { KnowledgeModule } from './knowledge/knowledge.module';
 import { ModelsModule } from './models/models.module';
 import { UsageModule } from './usage/usage.module';
 
@@ -16,6 +17,7 @@ import { UsageModule } from './usage/usage.module';
     HealthModule,
     ModelsModule,
     ConversationsModule,
+    KnowledgeModule,
     UsageModule,
     AdminModule,
   ],

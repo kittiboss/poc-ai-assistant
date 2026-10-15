@@ -5,7 +5,12 @@ import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import { useApi } from "../../lib/api";
 import { download } from "../../lib/download";
-import type { Conversation, Message, Model } from "../../lib/types";
+import type {
+  Conversation,
+  KnowledgeStatus,
+  Message,
+  Model,
+} from "../../lib/types";
 import { Shell } from "../../components/layout/shell";
 import {
   Badge,
@@ -28,6 +33,9 @@ export function ChatApp() {
     [archived, setArchived] = useState(false);
   const [generating, setGenerating] = useState(false),
     [error, setError] = useState("");
+  const [catalog, setCatalog] = useState<KnowledgeStatus | null>(null),
+    [useCatalog, setUseCatalog] = useState(true);
+  const catalogOn = useCatalog && Boolean(catalog?.available);
   const aborters = useRef<AbortController[]>([]),
     bottom = useRef<HTMLDivElement>(null);
   const loadSequence = useRef(0);
@@ -51,6 +59,11 @@ export function ChatApp() {
         setModelId(m.find((x) => x.available)?.id || "");
       })
       .catch((e) => setError(e.message));
+    // The catalog is optional; chat works without it, so a failed status check is not an error.
+    api
+      .request<KnowledgeStatus>("/knowledge/status")
+      .then(setCatalog)
+      .catch(() => setCatalog(null));
     return () => {
       aborters.current.forEach((a) => a.abort());
     };
@@ -150,6 +163,7 @@ export function ChatApp() {
           modelId: model,
           requestId,
           acknowledgeSensitive,
+          useProductCatalog: catalogOn,
         }),
       });
     try {
@@ -479,6 +493,26 @@ export function ChatApp() {
                 </option>
               ))}
             </Select>
+            <label
+              className={cn(
+                "flex items-center gap-2 rounded-xl border px-3 text-sm dark:border-slate-700",
+                !catalog?.available && "opacity-60",
+              )}
+              title={
+                catalog?.available
+                  ? `Retrieve matching products from ${catalog.indexed} indexed catalog entries`
+                  : `Product catalog unavailable${catalog?.problem ? `: ${catalog.problem}` : ""}`
+              }
+            >
+              <input
+                type="checkbox"
+                aria-label="Product catalog"
+                disabled={generating || !catalog?.available}
+                checked={catalogOn}
+                onChange={(e) => setUseCatalog(e.target.checked)}
+              />
+              Product catalog
+            </label>
           </div>
         </header>
         <section className="flex-1 overflow-auto p-5">
@@ -509,6 +543,13 @@ export function ChatApp() {
         </section>
         <footer className="border-t bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
           <div className="mx-auto max-w-3xl">
+            {catalogOn && catalog?.embeddingModel.local === false && (
+              <p className="mb-2 rounded-xl bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                Product catalog search sends your message to{" "}
+                {catalog.embeddingModel.provider} (
+                {catalog.embeddingModel.displayName}) to find matching products.
+              </p>
+            )}
             {selectedModel && !selectedModel.local && (
               <p className="mb-2 rounded-xl bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
                 External model: conversation context and server-configured
@@ -618,6 +659,9 @@ function MessageBubble({
                     <summary className="cursor-pointer text-xs">
                       [{s.label}] {s.filename}
                       {s.page ? ` · page ${s.page}` : ""}
+                      {s.kind === "product" && s.score !== undefined
+                        ? ` · product match ${s.score.toFixed(2)}`
+                        : ""}
                     </summary>
                     <p className="mt-2 whitespace-pre-wrap text-xs text-slate-500">
                       {s.content}

@@ -22,4 +22,12 @@ describe('model availability and external provider guardrails', () => {
     const listed = await modelsService(prismaWith({ requests: 0, tokens: 0 })).forUser(admin);
     expect(listed.find((model) => model.id === 'google-gemini')).toMatchObject({ available: false, status: 'Not configured' });
   });
+
+  it('offers only chat-capable models for chat and refuses embedding-only models', async () => {
+    const prisma = prismaWith({ requests: 0, tokens: 0 });
+    await modelsService(prisma).forUser(admin);
+    expect(prisma.aIModel.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { capabilities: { has: 'chat' } } }));
+    prisma.aIModel.findUnique.mockResolvedValueOnce({ id: 'mock-embedding', provider: 'MOCK', enabled: true, local: true, allowedRoles: ['ADMIN', 'USER'], capabilities: ['embedding'], permissions: [] });
+    await expect(modelsService(prisma).resolveForChat('user-1', ['USER'], 'mock-embedding')).rejects.toThrow('This model cannot be used for chat');
+  });
 });

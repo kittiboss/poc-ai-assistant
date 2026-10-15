@@ -2,7 +2,9 @@ name: enterprise-ai-assistant
 
 services:
   postgres:
-    image: postgres:17-alpine
+    # postgres:17-alpine plus pgvector, built locally (see infra/postgres/Dockerfile).
+    build:
+      context: infra/postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-enterprise_ai}
       POSTGRES_USER: ${POSTGRES_USER:-enterprise_ai}
@@ -142,6 +144,12 @@ services:
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-openrouter/free}
       AI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-1024}
       EXTERNAL_DAILY_REQUEST_LIMIT: ${EXTERNAL_DAILY_REQUEST_LIMIT:-100}
+      # Product-catalog retrieval. The base stack embeds offline with the mock model.
+      RAG_EMBEDDING_MODEL: ${RAG_EMBEDDING_MODEL:-mock-embedding}
+      RAG_TOP_K: ${RAG_TOP_K:-5}
+      # External embedding is paced to the provider's free-tier quota (Gemini: 100 texts/minute).
+      RAG_EXTERNAL_BATCH_SIZE: ${RAG_EXTERNAL_BATCH_SIZE:-25}
+      RAG_EXTERNAL_BATCH_INTERVAL_MS: ${RAG_EXTERNAL_BATCH_INTERVAL_MS:-15500}
       EXTERNAL_DAILY_TOKEN_LIMIT: ${EXTERNAL_DAILY_TOKEN_LIMIT:-100000}
       LOG_CONTENT: "false"
       # Interactive API docs at /api/docs; set SWAGGER_ENABLED=false outside local development.

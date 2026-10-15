@@ -21,6 +21,7 @@ import { WorkspaceService } from "../workspace/workspace.service";
 import { GovernanceService } from "../workspace/governance.service";
 import type { GatewayMessage } from "../gateway/gateway.service";
 import type { ToolDto } from "../workspace/workspace.dto";
+import { KnowledgeService } from "../knowledge/knowledge.service";
 
 /** Longer than any gateway timeout; a stream this old cannot still be attached to a client. */
 export const STALE_STREAM_MS = 10 * 60_000;
@@ -39,6 +40,7 @@ export class ChatService implements OnModuleInit, OnModuleDestroy {
     private readonly usage: UsageService,
     private readonly workspace: WorkspaceService,
     private readonly governance: GovernanceService,
+    private readonly knowledge: KnowledgeService,
   ) {}
 
   onModuleInit() {
@@ -163,6 +165,17 @@ export class ChatService implements OnModuleInit, OnModuleDestroy {
       );
     if (!dto.content.trim())
       throw new BadRequestException("Message cannot be empty");
+    // Retrieval runs before anything is persisted, so a failed search leaves no half-written turn.
+    const productCitations = dto.useProductCatalog
+      ? await this.knowledge.retrieve({
+          userId: user.id,
+          roles: auth.roles,
+          query: dto.content,
+          conversationId,
+          requestId,
+          acknowledgeSensitive: dto.acknowledgeSensitive,
+        })
+      : [];
     const context = await this.workspace.context(
       user.id,
       auth.roles,
@@ -170,6 +183,7 @@ export class ChatService implements OnModuleInit, OnModuleDestroy {
       dto.content,
       model.id,
       dto.templateId,
+      productCitations,
     );
     const previous = toGatewayHistory(
       (
