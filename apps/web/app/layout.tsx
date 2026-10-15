@@ -5,6 +5,11 @@ import './globals.css';
 
 export const metadata: Metadata = { title: 'Enterprise AI', description: 'Self-hosted enterprise AI assistant POC' };
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en" suppressHydrationWarning><body><AuthProvider>{children}</AuthProvider></body></html>;
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <body>
+        <AuthProvider>{children}</AuthProvider>
+      </body>
+    </html>
+  );
 }
-
