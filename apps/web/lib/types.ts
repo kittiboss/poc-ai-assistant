@@ -21,9 +21,9 @@ export type Citation = {
 };
 export type Message = {
   id: string;
-  role: "USER" | "ASSISTANT" | "SYSTEM";
+  role: 'USER' | 'ASSISTANT' | 'SYSTEM';
   content: string;
-  status: "PENDING" | "STREAMING" | "COMPLETED" | "INTERRUPTED" | "ERROR";
+  status: 'PENDING' | 'STREAMING' | 'COMPLETED' | 'INTERRUPTED' | 'ERROR';
   modelId?: string;
   createdAt: string;
   metadata?: {

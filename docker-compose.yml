@@ -182,6 +182,7 @@ services:
         NEXT_PUBLIC_KEYCLOAK_URL: ${NEXT_PUBLIC_KEYCLOAK_URL:-http://localhost:8080}
         NEXT_PUBLIC_KEYCLOAK_REALM: ${NEXT_PUBLIC_KEYCLOAK_REALM:-enterprise-ai}
         NEXT_PUBLIC_OIDC_CLIENT_ID: ${NEXT_PUBLIC_OIDC_CLIENT_ID:-enterprise-ai-web}
+        NEXT_PUBLIC_BRAND: ${NEXT_PUBLIC_BRAND:-default}
     depends_on:
       backend:
         condition: service_healthy

@@ -1,15 +1,9 @@
-"use client";
-import { useEffect, useState } from "react";
-import {
-  Button,
-  Card,
-  Input,
-  Select,
-  Textarea,
-} from "../../components/ui/primitives";
-import { useApi } from "../../lib/api";
-import { download } from "../../lib/download";
-import type { Model, PromptTemplate } from "../../lib/types";
+'use client';
+import { useEffect, useState } from 'react';
+import { Button, Card, Input, Select, Textarea } from '../../components/ui/primitives';
+import { useApi } from '../../lib/api';
+import { download } from '../../lib/download';
+import type { Model, PromptTemplate } from '../../lib/types';
 
 type Policy = {
   id: string;
@@ -23,7 +17,7 @@ type Policy = {
 type Settings = {
   externalBlocked: boolean;
   retentionDays: number;
-  sensitiveMode: "WARN" | "BLOCK";
+  sensitiveMode: 'WARN' | 'BLOCK';
 };
 type Dashboard = {
   settings: Settings;
@@ -44,22 +38,22 @@ type Dashboard = {
   }[];
 };
 const emptyTemplate = {
-  name: "",
-  description: "",
-  systemPrompt: "",
+  name: '',
+  description: '',
+  systemPrompt: '',
   allowedModels: [] as string[],
-  allowedRoles: ["USER", "ADMIN"],
+  allowedRoles: ['USER', 'ADMIN'],
   temperature: 0.7,
   maxOutputTokens: 1024,
   enabled: true,
 };
 const emptyPolicy = {
-  scope: "USER",
-  subject: "",
-  dailyRequests: "",
-  dailyTokens: "",
-  perRequestTokens: "",
-  dailySimulatedBudget: "",
+  scope: 'USER',
+  subject: '',
+  dailyRequests: '',
+  dailyTokens: '',
+  perRequestTokens: '',
+  dailySimulatedBudget: '',
 };
 
 export function WorkspaceControls() {
@@ -70,28 +64,32 @@ export function WorkspaceControls() {
   const [settings, setSettings] = useState<Settings>({
     externalBlocked: false,
     retentionDays: 0,
-    sensitiveMode: "WARN",
+    sensitiveMode: 'WARN',
   });
   const [template, setTemplate] = useState(emptyTemplate),
-    [templateId, setTemplateId] = useState(""),
+    [templateId, setTemplateId] = useState(''),
     [policy, setPolicy] = useState(emptyPolicy);
-  const [notice, setNotice] = useState(""),
+  const [notice, setNotice] = useState(''),
     [busy, setBusy] = useState(false);
-  async function load() {
-    const [d, m, t] = await Promise.all([
-      api.request<Dashboard>("/admin/workspace"),
-      api.request<Model[]>("/admin/models"),
-      api.request<PromptTemplate[]>("/admin/workspace/templates"),
+  const fetchAll = () =>
+    Promise.all([
+      api.request<Dashboard>('/admin/workspace'),
+      api.request<Model[]>('/admin/models'),
+      api.request<PromptTemplate[]>('/admin/workspace/templates'),
     ]);
+  const apply = ([d, m, t]: Awaited<ReturnType<typeof fetchAll>>) => {
     setData(d);
     setSettings(d.settings);
     setModels(m);
     setTemplates(t);
-  }
+  };
+  const load = () => fetchAll().then(apply);
   useEffect(() => {
-    load().catch((e) => setNotice(e.message));
+    fetchAll()
+      .then(apply)
+      .catch((e) => setNotice(e.message));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  async function act(fn: () => Promise<unknown>, message = "Saved") {
+  async function act(fn: () => Promise<unknown>, message = 'Saved') {
     setBusy(true);
     try {
       await fn();
@@ -104,17 +102,12 @@ export function WorkspaceControls() {
     }
   }
   const toggle = (values: string[], value: string) =>
-    values.includes(value)
-      ? values.filter((v) => v !== value)
-      : [...values, value];
+    values.includes(value) ? values.filter((v) => v !== value) : [...values, value];
   return (
     <section className="space-y-5">
       <h2 className="text-xl font-semibold">Workspace controls</h2>
       {notice && (
-        <p
-          role="status"
-          className="rounded-xl bg-slate-100 p-3 text-sm dark:bg-slate-800"
-        >
+        <p role="status" className="rounded-xl bg-slate-100 p-3 text-sm dark:bg-slate-800">
           {notice}
         </p>
       )}
@@ -129,13 +122,13 @@ export function WorkspaceControls() {
               const next = { ...(data?.settings || settings), externalBlocked: e.target.checked };
               void act(
                 () =>
-                  api.request("/admin/workspace/settings", {
-                    method: "PATCH",
+                  api.request('/admin/workspace/settings', {
+                    method: 'PATCH',
                     body: JSON.stringify(next),
                   }),
                 next.externalBlocked
-                  ? "External providers paused; active streams stop within ~2 seconds"
-                  : "External policy resumed; provider configuration and quotas still apply",
+                  ? 'External providers paused; active streams stop within ~2 seconds'
+                  : 'External policy resumed; provider configuration and quotas still apply',
               );
             }}
           />
@@ -150,7 +143,7 @@ export function WorkspaceControls() {
               onChange={(e) =>
                 setSettings({
                   ...settings,
-                  sensitiveMode: e.target.value as "WARN" | "BLOCK",
+                  sensitiveMode: e.target.value as 'WARN' | 'BLOCK',
                 })
               }
             >
@@ -175,11 +168,10 @@ export function WorkspaceControls() {
           </label>
         </div>
         <p className="text-xs text-slate-500">
-          Checks include outgoing history, instructions, memories and retrieved
-          excerpts. Regex detection is best-effort. Retention permanently
-          removes message text, citations and feedback from inactive chats,
-          including soft-deleted chats, in hourly batches; usage totals remain.
-          Project documents and memories are managed separately.
+          Checks include outgoing history, instructions, memories and retrieved excerpts. Regex detection is
+          best-effort. Retention permanently removes message text, citations and feedback from inactive chats, including
+          soft-deleted chats, in hourly batches; usage totals remain. Project documents and memories are managed
+          separately.
         </p>
         <div className="flex flex-wrap gap-2">
           <Button
@@ -193,8 +185,8 @@ export function WorkspaceControls() {
               )
                 return;
               void act(() =>
-                api.request("/admin/workspace/settings", {
-                  method: "PATCH",
+                api.request('/admin/workspace/settings', {
+                  method: 'PATCH',
                   body: JSON.stringify(settings),
                 }),
               );
@@ -209,11 +201,9 @@ export function WorkspaceControls() {
                 const p = await api.request<{
                   conversations: number;
                   retentionDays: number;
-                }>("/admin/workspace/retention");
-                window.alert(
-                  `${p.conversations} chats are eligible under the saved ${p.retentionDays}-day policy.`,
-                );
-              }, "Retention preview completed")
+                }>('/admin/workspace/retention');
+                window.alert(`${p.conversations} chats are eligible under the saved ${p.retentionDays}-day policy.`);
+              }, 'Retention preview completed')
             }
           >
             Preview saved retention
@@ -225,9 +215,9 @@ export function WorkspaceControls() {
                 const d = await api.request<{
                   content: string;
                   filename: string;
-                }>("/admin/workspace/usage.csv");
-                download(d.filename, d.content, "text/csv");
-              }, "Exported latest 10,000 usage records")
+                }>('/admin/workspace/usage.csv');
+                download(d.filename, d.content, 'text/csv');
+              }, 'Exported latest 10,000 usage records')
             }
           >
             Export usage CSV
@@ -237,11 +227,9 @@ export function WorkspaceControls() {
       <Card className="space-y-4 p-5">
         <h3 className="font-semibold">Quotas & simulated budgets</h3>
         <p className="text-xs text-slate-500">
-          UTC daily limits; blank = unlimited, 0 = blocked. All matching
-          policies apply. Role/model/department limits are shared by that scope.
-          In-flight requests reserve a conservative input estimate plus maximum
-          output. Budgets use simulated provider cost in USD; they do not charge
-          money.
+          UTC daily limits; blank = unlimited, 0 = blocked. All matching policies apply. Role/model/department limits
+          are shared by that scope. In-flight requests reserve a conservative input estimate plus maximum output.
+          Budgets use simulated provider cost in USD; they do not charge money.
         </p>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <label className="text-xs">
@@ -249,41 +237,35 @@ export function WorkspaceControls() {
             <Select
               className="mt-1 w-full"
               value={policy.scope}
-              onChange={(e) =>
-                setPolicy({ ...policy, scope: e.target.value, subject: "" })
-              }
+              onChange={(e) => setPolicy({ ...policy, scope: e.target.value, subject: '' })}
             >
-              {["USER", "ROLE", "MODEL", "DEPARTMENT"].map((s) => (
+              {['USER', 'ROLE', 'MODEL', 'DEPARTMENT'].map((s) => (
                 <option key={s}>{s}</option>
               ))}
             </Select>
           </label>
           <label className="text-xs">
             Subject
-            {policy.scope === "DEPARTMENT" ? (
+            {policy.scope === 'DEPARTMENT' ? (
               <Input
                 value={policy.subject}
-                onChange={(e) =>
-                  setPolicy({ ...policy, subject: e.target.value })
-                }
+                onChange={(e) => setPolicy({ ...policy, subject: e.target.value })}
                 placeholder="Engineering"
               />
             ) : (
               <Select
                 className="mt-1 w-full"
                 value={policy.subject}
-                onChange={(e) =>
-                  setPolicy({ ...policy, subject: e.target.value })
-                }
+                onChange={(e) => setPolicy({ ...policy, subject: e.target.value })}
               >
                 <option value="">Select</option>
-                {(policy.scope === "USER"
+                {(policy.scope === 'USER'
                   ? (data?.users || []).map((u) => [u.id, u.username])
-                  : policy.scope === "MODEL"
+                  : policy.scope === 'MODEL'
                     ? models.map((m) => [m.id, m.displayName])
                     : [
-                        ["USER", "USER"],
-                        ["ADMIN", "ADMIN"],
+                        ['USER', 'USER'],
+                        ['ADMIN', 'ADMIN'],
                       ]
                 ).map(([id, label]) => (
                   <option key={id} value={id}>
@@ -293,27 +275,20 @@ export function WorkspaceControls() {
               </Select>
             )}
           </label>
-          {(
-            [
-              "dailyRequests",
-              "dailyTokens",
-              "perRequestTokens",
-              "dailySimulatedBudget",
-            ] as const
-          ).map((k) => (
+          {(['dailyRequests', 'dailyTokens', 'perRequestTokens', 'dailySimulatedBudget'] as const).map((k) => (
             <label key={k} className="text-xs">
               {
                 {
-                  dailyRequests: "Requests / day",
-                  dailyTokens: "Tokens / day",
-                  perRequestTokens: "Tokens / request",
-                  dailySimulatedBudget: "Simulated budget / day (USD)",
+                  dailyRequests: 'Requests / day',
+                  dailyTokens: 'Tokens / day',
+                  perRequestTokens: 'Tokens / request',
+                  dailySimulatedBudget: 'Simulated budget / day (USD)',
                 }[k]
               }
               <Input
                 type="number"
                 min={0}
-                step={k === "dailySimulatedBudget" ? "0.000001" : "1"}
+                step={k === 'dailySimulatedBudget' ? '0.000001' : '1'}
                 value={policy[k]}
                 placeholder="Unlimited"
                 onChange={(e) => setPolicy({ ...policy, [k]: e.target.value })}
@@ -325,21 +300,14 @@ export function WorkspaceControls() {
           disabled={busy || !policy.subject}
           onClick={() =>
             act(async () => {
-              await api.request("/admin/workspace/quotas", {
-                method: "POST",
+              await api.request('/admin/workspace/quotas', {
+                method: 'POST',
                 body: JSON.stringify({
                   ...policy,
                   ...Object.fromEntries(
-                    [
-                      "dailyRequests",
-                      "dailyTokens",
-                      "perRequestTokens",
-                      "dailySimulatedBudget",
-                    ].map((k) => [
+                    ['dailyRequests', 'dailyTokens', 'perRequestTokens', 'dailySimulatedBudget'].map((k) => [
                       k,
-                      policy[k as keyof typeof policy] === ""
-                        ? null
-                        : Number(policy[k as keyof typeof policy]),
+                      policy[k as keyof typeof policy] === '' ? null : Number(policy[k as keyof typeof policy]),
                     ]),
                   ),
                 }),
@@ -354,33 +322,24 @@ export function WorkspaceControls() {
           <table className="w-full text-left text-xs">
             <thead>
               <tr>
-                {[
-                  "Scope",
-                  "Subject",
-                  "Requests/day",
-                  "Tokens/day",
-                  "Tokens/request",
-                  "Budget USD/day",
-                  "Actions",
-                ].map((s) => (
-                  <th key={s} className="p-2">
-                    {s}
-                  </th>
-                ))}
+                {['Scope', 'Subject', 'Requests/day', 'Tokens/day', 'Tokens/request', 'Budget USD/day', 'Actions'].map(
+                  (s) => (
+                    <th key={s} className="p-2">
+                      {s}
+                    </th>
+                  ),
+                )}
               </tr>
             </thead>
             <tbody>
               {data?.policies.map((p) => (
                 <tr key={p.id} className="border-t">
                   <td className="p-2">{p.scope}</td>
-                  <td>
-                    {data.users.find((u) => u.id === p.subject)?.username ||
-                      p.subject}
-                  </td>
-                  <td>{p.dailyRequests ?? "∞"}</td>
-                  <td>{p.dailyTokens ?? "∞"}</td>
-                  <td>{p.perRequestTokens ?? "∞"}</td>
-                  <td>{p.dailySimulatedBudget ?? "∞"}</td>
+                  <td>{data.users.find((u) => u.id === p.subject)?.username || p.subject}</td>
+                  <td>{p.dailyRequests ?? '∞'}</td>
+                  <td>{p.dailyTokens ?? '∞'}</td>
+                  <td>{p.perRequestTokens ?? '∞'}</td>
+                  <td>{p.dailySimulatedBudget ?? '∞'}</td>
                   <td>
                     <Button
                       variant="ghost"
@@ -388,11 +347,10 @@ export function WorkspaceControls() {
                         setPolicy({
                           scope: p.scope,
                           subject: p.subject,
-                          dailyRequests: p.dailyRequests?.toString() ?? "",
-                          dailyTokens: p.dailyTokens?.toString() ?? "",
-                          perRequestTokens:
-                            p.perRequestTokens?.toString() ?? "",
-                          dailySimulatedBudget: p.dailySimulatedBudget ?? "",
+                          dailyRequests: p.dailyRequests?.toString() ?? '',
+                          dailyTokens: p.dailyTokens?.toString() ?? '',
+                          perRequestTokens: p.perRequestTokens?.toString() ?? '',
+                          dailySimulatedBudget: p.dailySimulatedBudget ?? '',
                         })
                       }
                     >
@@ -405,9 +363,9 @@ export function WorkspaceControls() {
                         act(
                           () =>
                             api.request(`/admin/workspace/quotas/${p.id}`, {
-                              method: "DELETE",
+                              method: 'DELETE',
                             }),
-                          "Quota removed",
+                          'Quota removed',
                         )
                       }
                     >
@@ -435,7 +393,7 @@ export function WorkspaceControls() {
                   if (e.target.value !== u.department)
                     void act(() =>
                       api.request(`/admin/workspace/users/${u.id}`, {
-                        method: "PATCH",
+                        method: 'PATCH',
                         body: JSON.stringify({ department: e.target.value }),
                       }),
                     );
@@ -444,13 +402,11 @@ export function WorkspaceControls() {
             </label>
           ))}
         </div>
-        <p className="text-xs text-slate-500">
-          Reports and quotas use current department membership. Today (UTC):
-        </p>
+        <p className="text-xs text-slate-500">Reports and quotas use current department membership. Today (UTC):</p>
         {data?.departmentUsage.map((d) => (
           <p key={d.department} className="text-sm">
-            {d.department} · {d._count} requests · {d._sum.totalTokens || 0}{" "}
-            tokens · simulated ${d._sum.simulatedProviderCost || 0}
+            {d.department} · {d._count} requests · {d._sum.totalTokens || 0} tokens · simulated $
+            {d._sum.simulatedProviderCost || 0}
           </p>
         ))}
       </Card>
@@ -482,7 +438,7 @@ export function WorkspaceControls() {
           {templates.map((t) => (
             <option key={t.id} value={t.id}>
               {t.name}
-              {!t.enabled ? " (disabled)" : ""}
+              {!t.enabled ? ' (disabled)' : ''}
             </option>
           ))}
         </Select>
@@ -491,9 +447,7 @@ export function WorkspaceControls() {
             Name
             <Input
               value={template.name}
-              onChange={(e) =>
-                setTemplate({ ...template, name: e.target.value })
-              }
+              onChange={(e) => setTemplate({ ...template, name: e.target.value })}
               maxLength={120}
             />
           </label>
@@ -501,9 +455,7 @@ export function WorkspaceControls() {
             Description
             <Input
               value={template.description}
-              onChange={(e) =>
-                setTemplate({ ...template, description: e.target.value })
-              }
+              onChange={(e) => setTemplate({ ...template, description: e.target.value })}
               maxLength={500}
             />
           </label>
@@ -514,13 +466,11 @@ export function WorkspaceControls() {
             rows={5}
             maxLength={6000}
             value={template.systemPrompt}
-            onChange={(e) =>
-              setTemplate({ ...template, systemPrompt: e.target.value })
-            }
+            onChange={(e) => setTemplate({ ...template, systemPrompt: e.target.value })}
           />
         </label>
         <div className="flex flex-wrap gap-4">
-          {["USER", "ADMIN"].map((r) => (
+          {['USER', 'ADMIN'].map((r) => (
             <label className="text-sm" key={r}>
               <input
                 type="checkbox"
@@ -531,7 +481,7 @@ export function WorkspaceControls() {
                     allowedRoles: toggle(template.allowedRoles, r),
                   })
                 }
-              />{" "}
+              />{' '}
               {r}
             </label>
           ))}
@@ -539,17 +489,12 @@ export function WorkspaceControls() {
             <input
               type="checkbox"
               checked={template.enabled}
-              onChange={(e) =>
-                setTemplate({ ...template, enabled: e.target.checked })
-              }
-            />{" "}
+              onChange={(e) => setTemplate({ ...template, enabled: e.target.checked })}
+            />{' '}
             Enabled
           </label>
         </div>
-        <p className="text-xs">
-          Allowed models (none selected = all models the user is permitted to
-          use)
-        </p>
+        <p className="text-xs">Allowed models (none selected = all models the user is permitted to use)</p>
         <div className="flex flex-wrap gap-4">
           {models.map((m) => (
             <label key={m.id} className="text-xs">
@@ -562,7 +507,7 @@ export function WorkspaceControls() {
                     allowedModels: toggle(template.allowedModels, m.id),
                   })
                 }
-              />{" "}
+              />{' '}
               {m.displayName}
             </label>
           ))}
@@ -601,22 +546,18 @@ export function WorkspaceControls() {
           </label>
         </div>
         <Button
-          disabled={
-            busy || !template.name.trim() || !template.systemPrompt.trim()
-          }
+          disabled={busy || !template.name.trim() || !template.systemPrompt.trim()}
           onClick={() =>
             act(async () => {
               const t = await api.request<PromptTemplate>(
-                templateId
-                  ? `/admin/workspace/templates/${templateId}`
-                  : "/admin/workspace/templates",
+                templateId ? `/admin/workspace/templates/${templateId}` : '/admin/workspace/templates',
                 {
-                  method: templateId ? "PATCH" : "POST",
+                  method: templateId ? 'PATCH' : 'POST',
                   body: JSON.stringify(template),
                 },
               );
               setTemplateId(t.id);
-            }, "Template saved and audited")
+            }, 'Template saved and audited')
           }
         >
           Save template
@@ -626,23 +567,18 @@ export function WorkspaceControls() {
         <h3 className="font-semibold">Response feedback</h3>
         <div className="flex flex-wrap gap-3">
           {data?.feedback.map((f) => (
-            <span
-              className="rounded-xl border p-3 text-sm"
-              key={`${f.modelId}-${f.feedback}`}
-            >
-              {f.modelId} · {f.feedback === 1 ? "👍" : "👎"} {f._count}
+            <span className="rounded-xl border p-3 text-sm" key={`${f.modelId}-${f.feedback}`}>
+              {f.modelId} · {f.feedback === 1 ? '👍' : '👎'} {f._count}
             </span>
           ))}
         </div>
         <p className="text-xs text-slate-500">
-          Comments below are explicitly submitted to administrators. Chat
-          prompts and answers are excluded.
+          Comments below are explicitly submitted to administrators. Chat prompts and answers are excluded.
         </p>
         {data?.recentFeedback.map((f) => (
           <p key={f.id} className="border-t py-2 text-xs">
-            {new Date(f.updatedAt).toLocaleString()} · {f.modelId} ·{" "}
-            {f.feedback === 1 ? "👍" : "👎"}{" "}
-            {f.feedbackComment || "(no comment)"}
+            {new Date(f.updatedAt).toLocaleString()} · {f.modelId} · {f.feedback === 1 ? '👍' : '👎'}{' '}
+            {f.feedbackComment || '(no comment)'}
           </p>
         ))}
       </Card>

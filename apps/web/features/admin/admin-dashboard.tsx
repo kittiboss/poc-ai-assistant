@@ -1,26 +1,11 @@
-"use client";
-import { WorkspaceControls } from "./workspace-controls";
-import {
-  ArrowDownToLine,
-  ArrowUpFromLine,
-  BarChart3,
-  Coins,
-  Save,
-  ShieldAlert,
-  Users,
-  Zap,
-} from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { useApi } from "../../lib/api";
-import { SimpleBarChart } from "../../components/ui/charts";
-import { Shell } from "../../components/layout/shell";
-import {
-  Badge,
-  Button,
-  Card,
-  Input,
-  Select,
-} from "../../components/ui/primitives";
+'use client';
+import { WorkspaceControls } from './workspace-controls';
+import { ArrowDownToLine, ArrowUpFromLine, BarChart3, Coins, Save, ShieldAlert, Users, Zap } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { useApi } from '@/lib/api';
+import { SimpleBarChart } from '@/components/ui/charts';
+import { Shell } from '@/components/layout/shell';
+import { Badge, Button, Card, Input, Select } from '@/components/ui/primitives';
 
 type Sum = {
   totalTokens?: number | null;
@@ -57,11 +42,7 @@ type Summary = {
     limits: { requests: number; tokens: number };
   };
 };
-type Strategy =
-  | "PASS_THROUGH"
-  | "PERCENTAGE_MARKUP"
-  | "FIXED_RATE"
-  | "SIMULATION";
+type Strategy = 'PASS_THROUGH' | 'PERCENTAGE_MARKUP' | 'FIXED_RATE' | 'SIMULATION';
 type Version = {
   id: string;
   version: number;
@@ -113,41 +94,42 @@ type Audit = {
   actor?: { username: string } | null;
   after?: Record<string, unknown> | null;
 };
-type PriceForm = Omit<
-  Version,
-  "id" | "version" | "effectiveAt" | "createdBy"
-> & { inputTokens: number; outputTokens: number; effectiveAt?: string };
+type PriceForm = Omit<Version, 'id' | 'version' | 'effectiveAt' | 'createdBy'> & {
+  inputTokens: number;
+  outputTokens: number;
+  effectiveAt?: string;
+};
 type Filters = { from: string; to: string; provider: string; modelId: string };
 
 const emptyForm: PriceForm = {
-  strategy: "SIMULATION",
-  providerInputRate: "0",
-  providerOutputRate: "0",
-  cachedInputRate: "0",
-  additionalFee: "0",
-  customerInputRate: "0",
-  customerOutputRate: "0",
-  markupPercent: "50",
-  simulationInputRate: "2.5",
-  simulationOutputRate: "3.571428571428",
-  currency: "USD",
-  effectiveAt: "",
+  strategy: 'SIMULATION',
+  providerInputRate: '0',
+  providerOutputRate: '0',
+  cachedInputRate: '0',
+  additionalFee: '0',
+  customerInputRate: '0',
+  customerOutputRate: '0',
+  markupPercent: '50',
+  simulationInputRate: '2.5',
+  simulationOutputRate: '3.571428571428',
+  currency: 'USD',
+  effectiveAt: '',
   inputTokens: 3000,
   outputTokens: 700,
 };
-const noFilters: Filters = { from: "", to: "", provider: "", modelId: "" };
+const noFilters: Filters = { from: '', to: '', provider: '', modelId: '' };
 const pricingFields = [
-  "strategy",
-  "providerInputRate",
-  "providerOutputRate",
-  "cachedInputRate",
-  "additionalFee",
-  "customerInputRate",
-  "customerOutputRate",
-  "markupPercent",
-  "simulationInputRate",
-  "simulationOutputRate",
-  "currency",
+  'strategy',
+  'providerInputRate',
+  'providerOutputRate',
+  'cachedInputRate',
+  'additionalFee',
+  'customerInputRate',
+  'customerOutputRate',
+  'markupPercent',
+  'simulationInputRate',
+  'simulationOutputRate',
+  'currency',
 ] as const;
 const money = (value: unknown) => `$${Number(value || 0).toFixed(6)}`;
 const number = (value: unknown) => Number(value || 0).toLocaleString();
@@ -157,36 +139,29 @@ function pricingBody(form: PriceForm) {
   const body: Record<string, unknown> = Object.fromEntries(
     pricingFields
       .map((field) => [field, form[field]])
-      .filter(
-        ([, value]) => value !== null && value !== undefined && value !== "",
-      ),
+      .filter(([, value]) => value !== null && value !== undefined && value !== ''),
   );
-  if (form.effectiveAt)
-    body.effectiveAt = new Date(form.effectiveAt).toISOString();
+  if (form.effectiveAt) body.effectiveAt = new Date(form.effectiveAt).toISOString();
   return body;
 }
 
 function summaryQuery(filters: Filters) {
   const params = new URLSearchParams();
-  if (filters.from)
-    params.set("from", new Date(`${filters.from}T00:00:00`).toISOString());
-  if (filters.to)
-    params.set("to", new Date(`${filters.to}T23:59:59.999`).toISOString());
-  if (filters.provider) params.set("provider", filters.provider);
-  if (filters.modelId) params.set("modelId", filters.modelId);
+  if (filters.from) params.set('from', new Date(`${filters.from}T00:00:00`).toISOString());
+  if (filters.to) params.set('to', new Date(`${filters.to}T23:59:59.999`).toISOString());
+  if (filters.provider) params.set('provider', filters.provider);
+  if (filters.modelId) params.set('modelId', filters.modelId);
   const query = params.toString();
-  return query ? `?${query}` : "";
+  return query ? `?${query}` : '';
 }
 
 function auditDetail(entry: Audit) {
   const after = entry.after || {};
-  if (entry.action === "PRICING_VERSION_CREATE")
-    return `v${after.version} · ${after.strategy}`;
-  if (entry.action === "MODEL_UPDATE")
-    return `enabled=${after.enabled} · roles=${(after.allowedRoles as string[] | undefined)?.join("/") || "—"}`;
-  if (entry.action === "MODEL_PERMISSION_UPDATE")
-    return `${after.modelId}: ${after.allowed ? "allowed" : "denied"}`;
-  return "";
+  if (entry.action === 'PRICING_VERSION_CREATE') return `v${after.version} · ${after.strategy}`;
+  if (entry.action === 'MODEL_UPDATE')
+    return `enabled=${after.enabled} · roles=${(after.allowedRoles as string[] | undefined)?.join('/') || '—'}`;
+  if (entry.action === 'MODEL_PERMISSION_UPDATE') return `${after.modelId}: ${after.allowed ? 'allowed' : 'denied'}`;
+  return '';
 }
 
 export function AdminDashboard() {
@@ -197,51 +172,54 @@ export function AdminDashboard() {
   const [users, setUsers] = useState<User[]>([]);
   const [audit, setAudit] = useState<Audit[]>([]);
   const [filters, setFilters] = useState<Filters>(noFilters);
-  const [selectedModel, setSelectedModel] = useState("local-mock");
+  const [selectedModel, setSelectedModel] = useState('local-mock');
   const [form, setForm] = useState<PriceForm>(emptyForm);
   const [preview, setPreview] = useState<Record<string, string> | null>(null);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState('');
   const loadSummary = async (next: Filters) =>
-    setSummary(
-      await api.request<Summary>(`/admin/summary${summaryQuery(next)}`),
-    );
-  const load = async () => {
-    const [nextModels, nextPricing, nextUsers, nextAudit] = await Promise.all([
-      api.request<AdminModel[]>("/admin/models"),
-      api.request<Pricing[]>("/admin/pricing"),
-      api.request<User[]>("/admin/users"),
-      api.request<Audit[]>("/admin/audit"),
-      loadSummary(filters),
+    setSummary(await api.request<Summary>(`/admin/summary${summaryQuery(next)}`));
+  const fetchAll = (next: Filters) =>
+    Promise.all([
+      api.request<AdminModel[]>('/admin/models'),
+      api.request<Pricing[]>('/admin/pricing'),
+      api.request<User[]>('/admin/users'),
+      api.request<Audit[]>('/admin/audit'),
+      api.request<Summary>(`/admin/summary${summaryQuery(next)}`),
     ]);
+  const apply = ([nextModels, nextPricing, nextUsers, nextAudit, nextSummary]: Awaited<
+    ReturnType<typeof fetchAll>
+  >) => {
     setModels(nextModels);
     setPricing(nextPricing);
     setUsers(nextUsers);
     setAudit(nextAudit);
+    setSummary(nextSummary);
   };
+  const load = () => fetchAll(filters).then(apply);
   useEffect(() => {
-    load().catch((cause) => setMessage(cause.message));
+    fetchAll(noFilters)
+      .then(apply)
+      .catch((cause) => setMessage(cause.message));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const selectedPricing = useMemo(
     () => pricing.find((item) => item.modelId === selectedModel),
     [pricing, selectedModel],
   );
-  useEffect(() => {
+  // Reset the form to the latest version when the selected model or its pricing changes. Adjusted during render rather than in an effect, as React recommends.
+  const [formSource, setFormSource] = useState(selectedPricing);
+  if (formSource !== selectedPricing) {
+    setFormSource(selectedPricing);
     const version = selectedPricing?.versions[0];
     if (version)
       setForm((current) => ({
         ...emptyForm,
-        ...Object.fromEntries(
-          pricingFields.map((field) => [
-            field,
-            version[field] ?? emptyForm[field],
-          ]),
-        ),
-        effectiveAt: "",
+        ...Object.fromEntries(pricingFields.map((field) => [field, version[field] ?? emptyForm[field]])),
+        effectiveAt: '',
         inputTokens: current.inputTokens,
         outputTokens: current.outputTokens,
       }));
     setPreview(null);
-  }, [selectedPricing]);
+  }
   const applyFilters = async (next: Filters) => {
     setFilters(next);
     try {
@@ -250,13 +228,10 @@ export function AdminDashboard() {
       setMessage((cause as Error).message);
     }
   };
-  const updateModel = async (
-    model: AdminModel,
-    change: Partial<Pick<AdminModel, "enabled" | "allowedRoles">>,
-  ) => {
+  const updateModel = async (model: AdminModel, change: Partial<Pick<AdminModel, 'enabled' | 'allowedRoles'>>) => {
     try {
       await api.request(`/admin/models/${model.id}`, {
-        method: "PATCH",
+        method: 'PATCH',
         body: JSON.stringify(change),
       });
       await load();
@@ -268,8 +243,8 @@ export function AdminDashboard() {
   const previewPrice = async () => {
     try {
       setPreview(
-        await api.request("/admin/pricing/preview/calculate", {
-          method: "POST",
+        await api.request('/admin/pricing/preview/calculate', {
+          method: 'POST',
           body: JSON.stringify({
             ...pricingBody(form),
             inputTokens: form.inputTokens,
@@ -284,23 +259,19 @@ export function AdminDashboard() {
   const savePrice = async () => {
     try {
       await api.request(`/admin/pricing/${selectedModel}`, {
-        method: "POST",
+        method: 'POST',
         body: JSON.stringify(pricingBody(form)),
       });
       await load();
-      setMessage("A new immutable pricing version was created.");
+      setMessage('A new immutable pricing version was created.');
     } catch (cause) {
       setMessage((cause as Error).message);
     }
   };
-  const permission = async (
-    userId: string,
-    modelId: string,
-    allowed: boolean,
-  ) => {
+  const permission = async (userId: string, modelId: string, allowed: boolean) => {
     try {
       await api.request(`/admin/users/${userId}/models/${modelId}`, {
-        method: "PATCH",
+        method: 'PATCH',
         body: JSON.stringify({ allowed }),
       });
       await load();
@@ -312,21 +283,18 @@ export function AdminDashboard() {
 
   return (
     <Shell active="admin">
-      <div className="mx-auto max-w-7xl space-y-7 p-8">
+      <div className="mx-auto max-w-7xl space-y-7 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:p-8">
         <div>
-          <p className="text-sm font-medium text-brand">ADMIN CONSOLE</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">
-            Platform operations
-          </h1>
-          <p className="mt-2 text-sm text-slate-500">
-            Aggregate metrics only. Private conversation content is never
-            exposed here.
+          <p className="text-sm font-medium text-primary">ADMIN CONSOLE</p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight">Platform operations</h1>
+          <p className="mt-2 text-sm text-fg-secondary">
+            Aggregate metrics only. Private conversation content is never exposed here.
           </p>
         </div>
         {message && (
-          <div className="rounded-xl bg-violet-50 px-4 py-3 text-sm text-violet-800 dark:bg-violet-950 dark:text-violet-200">
+          <div className="rounded-brand bg-primary-soft px-4 py-3 text-sm text-primary-text">
             {message}
-            <button className="float-right" onClick={() => setMessage("")}>
+            <button className="float-right" onClick={() => setMessage('')}>
               ×
             </button>
           </div>
@@ -337,37 +305,23 @@ export function AdminDashboard() {
             <Input
               type="date"
               value={filters.from}
-              onChange={(event) =>
-                applyFilters({ ...filters, from: event.target.value })
-              }
+              onChange={(event) => applyFilters({ ...filters, from: event.target.value })}
             />
           </Field>
           <Field label="To">
             <Input
               type="date"
               value={filters.to}
-              onChange={(event) =>
-                applyFilters({ ...filters, to: event.target.value })
-              }
+              onChange={(event) => applyFilters({ ...filters, to: event.target.value })}
             />
           </Field>
           <Field label="Provider">
             <Select
               value={filters.provider}
-              onChange={(event) =>
-                applyFilters({ ...filters, provider: event.target.value })
-              }
+              onChange={(event) => applyFilters({ ...filters, provider: event.target.value })}
             >
               <option value="">All providers</option>
-              {[
-                "MOCK",
-                "OLLAMA",
-                "OPENAI",
-                "ANTHROPIC",
-                "GEMINI",
-                "GROQ",
-                "OPENROUTER",
-              ].map((provider) => (
+              {['MOCK', 'OLLAMA', 'OPENAI', 'ANTHROPIC', 'GEMINI', 'GROQ', 'OPENROUTER'].map((provider) => (
                 <option key={provider}>{provider}</option>
               ))}
             </Select>
@@ -375,9 +329,7 @@ export function AdminDashboard() {
           <Field label="Model">
             <Select
               value={filters.modelId}
-              onChange={(event) =>
-                applyFilters({ ...filters, modelId: event.target.value })
-              }
+              onChange={(event) => applyFilters({ ...filters, modelId: event.target.value })}
             >
               <option value="">All models</option>
               {models.map((model) => (
@@ -390,9 +342,7 @@ export function AdminDashboard() {
           <Button variant="ghost" onClick={() => applyFilters(noFilters)}>
             Reset
           </Button>
-          <p className="ml-auto text-xs text-slate-500">
-            Filters apply to metrics, charts, and cost breakdown.
-          </p>
+          <p className="ml-auto text-xs text-fg-secondary">Filters apply to metrics, charts, and cost breakdown.</p>
         </Card>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
@@ -401,26 +351,10 @@ export function AdminDashboard() {
             label={`Users (${number(summary?.activeUsers)} active in range)`}
             value={summary?.users || 0}
           />
-          <Metric
-            icon={<Zap />}
-            label="AI requests"
-            value={summary?.requests || 0}
-          />
-          <Metric
-            icon={<ArrowDownToLine />}
-            label="Input tokens"
-            value={summary?.tokens.inputTokens || 0}
-          />
-          <Metric
-            icon={<ArrowUpFromLine />}
-            label="Output tokens"
-            value={summary?.tokens.outputTokens || 0}
-          />
-          <Metric
-            icon={<Coins />}
-            label="Actual provider cost"
-            value={money(summary?.costs.actualProviderCost)}
-          />
+          <Metric icon={<Zap />} label="AI requests" value={summary?.requests || 0} />
+          <Metric icon={<ArrowDownToLine />} label="Input tokens" value={summary?.tokens.inputTokens || 0} />
+          <Metric icon={<ArrowUpFromLine />} label="Output tokens" value={summary?.tokens.outputTokens || 0} />
+          <Metric icon={<Coins />} label="Actual provider cost" value={money(summary?.costs.actualProviderCost)} />
           <Metric
             icon={<BarChart3 />}
             label="Simulated cost (not billed)"
@@ -430,92 +364,46 @@ export function AdminDashboard() {
 
         {guard && (
           <Card className="flex flex-wrap items-center gap-4 p-5">
-            <ShieldAlert className="text-amber-600" />
+            <ShieldAlert className="text-warning" />
             <div className="min-w-60 flex-1">
-              <h2 className="font-semibold">
-                External provider guardrail (today, UTC)
-              </h2>
-              <p className="text-xs text-slate-500">
-                Installation-wide ceiling across OpenAI, Anthropic, and Gemini.
-                Requests beyond either limit are refused; local models are
-                unaffected. Set via EXTERNAL_DAILY_REQUEST_LIMIT /
-                EXTERNAL_DAILY_TOKEN_LIMIT.
+              <h2 className="font-semibold">External provider guardrail (today, UTC)</h2>
+              <p className="text-xs text-fg-secondary">
+                Installation-wide ceiling across OpenAI, Anthropic, and Gemini. Requests beyond either limit are
+                refused; local models are unaffected. Set via EXTERNAL_DAILY_REQUEST_LIMIT / EXTERNAL_DAILY_TOKEN_LIMIT.
               </p>
             </div>
-            <GuardMeter
-              label="Requests"
-              used={guard.used.requests}
-              limit={guard.limits.requests}
-            />
-            <GuardMeter
-              label="Tokens"
-              used={guard.used.tokens}
-              limit={guard.limits.tokens}
-            />
+            <GuardMeter label="Requests" used={guard.used.requests} limit={guard.limits.requests} />
+            <GuardMeter label="Tokens" used={guard.used.tokens} limit={guard.limits.tokens} />
           </Card>
         )}
 
         <div className="grid gap-6 lg:grid-cols-2">
           <Card className="p-5">
             <h2 className="font-semibold">Requests per day</h2>
-            <p className="mb-4 text-xs text-slate-500">
-              All usage kinds in the selected range
-            </p>
-            <SimpleBarChart
-              data={summary?.daily || []}
-              x="day"
-              y="requests"
-              label="Requests"
-            />
+            <p className="mb-4 text-xs text-fg-secondary">All usage kinds in the selected range</p>
+            <SimpleBarChart data={summary?.daily || []} x="day" y="requests" label="Requests" />
           </Card>
           <Card className="p-5">
             <h2 className="font-semibold">Requests by provider</h2>
-            <p className="mb-4 text-xs text-slate-500">
-              Mock usage is synthetic; Ollama has $0 external API cost
-            </p>
-            <SimpleBarChart
-              data={summary?.byProvider || []}
-              x="provider"
-              y="_count"
-              label="Requests"
-            />
+            <p className="mb-4 text-xs text-fg-secondary">Mock usage is synthetic; Ollama has $0 external API cost</p>
+            <SimpleBarChart data={summary?.byProvider || []} x="provider" y="_count" label="Requests" />
           </Card>
           <Card className="p-5">
             <h2 className="font-semibold">Requests by model</h2>
-            <p className="mb-4 text-xs text-slate-500">
-              Registry display names
-            </p>
-            <SimpleBarChart
-              data={summary?.byModel || []}
-              x="displayName"
-              y="_count"
-              label="Requests"
-            />
+            <p className="mb-4 text-xs text-fg-secondary">Registry display names</p>
+            <SimpleBarChart data={summary?.byModel || []} x="displayName" y="_count" label="Requests" />
           </Card>
           <Card className="p-5">
             <h2 className="font-semibold">Cost and profitability snapshot</h2>
             <div className="mt-5 grid grid-cols-2 gap-4">
-              <Value
-                label="Actual external cost"
-                value={money(summary?.costs.actualProviderCost)}
-              />
-              <Value
-                label="Customer charge"
-                value={money(summary?.costs.customerCharge)}
-              />
-              <Value
-                label="Simulated provider cost"
-                value={money(summary?.costs.simulatedProviderCost)}
-              />
-              <Value
-                label="Simulated customer charge"
-                value={money(summary?.costs.simulatedCustomerCharge)}
-              />
+              <Value label="Actual external cost" value={money(summary?.costs.actualProviderCost)} />
+              <Value label="Customer charge" value={money(summary?.costs.customerCharge)} />
+              <Value label="Simulated provider cost" value={money(summary?.costs.simulatedProviderCost)} />
+              <Value label="Simulated customer charge" value={money(summary?.costs.simulatedCustomerCharge)} />
               <Value
                 label="Actual gross margin"
                 value={money(
-                  Number(summary?.costs.customerCharge || 0) -
-                    Number(summary?.costs.actualProviderCost || 0),
+                  Number(summary?.costs.customerCharge || 0) - Number(summary?.costs.actualProviderCost || 0),
                 )}
               />
               <Value
@@ -531,45 +419,38 @@ export function AdminDashboard() {
                 <Badge
                   key={kind.usageKind}
                   tone={
-                    kind.usageKind === "ACTUAL"
-                      ? "green"
-                      : kind.usageKind === "SYNTHETIC"
-                        ? "purple"
-                        : "amber"
+                    kind.usageKind === 'ACTUAL' ? 'success' : kind.usageKind === 'SYNTHETIC' ? 'primary' : 'warning'
                   }
                 >
-                  {kind.usageKind}: {number(kind._count)} req ·{" "}
-                  {number(kind._sum.totalTokens)} tok
+                  {kind.usageKind}: {number(kind._count)} req · {number(kind._sum.totalTokens)} tok
                 </Badge>
               ))}
             </div>
-            <p className="mt-4 text-xs text-slate-500">
-              Simulation is a planning view only; this POC creates no invoice
-              and processes no payment.
+            <p className="mt-4 text-xs text-fg-secondary">
+              Simulation is a planning view only; this POC creates no invoice and processes no payment.
             </p>
           </Card>
         </div>
 
         <Card className="overflow-hidden">
-          <div className="border-b border-slate-200 p-5 dark:border-slate-800">
+          <div className="border-b border-line-secondary p-5">
             <h2 className="font-semibold">Cost breakdown by model</h2>
-            <p className="text-xs text-slate-500">
-              Snapshots stored on each usage record; later pricing changes never
-              alter these values.
+            <p className="text-xs text-fg-secondary">
+              Snapshots stored on each usage record; later pricing changes never alter these values.
             </p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500 dark:bg-slate-950">
+              <thead className="bg-fill-quaternary text-left text-xs text-fg-secondary uppercase">
                 <tr>
                   {[
-                    "Model",
-                    "Requests",
-                    "Tokens",
-                    "Actual provider cost",
-                    "Customer charge",
-                    "Simulated provider cost",
-                    "Simulated customer charge",
+                    'Model',
+                    'Requests',
+                    'Tokens',
+                    'Actual provider cost',
+                    'Customer charge',
+                    'Simulated provider cost',
+                    'Simulated customer charge',
                   ].map((item) => (
                     <th key={item} className="px-5 py-3">
                       {item}
@@ -577,26 +458,16 @@ export function AdminDashboard() {
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              <tbody className="divide-y divide-line-secondary">
                 {summary?.byModel.map((row) => (
                   <tr key={row.modelId}>
                     <td className="px-5 py-3 font-medium">{row.displayName}</td>
                     <td className="px-5 py-3">{number(row._count)}</td>
-                    <td className="px-5 py-3">
-                      {number(row._sum.totalTokens)}
-                    </td>
-                    <td className="px-5 py-3 font-mono text-xs">
-                      {money(row._sum.actualProviderCost)}
-                    </td>
-                    <td className="px-5 py-3 font-mono text-xs">
-                      {money(row._sum.customerCharge)}
-                    </td>
-                    <td className="px-5 py-3 font-mono text-xs">
-                      {money(row._sum.simulatedProviderCost)}
-                    </td>
-                    <td className="px-5 py-3 font-mono text-xs">
-                      {money(row._sum.simulatedCustomerCharge)}
-                    </td>
+                    <td className="px-5 py-3">{number(row._sum.totalTokens)}</td>
+                    <td className="px-5 py-3 font-mono text-xs">{money(row._sum.actualProviderCost)}</td>
+                    <td className="px-5 py-3 font-mono text-xs">{money(row._sum.customerCharge)}</td>
+                    <td className="px-5 py-3 font-mono text-xs">{money(row._sum.simulatedProviderCost)}</td>
+                    <td className="px-5 py-3 font-mono text-xs">{money(row._sum.simulatedCustomerCharge)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -605,56 +476,43 @@ export function AdminDashboard() {
         </Card>
 
         <Card className="overflow-hidden">
-          <div className="border-b border-slate-200 p-5 dark:border-slate-800">
+          <div className="border-b border-line-secondary p-5">
             <h2 className="font-semibold">Model registry</h2>
-            <p className="text-xs text-slate-500">
-              External models can be enabled only when
-              ENABLE_EXTERNAL_PROVIDERS=true and the server holds the provider
-              credential. Availability reads gateway configuration and never
-              calls a paid provider.
+            <p className="text-xs text-fg-secondary">
+              External models can be enabled only when ENABLE_EXTERNAL_PROVIDERS=true and the server holds the provider
+              credential. Availability reads gateway configuration and never calls a paid provider.
             </p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500 dark:bg-slate-950">
+              <thead className="bg-fill-quaternary text-left text-xs text-fg-secondary uppercase">
                 <tr>
-                  {[
-                    "Model",
-                    "Provider",
-                    "Location",
-                    "Availability",
-                    "Enabled",
-                    "Allowed roles",
-                  ].map((item) => (
+                  {['Model', 'Provider', 'Location', 'Availability', 'Enabled', 'Allowed roles'].map((item) => (
                     <th key={item} className="px-5 py-3">
                       {item}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              <tbody className="divide-y divide-line-secondary">
                 {models.map((model) => (
                   <tr key={model.id}>
                     <td className="px-5 py-4 font-medium">
                       {model.displayName}
-                      <div className="font-mono text-[11px] text-slate-400">
-                        {model.id}
-                      </div>
+                      <div className="font-mono text-[11px] text-fg-tertiary">{model.id}</div>
                     </td>
                     <td className="px-5 py-4">{model.provider}</td>
                     <td className="px-5 py-4">
-                      <Badge tone={model.local ? "green" : "amber"}>
-                        {model.local ? "LOCAL" : "EXTERNAL"}
-                      </Badge>
+                      <Badge tone={model.local ? 'success' : 'warning'}>{model.local ? 'LOCAL' : 'EXTERNAL'}</Badge>
                     </td>
                     <td className="px-5 py-4">
                       <Badge
                         tone={
-                          model.status === "Available"
-                            ? "green"
-                            : model.status === "Ready (disabled)"
-                              ? "neutral"
-                              : "red"
+                          model.status === 'Available'
+                            ? 'success'
+                            : model.status === 'Ready (disabled)'
+                              ? 'neutral'
+                              : 'error'
                         }
                       >
                         {model.status}
@@ -662,30 +520,25 @@ export function AdminDashboard() {
                     </td>
                     <td className="px-5 py-4">
                       <button
-                        aria-label={`${model.enabled ? "Disable" : "Enable"} ${model.displayName}`}
+                        aria-label={`${model.enabled ? 'Disable' : 'Enable'} ${model.displayName}`}
                         disabled={!model.enabled && !model.configured}
                         title={
                           !model.configured
-                            ? "Provider is not explicitly enabled and configured on the server"
+                            ? 'Provider is not explicitly enabled and configured on the server'
                             : undefined
                         }
-                        onClick={() =>
-                          updateModel(model, { enabled: !model.enabled })
-                        }
-                        className={`h-6 w-11 rounded-full p-1 transition disabled:cursor-not-allowed disabled:opacity-40 ${model.enabled ? "bg-brand" : "bg-slate-300 dark:bg-slate-700"}`}
+                        onClick={() => updateModel(model, { enabled: !model.enabled })}
+                        className={`h-6 w-11 rounded-full p-1 transition disabled:cursor-not-allowed disabled:opacity-40 ${model.enabled ? 'bg-primary' : 'bg-fill'}`}
                       >
                         <span
-                          className={`block h-4 w-4 rounded-full bg-white transition ${model.enabled ? "translate-x-5" : ""}`}
+                          className={`block h-4 w-4 rounded-full bg-on-primary transition ${model.enabled ? 'translate-x-5' : ''}`}
                         />
                       </button>
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex gap-3">
-                        {["USER", "ADMIN"].map((role) => (
-                          <label
-                            key={role}
-                            className="flex items-center gap-1 text-xs"
-                          >
+                        {['USER', 'ADMIN'].map((role) => (
+                          <label key={role} className="flex items-center gap-1 text-xs">
                             <input
                               type="checkbox"
                               checked={model.allowedRoles.includes(role)}
@@ -693,9 +546,7 @@ export function AdminDashboard() {
                                 updateModel(model, {
                                   allowedRoles: event.target.checked
                                     ? [...model.allowedRoles, role]
-                                    : model.allowedRoles.filter(
-                                        (item) => item !== role,
-                                      ),
+                                    : model.allowedRoles.filter((item) => item !== role),
                                 })
                               }
                             />
@@ -712,26 +563,25 @@ export function AdminDashboard() {
         </Card>
 
         <Card className="overflow-hidden">
-          <div className="border-b border-slate-200 p-5 dark:border-slate-800">
+          <div className="border-b border-line-secondary p-5">
             <h2 className="font-semibold">Current model prices</h2>
-            <p className="text-xs text-slate-500">
-              Latest version per model, USD per one million tokens. Select a row
-              to edit.
+            <p className="text-xs text-fg-secondary">
+              Latest version per model, USD per one million tokens. Select a row to edit.
             </p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 uppercase text-slate-500 dark:bg-slate-950">
+              <thead className="bg-fill-quaternary text-fg-secondary uppercase">
                 <tr>
                   {[
-                    "Model",
-                    "Version",
-                    "Strategy",
-                    "Provider in / out",
-                    "Customer in / out",
-                    "Markup",
-                    "Simulation in / out",
-                    "Effective",
+                    'Model',
+                    'Version',
+                    'Strategy',
+                    'Provider in / out',
+                    'Customer in / out',
+                    'Markup',
+                    'Simulation in / out',
+                    'Effective',
                   ].map((item) => (
                     <th key={item} className="px-5 py-3">
                       {item}
@@ -739,7 +589,7 @@ export function AdminDashboard() {
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              <tbody className="divide-y divide-line-secondary">
                 {pricing.map((item) => {
                   const version = item.versions[0];
                   if (!version) return null;
@@ -748,29 +598,24 @@ export function AdminDashboard() {
                     <tr
                       key={item.id}
                       onClick={() => setSelectedModel(item.modelId)}
-                      className={`cursor-pointer ${item.modelId === selectedModel ? "bg-violet-50 dark:bg-violet-950/40" : "hover:bg-slate-50 dark:hover:bg-slate-900"}`}
+                      className={`cursor-pointer ${item.modelId === selectedModel ? 'bg-primary-soft' : 'hover:bg-fill-quaternary'}`}
                     >
-                      <td className="px-5 py-3 font-medium">
-                        {item.model.displayName}
-                      </td>
+                      <td className="px-5 py-3 font-medium">{item.model.displayName}</td>
                       <td className="px-5 py-3">v{version.version}</td>
                       <td className="px-5 py-3">{version.strategy}</td>
                       <td className="px-5 py-3 font-mono">
-                        {version.providerInputRate} /{" "}
-                        {version.providerOutputRate}
+                        {version.providerInputRate} / {version.providerOutputRate}
                       </td>
                       <td className="px-5 py-3 font-mono">
-                        {version.customerInputRate} /{" "}
-                        {version.customerOutputRate}
+                        {version.customerInputRate} / {version.customerOutputRate}
                       </td>
                       <td className="px-5 py-3">{version.markupPercent}%</td>
                       <td className="px-5 py-3 font-mono">
-                        {version.simulationInputRate} /{" "}
-                        {version.simulationOutputRate}
+                        {version.simulationInputRate} / {version.simulationOutputRate}
                       </td>
                       <td className="px-5 py-3">
-                        {new Date(version.effectiveAt).toLocaleString()}{" "}
-                        {scheduled && <Badge tone="amber">scheduled</Badge>}
+                        {new Date(version.effectiveAt).toLocaleString()}{' '}
+                        {scheduled && <Badge tone="warning">scheduled</Badge>}
                       </td>
                     </tr>
                   );
@@ -784,15 +629,11 @@ export function AdminDashboard() {
           <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="font-semibold">Pricing management</h2>
-              <p className="text-xs text-slate-500">
-                Rates are per one million tokens. Saving always creates a new
-                version.
+              <p className="text-xs text-fg-secondary">
+                Rates are per one million tokens. Saving always creates a new version.
               </p>
             </div>
-            <Select
-              value={selectedModel}
-              onChange={(event) => setSelectedModel(event.target.value)}
-            >
+            <Select value={selectedModel} onChange={(event) => setSelectedModel(event.target.value)}>
               {models.map((model) => (
                 <option key={model.id} value={model.id}>
                   {model.displayName}
@@ -813,12 +654,7 @@ export function AdminDashboard() {
                     })
                   }
                 >
-                  {[
-                    "PASS_THROUGH",
-                    "PERCENTAGE_MARKUP",
-                    "FIXED_RATE",
-                    "SIMULATION",
-                  ].map((value) => (
+                  {['PASS_THROUGH', 'PERCENTAGE_MARKUP', 'FIXED_RATE', 'SIMULATION'].map((value) => (
                     <option key={value}>{value}</option>
                   ))}
                 </Select>
@@ -835,7 +671,7 @@ export function AdminDashboard() {
               />
               <Rate
                 label="Cached input"
-                value={form.cachedInputRate || "0"}
+                value={form.cachedInputRate || '0'}
                 set={(value) => setForm({ ...form, cachedInputRate: value })}
               />
               <Rate
@@ -861,16 +697,12 @@ export function AdminDashboard() {
               <Rate
                 label="Simulation input"
                 value={form.simulationInputRate}
-                set={(value) =>
-                  setForm({ ...form, simulationInputRate: value })
-                }
+                set={(value) => setForm({ ...form, simulationInputRate: value })}
               />
               <Rate
                 label="Simulation output"
                 value={form.simulationOutputRate}
-                set={(value) =>
-                  setForm({ ...form, simulationOutputRate: value })
-                }
+                set={(value) => setForm({ ...form, simulationOutputRate: value })}
               />
               <Field label="Currency">
                 <Input
@@ -887,10 +719,8 @@ export function AdminDashboard() {
               <Field label="Effective date (optional)">
                 <Input
                   type="datetime-local"
-                  value={form.effectiveAt || ""}
-                  onChange={(event) =>
-                    setForm({ ...form, effectiveAt: event.target.value })
-                  }
+                  value={form.effectiveAt || ''}
+                  onChange={(event) => setForm({ ...form, effectiveAt: event.target.value })}
                 />
               </Field>
               <div className="sm:col-span-2 lg:col-span-3">
@@ -899,7 +729,7 @@ export function AdminDashboard() {
                 </Button>
               </div>
             </div>
-            <div className="rounded-2xl bg-slate-50 p-5 dark:bg-slate-950">
+            <div className="rounded-brand-lg bg-fill-quaternary p-5">
               <h3 className="text-sm font-semibold">Charge preview</h3>
               <div className="mt-3 grid grid-cols-2 gap-3">
                 <Field label="Input tokens">
@@ -911,10 +741,7 @@ export function AdminDashboard() {
                     onChange={(event) =>
                       setForm({
                         ...form,
-                        inputTokens: Math.max(
-                          0,
-                          Math.trunc(Number(event.target.value) || 0),
-                        ),
+                        inputTokens: Math.max(0, Math.trunc(Number(event.target.value) || 0)),
                       })
                     }
                   />
@@ -928,49 +755,26 @@ export function AdminDashboard() {
                     onChange={(event) =>
                       setForm({
                         ...form,
-                        outputTokens: Math.max(
-                          0,
-                          Math.trunc(Number(event.target.value) || 0),
-                        ),
+                        outputTokens: Math.max(0, Math.trunc(Number(event.target.value) || 0)),
                       })
                     }
                   />
                 </Field>
               </div>
-              <Button
-                variant="secondary"
-                className="mt-3 w-full"
-                onClick={previewPrice}
-              >
+              <Button variant="secondary" className="mt-3 w-full" onClick={previewPrice}>
                 Preview charge
               </Button>
               {preview ? (
                 <div className="mt-4 space-y-3">
-                  <Value
-                    label="Actual provider cost"
-                    value={money(preview.actualProviderCost)}
-                  />
-                  <Value
-                    label="Actual customer charge"
-                    value={money(preview.customerCharge)}
-                  />
-                  <Value
-                    label="Simulated provider cost"
-                    value={money(preview.simulatedProviderCost)}
-                  />
-                  <Value
-                    label="Simulated customer charge"
-                    value={money(preview.simulatedCustomerCharge)}
-                  />
-                  <Value
-                    label="Gross margin (actual)"
-                    value={money(preview.grossMargin)}
-                  />
+                  <Value label="Actual provider cost" value={money(preview.actualProviderCost)} />
+                  <Value label="Actual customer charge" value={money(preview.customerCharge)} />
+                  <Value label="Simulated provider cost" value={money(preview.simulatedProviderCost)} />
+                  <Value label="Simulated customer charge" value={money(preview.simulatedCustomerCharge)} />
+                  <Value label="Gross margin (actual)" value={money(preview.grossMargin)} />
                 </div>
               ) : (
-                <p className="mt-3 text-xs text-slate-500">
-                  Preview compares clearly labeled actual and simulation results
-                  without saving anything.
+                <p className="mt-3 text-xs text-fg-secondary">
+                  Preview compares clearly labeled actual and simulation results without saving anything.
                 </p>
               )}
             </div>
@@ -979,17 +783,17 @@ export function AdminDashboard() {
             <h3 className="text-sm font-semibold">Version history</h3>
             <div className="mt-2 overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="text-slate-500">
+                <thead className="text-fg-secondary">
                   <tr>
                     {[
-                      "Version",
-                      "Effective",
-                      "Strategy",
-                      "Provider in/out",
-                      "Customer in/out",
-                      "Markup",
-                      "Simulation in/out",
-                      "Created by",
+                      'Version',
+                      'Effective',
+                      'Strategy',
+                      'Provider in/out',
+                      'Customer in/out',
+                      'Markup',
+                      'Simulation in/out',
+                      'Created by',
                     ].map((item) => (
                       <th key={item} className="py-2 pr-4">
                         {item}
@@ -999,33 +803,21 @@ export function AdminDashboard() {
                 </thead>
                 <tbody>
                   {selectedPricing?.versions.map((version) => (
-                    <tr
-                      key={version.id}
-                      className="border-t border-slate-100 dark:border-slate-800"
-                    >
-                      <td className="py-3 pr-4 font-semibold">
-                        v{version.version}
-                      </td>
-                      <td className="py-3 pr-4">
-                        {new Date(version.effectiveAt).toLocaleString()}
-                      </td>
+                    <tr key={version.id} className="border-t border-line-secondary">
+                      <td className="py-3 pr-4 font-semibold">v{version.version}</td>
+                      <td className="py-3 pr-4">{new Date(version.effectiveAt).toLocaleString()}</td>
                       <td className="py-3 pr-4">{version.strategy}</td>
                       <td className="py-3 pr-4">
-                        {version.providerInputRate} /{" "}
-                        {version.providerOutputRate}
+                        {version.providerInputRate} / {version.providerOutputRate}
                       </td>
                       <td className="py-3 pr-4">
-                        {version.customerInputRate} /{" "}
-                        {version.customerOutputRate}
+                        {version.customerInputRate} / {version.customerOutputRate}
                       </td>
                       <td className="py-3 pr-4">{version.markupPercent}%</td>
                       <td className="py-3 pr-4">
-                        {version.simulationInputRate} /{" "}
-                        {version.simulationOutputRate}
+                        {version.simulationInputRate} / {version.simulationOutputRate}
                       </td>
-                      <td className="py-3 pr-4">
-                        {version.createdBy || "system"}
-                      </td>
+                      <td className="py-3 pr-4">{version.createdBy || 'system'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1035,15 +827,13 @@ export function AdminDashboard() {
         </Card>
 
         <Card className="overflow-hidden">
-          <div className="border-b border-slate-200 p-5 dark:border-slate-800">
+          <div className="border-b border-line-secondary p-5">
             <h2 className="font-semibold">User model permissions</h2>
-            <p className="text-xs text-slate-500">
-              An explicit choice overrides the model’s role defaults.
-            </p>
+            <p className="text-xs text-fg-secondary">An explicit choice overrides the model’s role defaults.</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-left text-xs uppercase text-slate-500 dark:bg-slate-950">
+              <thead className="bg-fill-quaternary text-left text-xs text-fg-secondary uppercase">
                 <tr>
                   <th className="px-5 py-3">User</th>
                   {models.map((model) => (
@@ -1053,39 +843,29 @@ export function AdminDashboard() {
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              <tbody className="divide-y divide-line-secondary">
                 {users.map((user) => (
                   <tr key={user.id}>
                     <td className="px-5 py-4">
                       <span className="font-medium">{user.username}</span>
-                      <div className="text-xs text-slate-400">
-                        {user.roles.map((role) => role.role.name).join(", ")}
+                      <div className="text-xs text-fg-tertiary">
+                        {user.roles.map((role) => role.role.name).join(', ')}
                       </div>
                     </td>
                     {models.map((model) => {
-                      const explicit = user.modelPermissions.find(
-                        (item) => item.modelId === model.id,
-                      );
+                      const explicit = user.modelPermissions.find((item) => item.modelId === model.id);
                       const checked =
                         explicit?.allowed ??
-                        model.allowedRoles.some((role) =>
-                          user.roles.some((value) => value.role.name === role),
-                        );
+                        model.allowedRoles.some((role) => user.roles.some((value) => value.role.name === role));
                       return (
                         <td key={model.id} className="px-5 py-4">
                           <label className="inline-flex items-center gap-2 text-xs">
                             <input
                               type="checkbox"
                               checked={checked}
-                              onChange={(event) =>
-                                permission(
-                                  user.id,
-                                  model.id,
-                                  event.target.checked,
-                                )
-                              }
+                              onChange={(event) => permission(user.id, model.id, event.target.checked)}
                             />
-                            {explicit ? "Explicit" : "Role default"}
+                            {explicit ? 'Explicit' : 'Role default'}
                           </label>
                         </td>
                       );
@@ -1098,52 +878,39 @@ export function AdminDashboard() {
         </Card>
 
         <Card className="overflow-hidden">
-          <div className="border-b border-slate-200 p-5 dark:border-slate-800">
+          <div className="border-b border-line-secondary p-5">
             <h2 className="font-semibold">Audit log</h2>
-            <p className="text-xs text-slate-500">
-              Latest 100 model, permission, and pricing changes. Full
-              before/after snapshots are stored in PostgreSQL.
+            <p className="text-xs text-fg-secondary">
+              Latest 100 model, permission, and pricing changes. Full before/after snapshots are stored in PostgreSQL.
             </p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 uppercase text-slate-500 dark:bg-slate-950">
+              <thead className="bg-fill-quaternary text-fg-secondary uppercase">
                 <tr>
-                  {["Time", "Actor", "Action", "Entity", "Change"].map(
-                    (item) => (
-                      <th key={item} className="px-5 py-3">
-                        {item}
-                      </th>
-                    ),
-                  )}
+                  {['Time', 'Actor', 'Action', 'Entity', 'Change'].map((item) => (
+                    <th key={item} className="px-5 py-3">
+                      {item}
+                    </th>
+                  ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              <tbody className="divide-y divide-line-secondary">
                 {audit.map((entry) => (
                   <tr key={entry.id}>
-                    <td className="whitespace-nowrap px-5 py-3">
-                      {new Date(entry.createdAt).toLocaleString()}
-                    </td>
-                    <td className="px-5 py-3">
-                      {entry.actor?.username || "system"}
-                    </td>
+                    <td className="px-5 py-3 whitespace-nowrap">{new Date(entry.createdAt).toLocaleString()}</td>
+                    <td className="px-5 py-3">{entry.actor?.username || 'system'}</td>
                     <td className="px-5 py-3 font-mono">{entry.action}</td>
                     <td className="px-5 py-3">
                       {entry.entityType}
-                      <div className="font-mono text-[10px] text-slate-400">
-                        {entry.entityId}
-                      </div>
+                      <div className="font-mono text-[10px] text-fg-tertiary">{entry.entityId}</div>
                     </td>
                     <td className="px-5 py-3">{auditDetail(entry)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {!audit.length && (
-              <p className="p-5 text-xs text-slate-500">
-                No changes recorded yet.
-              </p>
-            )}
+            {!audit.length && <p className="p-5 text-xs text-fg-secondary">No changes recorded yet.</p>}
           </div>
         </Card>
         <WorkspaceControls />
@@ -1151,99 +918,55 @@ export function AdminDashboard() {
     </Shell>
   );
 }
-function Metric({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string | number;
-}) {
+function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; value: string | number }) {
   return (
     <Card className="p-5">
-      <div className="mb-3 inline-flex rounded-xl bg-violet-50 p-2 text-brand dark:bg-violet-950">
-        {icon}
-      </div>
-      <div className="text-2xl font-semibold">
-        {typeof value === "number" ? value.toLocaleString() : value}
-      </div>
-      <div className="text-xs text-slate-500">{label}</div>
+      <div className="mb-3 inline-flex rounded-brand bg-primary-soft p-2 text-primary">{icon}</div>
+      <div className="text-2xl font-semibold">{typeof value === 'number' ? value.toLocaleString() : value}</div>
+      <div className="text-xs text-fg-secondary">{label}</div>
     </Card>
   );
 }
-function GuardMeter({
-  label,
-  used,
-  limit,
-}: {
-  label: string;
-  used: number;
-  limit: number;
-}) {
+function GuardMeter({ label, used, limit }: { label: string; used: number; limit: number }) {
   const ratio = limit ? Math.min(1, used / limit) : 1;
   return (
     <div className="w-48">
       <div className="flex justify-between text-xs">
-        <span className="text-slate-500">{label}</span>
+        <span className="text-fg-secondary">{label}</span>
         <span className="font-mono">
           {used.toLocaleString()} / {limit.toLocaleString()}
         </span>
       </div>
-      <div className="mt-1 h-2 rounded-full bg-slate-100 dark:bg-slate-800">
+      <div className="mt-1 h-2 rounded-full bg-fill-secondary">
         <div
-          className={`h-2 rounded-full ${ratio >= 1 ? "bg-red-500" : ratio >= 0.8 ? "bg-amber-500" : "bg-emerald-500"}`}
+          className={`h-2 rounded-full ${ratio >= 1 ? 'bg-error' : ratio >= 0.8 ? 'bg-warning' : 'bg-success'}`}
           style={{ width: `${ratio * 100}%` }}
         />
       </div>
-      {ratio >= 1 && (
-        <p className="mt-1 text-[11px] text-red-600">
-          Limit reached — external requests blocked
-        </p>
-      )}
+      {ratio >= 1 && <p className="mt-1 text-[11px] text-error">Limit reached — external requests blocked</p>}
     </div>
   );
 }
 function Value({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-      <p className="text-[11px] text-slate-500">{label}</p>
+    <div className="rounded-brand border border-line-secondary bg-surface p-3">
+      <p className="text-[11px] text-fg-secondary">{label}</p>
       <p className="mt-1 font-mono text-sm font-semibold">{value}</p>
     </div>
   );
 }
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-xs font-medium text-slate-500">{label}</span>
+      <span className="text-xs font-medium text-fg-secondary">{label}</span>
       {children}
     </label>
   );
 }
-function Rate({
-  label,
-  value,
-  set,
-}: {
-  label: string;
-  value: string;
-  set: (value: string) => void;
-}) {
+function Rate({ label, value, set }: { label: string; value: string; set: (value: string) => void }) {
   return (
     <Field label={label}>
-      <Input
-        type="number"
-        min="0"
-        step="0.000001"
-        value={value}
-        onChange={(event) => set(event.target.value)}
-      />
+      <Input type="number" min="0" step="0.000001" value={value} onChange={(event) => set(event.target.value)} />
     </Field>
   );
 }

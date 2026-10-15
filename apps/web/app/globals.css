@@ -1,50 +1,115 @@
-@import "tailwindcss";
+/* Layer order: AntD (and Ant Design X, which uses its own `antdx` layer) sit above Tailwind's
+   preflight but below utilities, so `className="mt-4"` on them still wins. Any layer missing
+   from this list would land after `utilities` and override it. */
+@layer theme, base, antd, antdx, components, utilities;
+
+@import 'tailwindcss';
+
 @custom-variant dark (&:where(.dark, .dark *));
-@theme {
-  --color-ink: #101828;
-  --color-brand: #6d5dfc;
-  --color-brand-dark: #5846ef;
+
+/* Colors, radii and the font come from the active brand's AntD tokens (theme/css-vars.ts),
+   so they follow the brand and the light/dark mode. */
+@theme inline {
+  --color-primary: var(--app-color-primary);
+  --color-primary-hover: var(--app-color-primary-hover);
+  --color-primary-active: var(--app-color-primary-active);
+  --color-primary-soft: var(--app-color-primary-bg);
+  --color-primary-soft-hover: var(--app-color-primary-bg-hover);
+  --color-primary-border: var(--app-color-primary-border);
+  --color-primary-text: var(--app-color-primary-text);
+  --color-on-primary: var(--app-color-text-light-solid);
+
+  --color-layout: var(--app-color-bg-layout);
+  --color-surface: var(--app-color-bg-container);
+  --color-elevated: var(--app-color-bg-elevated);
+  --color-sider: var(--app-color-bg-sider);
+  --color-header: var(--app-color-bg-header);
+
+  --color-fill: var(--app-color-fill);
+  --color-fill-secondary: var(--app-color-fill-secondary);
+  --color-fill-tertiary: var(--app-color-fill-tertiary);
+  --color-fill-quaternary: var(--app-color-fill-quaternary);
+
+  --color-line: var(--app-color-border);
+  --color-line-secondary: var(--app-color-border-secondary);
+
+  --color-fg: var(--app-color-text);
+  --color-fg-secondary: var(--app-color-text-secondary);
+  --color-fg-tertiary: var(--app-color-text-tertiary);
+  --color-fg-quaternary: var(--app-color-text-quaternary);
+
+  --color-success: var(--app-color-success);
+  --color-success-soft: var(--app-color-success-bg);
+  --color-success-text: var(--app-color-success-text);
+  --color-warning: var(--app-color-warning);
+  --color-warning-soft: var(--app-color-warning-bg);
+  --color-warning-text: var(--app-color-warning-text);
+  --color-error: var(--app-color-error);
+  --color-error-hover: var(--app-color-error-hover);
+  --color-error-soft: var(--app-color-error-bg);
+  --color-error-border: var(--app-color-error-border);
+  --color-error-text: var(--app-color-error-text);
+  --color-info: var(--app-color-info);
+
+  --radius-brand-sm: var(--app-radius-sm);
+  --radius-brand: var(--app-radius);
+  --radius-brand-lg: var(--app-radius-lg);
+
+  --font-sans: var(--app-font-sans);
 }
 
+@layer base {
+  html {
+    color-scheme: light;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--app-color-bg-layout);
+    color: var(--app-color-text);
+    font-family: var(--font-sans);
+  }
+
+  /* Thai needs more room for vowels and tone marks above and below the line, including in
+     text set with Tailwind's size utilities, which carry their own line heights. */
+  :root:lang(th) {
+    line-height: 1.7;
+    --text-xs--line-height: 1.7;
+    --text-sm--line-height: 1.7;
+    --text-base--line-height: 1.75;
+    --text-lg--line-height: 1.7;
+    --text-xl--line-height: 1.6;
+    --text-2xl--line-height: 1.5;
+    --text-3xl--line-height: 1.4;
+  }
+
+  ::selection {
+    background-color: color-mix(in srgb, var(--app-color-primary) 25%, transparent);
+  }
+
+  .dark ::selection {
+    background-color: color-mix(in srgb, var(--app-color-primary) 55%, transparent);
+  }
+}
+
+/* Recharts reads these through components/ui/charts.tsx. */
 :root {
-  color-scheme: light;
-  --chart-bar: #6d5dfc;
-  --chart-grid: #e2e8f0;
-  --chart-ink: #64748b;
-  --chart-ink-strong: #172033;
-  --chart-tooltip-bg: #ffffff;
-  --chart-cursor: rgba(109, 93, 252, 0.08);
+  --chart-bar: var(--app-color-primary);
+  --chart-grid: var(--app-color-border-secondary);
+  --chart-ink: var(--app-color-text-secondary);
+  --chart-ink-strong: var(--app-color-text);
+  --chart-tooltip-bg: var(--app-color-bg-elevated);
+  --chart-cursor: var(--app-color-primary-bg);
 }
-.dark {
-  color-scheme: dark;
-  --chart-bar: #8b7dff;
-  --chart-grid: #1e293b;
-  --chart-ink: #94a3b8;
-  --chart-ink-strong: #eef1f7;
-  --chart-tooltip-bg: #0f172a;
-  --chart-cursor: rgba(139, 125, 255, 0.12);
-}
-* {
-  box-sizing: border-box;
-}
-body {
-  margin: 0;
-  background: #f7f8fc;
-  color: #172033;
-}
-.dark body {
-  background: #0d1017;
-  color: #eef1f7;
-}
-::selection {
-  background: #dcd8ff;
-}
-.dark ::selection {
-  background: #4c3ec4;
-}
+
+/* Markdown replies. Unlayered on purpose so they keep winning over the highlight.js theme.
+   Code blocks stay dark in both modes; their colors match the github-dark highlight theme. */
 .prose pre {
   overflow-x: auto;
-  border-radius: 12px;
+  border-radius: var(--app-radius);
   background: #0d1117;
   color: #e6edf3;
   padding: 1rem;
@@ -54,8 +119,8 @@ body {
   background: transparent;
 }
 .prose code:not(pre code) {
-  border-radius: 5px;
-  background: rgba(109, 93, 252, 0.12);
+  border-radius: var(--app-radius-sm);
+  background: color-mix(in srgb, var(--app-color-primary) 12%, transparent);
   padding: 0.1rem 0.3rem;
 }
 .prose p {
@@ -66,10 +131,11 @@ body {
   padding-left: 1.25rem;
 }
 .prose a {
-  color: #6d5dfc;
+  color: var(--app-color-primary);
   text-decoration: underline;
 }
 
+/* Live usage page (features/usage/live-usage-page.tsx). */
 @keyframes live-rise {
   from {
     transform: scaleY(0.05);
@@ -92,7 +158,7 @@ body {
 @keyframes live-enter {
   from {
     transform: translateY(-8px);
-    background: rgba(109, 93, 252, 0.15);
+    background: color-mix(in srgb, var(--app-color-primary) 15%, transparent);
     opacity: 0.35;
   }
   to {
