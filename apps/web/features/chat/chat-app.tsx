@@ -7,7 +7,8 @@ import remarkGfm from 'remark-gfm';
 import { useApi } from '@/lib/api';
 import type { Conversation, Message, Model } from '@/lib/types';
 import { Shell } from '@/components/layout/shell';
-import { Badge, Button, Card, Select, Textarea, cn } from '@/components/ui/primitives';
+import { Badge, Button, Card, Select, Textarea } from '@/components/ui/primitives';
+import { cn } from '@/lib/cn';
 
 export function ChatApp() {
   const api = useApi();
@@ -190,12 +191,12 @@ export function ChatApp() {
           <Plus size={17} /> New chat
         </Button>
         <div className="relative">
-          <Search className="absolute top-2.5 left-3 text-slate-400" size={16} />
+          <Search className="absolute top-2.5 left-3 text-fg-tertiary" size={16} />
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search conversations"
-            className="h-10 w-full rounded-xl bg-slate-100 pr-3 pl-9 text-sm outline-none focus:ring-2 focus:ring-brand/30 dark:bg-slate-900"
+            className="h-10 w-full rounded-brand bg-fill-tertiary pr-3 pl-9 text-sm outline-none focus:ring-2 focus:ring-primary/30"
           />
         </div>
       </div>
@@ -204,30 +205,28 @@ export function ChatApp() {
           <div
             key={conversation.id}
             className={cn(
-              'group flex items-center rounded-xl pr-1',
-              active?.id === conversation.id
-                ? 'bg-violet-50 dark:bg-violet-950/50'
-                : 'hover:bg-slate-50 dark:hover:bg-slate-900',
+              'group flex items-center rounded-brand pr-1',
+              active?.id === conversation.id ? 'bg-primary-soft' : 'hover:bg-fill-quaternary',
             )}
           >
             <button
               onClick={() => open(conversation.id)}
               className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left text-sm"
             >
-              <MessageSquare size={15} className="shrink-0 text-slate-400" />
+              <MessageSquare size={15} className="shrink-0 text-fg-tertiary" />
               <span className="truncate">{conversation.title}</span>
             </button>
             <button
               title="Rename"
               onClick={() => rename(conversation)}
-              className="hidden p-1 text-slate-400 group-hover:block hover:text-brand"
+              className="hidden p-1 text-fg-tertiary group-hover:block hover:text-primary"
             >
               <Pencil size={14} />
             </button>
             <button
               title="Delete"
               onClick={() => remove(conversation)}
-              className="hidden p-1 text-slate-400 group-hover:block hover:text-red-600"
+              className="hidden p-1 text-fg-tertiary group-hover:block hover:text-error"
             >
               <Trash2 size={14} />
             </button>
@@ -240,10 +239,10 @@ export function ChatApp() {
   return (
     <Shell active="chat" sidebar={sidebar}>
       <div className="flex h-full flex-col">
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 dark:border-slate-800 dark:bg-slate-950">
+        <header className="flex h-16 shrink-0 items-center justify-between border-b border-line-secondary bg-header px-6">
           <div>
             <h1 className="font-semibold">{active?.title || 'New conversation'}</h1>
-            <p className="text-xs text-slate-500">Private to your company account</p>
+            <p className="text-xs text-fg-secondary">Private to your company account</p>
           </div>
           <div className="flex items-center gap-3">
             <Select value={modelId} onChange={(event) => setModelId(event.target.value)}>
@@ -255,7 +254,7 @@ export function ChatApp() {
               ))}
             </Select>
             {selectedModel && (
-              <Badge tone={selectedModel.available ? 'green' : 'red'}>
+              <Badge tone={selectedModel.available ? 'success' : 'error'}>
                 {selectedModel.local ? 'LOCAL' : 'EXTERNAL'} · {selectedModel.status}
               </Badge>
             )}
@@ -270,19 +269,15 @@ export function ChatApp() {
             <div ref={bottomRef} />
           </div>
         </section>
-        <footer className="shrink-0 bg-gradient-to-t from-[#f7f8fc] via-[#f7f8fc] p-5 pt-2 dark:from-[#0d1017] dark:via-[#0d1017]">
+        <footer className="shrink-0 bg-gradient-to-t from-layout via-layout p-5 pt-2">
           <div className="mx-auto max-w-3xl">
             {selectedModel && !selectedModel.local && (
-              <div className="mb-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/60 dark:text-amber-200">
+              <div className="mb-2 rounded-brand bg-warning-soft px-3 py-2 text-xs text-warning-text">
                 External model: messages in this conversation are sent to {selectedModel.provider} under that provider’s
                 data terms. Free-tier providers may use them to improve their products — do not send confidential data.
               </div>
             )}
-            {error && (
-              <div className="mb-2 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/60 dark:text-red-300">
-                {error}
-              </div>
-            )}
+            {error && <div className="mb-2 rounded-brand bg-error-soft px-3 py-2 text-sm text-error-text">{error}</div>}
             <Card className="flex items-end gap-2 p-2 shadow-lg">
               <Textarea
                 rows={1}
@@ -318,7 +313,7 @@ export function ChatApp() {
                 </Button>
               )}
             </Card>
-            <p className="mt-2 text-center text-[11px] text-slate-500">
+            <p className="mt-2 text-center text-[11px] text-fg-secondary">
               AI responses may be inaccurate. Local inference still uses compute, memory, disk, and electricity.
             </p>
           </div>
@@ -331,11 +326,11 @@ export function ChatApp() {
 function EmptyState({ models }: { models: Model[] }) {
   return (
     <div className="py-20 text-center">
-      <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-violet-100 text-brand dark:bg-violet-950">
+      <div className="mx-auto grid h-14 w-14 place-items-center rounded-brand-lg bg-primary-soft text-primary">
         <MessageSquare />
       </div>
       <h2 className="mt-5 text-2xl font-semibold">How can I help?</h2>
-      <p className="mx-auto mt-2 max-w-md text-sm text-slate-500">
+      <p className="mx-auto mt-2 max-w-md text-sm text-fg-secondary">
         Choose an available model and start a private conversation. {models.filter((model) => model.available).length}{' '}
         model(s) available.
       </p>
@@ -349,14 +344,14 @@ function MessageBubble({ message }: { message: Message }) {
     <div className={cn('flex', mine ? 'justify-end' : 'justify-start')}>
       <div
         className={cn(
-          'group relative max-w-[86%] rounded-2xl px-4 py-3 text-sm leading-6',
-          mine ? 'bg-brand text-white' : 'border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900',
+          'group relative max-w-[86%] rounded-brand-lg px-4 py-3 text-sm leading-6',
+          mine ? 'bg-primary text-on-primary' : 'border border-line-secondary bg-surface',
         )}
       >
         {mine ? (
           <div className="whitespace-pre-wrap">{message.content}</div>
         ) : (
-          <div className="prose dark:prose-invert max-w-none">
+          <div className="prose max-w-none">
             <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
               {message.content || (message.status === 'STREAMING' ? '…' : '')}
             </ReactMarkdown>
@@ -369,7 +364,7 @@ function MessageBubble({ message }: { message: Message }) {
               setCopied(true);
               setTimeout(() => setCopied(false), 1200);
             }}
-            className="absolute top-1 -right-9 hidden rounded-lg p-2 text-slate-400 group-hover:block hover:bg-slate-100 dark:hover:bg-slate-800"
+            className="absolute top-1 -right-9 hidden rounded-brand-sm p-2 text-fg-tertiary group-hover:block hover:bg-fill-tertiary"
             title="Copy response"
           >
             {copied ? <Check size={15} /> : <Copy size={15} />}
@@ -379,7 +374,7 @@ function MessageBubble({ message }: { message: Message }) {
           <div
             className={cn(
               'mt-2 flex items-center gap-1 text-[11px]',
-              mine ? 'text-white/70' : message.status === 'ERROR' ? 'text-red-500' : 'text-slate-400',
+              mine ? 'text-on-primary/70' : message.status === 'ERROR' ? 'text-error' : 'text-fg-tertiary',
             )}
           >
             {message.status === 'STREAMING' && <LoaderCircle className="animate-spin" size={11} />}{' '}

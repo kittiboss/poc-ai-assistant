@@ -5,12 +5,7 @@ import type {
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from 'react';
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
+import { cn } from '@/lib/cn';
 
 export function Button({
   className,
@@ -20,12 +15,11 @@ export function Button({
   return (
     <button
       className={cn(
-        'inline-flex h-10 items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50',
-        variant === 'primary' && 'bg-brand text-white shadow-sm hover:bg-brand-dark',
-        variant === 'secondary' &&
-          'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200',
-        variant === 'ghost' && 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800',
-        variant === 'danger' && 'bg-red-600 text-white hover:bg-red-700',
+        'inline-flex h-10 items-center justify-center gap-2 rounded-brand px-4 text-sm font-medium transition disabled:cursor-not-allowed disabled:opacity-50',
+        variant === 'primary' && 'bg-primary text-on-primary shadow-sm hover:bg-primary-hover',
+        variant === 'secondary' && 'border border-line bg-surface text-fg hover:bg-fill-quaternary',
+        variant === 'ghost' && 'text-fg-secondary hover:bg-fill-tertiary',
+        variant === 'danger' && 'bg-error text-on-primary hover:bg-error-hover',
         className,
       )}
       {...props}
@@ -34,20 +28,14 @@ export function Button({
 }
 export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return (
-    <div
-      className={cn(
-        'rounded-2xl border border-slate-200/80 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900',
-        className,
-      )}
-      {...props}
-    />
+    <div className={cn('rounded-brand-lg border border-line-secondary bg-surface shadow-sm', className)} {...props} />
   );
 }
 export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       className={cn(
-        'h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm ring-brand/20 outline-none focus:border-brand focus:ring-4 dark:border-slate-700 dark:bg-slate-950',
+        'h-10 w-full rounded-brand border border-line bg-surface px-3 text-sm ring-primary/20 outline-none focus:border-primary focus:ring-4',
         className,
       )}
       {...props}
@@ -58,7 +46,7 @@ export function Select({ className, ...props }: SelectHTMLAttributes<HTMLSelectE
   return (
     <select
       className={cn(
-        'h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-brand dark:border-slate-700 dark:bg-slate-950',
+        'h-10 rounded-brand border border-line bg-surface px-3 text-sm outline-none focus:border-primary',
         className,
       )}
       {...props}
@@ -69,7 +57,7 @@ export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTex
   return (
     <textarea
       className={cn(
-        'w-full resize-none rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm ring-brand/20 outline-none focus:border-brand focus:ring-4 dark:border-slate-700 dark:bg-slate-950',
+        'w-full resize-none rounded-brand-lg border border-line bg-surface px-4 py-3 text-sm ring-primary/20 outline-none focus:border-primary focus:ring-4',
         className,
       )}
       {...props}
@@ -81,17 +69,17 @@ export function Badge({
   tone = 'neutral',
 }: {
   children: React.ReactNode;
-  tone?: 'neutral' | 'green' | 'red' | 'amber' | 'purple';
+  tone?: 'neutral' | 'success' | 'error' | 'warning' | 'primary';
 }) {
   return (
     <span
       className={cn(
         'inline-flex rounded-full px-2 py-1 text-[11px] font-semibold',
-        tone === 'neutral' && 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
-        tone === 'green' && 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
-        tone === 'red' && 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300',
-        tone === 'amber' && 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
-        tone === 'purple' && 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300',
+        tone === 'neutral' && 'bg-fill-secondary text-fg-secondary',
+        tone === 'success' && 'bg-success-soft text-success-text',
+        tone === 'error' && 'bg-error-soft text-error-text',
+        tone === 'warning' && 'bg-warning-soft text-warning-text',
+        tone === 'primary' && 'bg-primary-soft text-primary-text',
       )}
     >
       {children}

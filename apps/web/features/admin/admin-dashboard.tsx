@@ -257,14 +257,14 @@ export function AdminDashboard() {
     <Shell active="admin">
       <div className="mx-auto max-w-7xl space-y-7 p-8">
         <div>
-          <p className="text-sm font-medium text-brand">ADMIN CONSOLE</p>
+          <p className="text-sm font-medium text-primary">ADMIN CONSOLE</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">Platform operations</h1>
-          <p className="mt-2 text-sm text-slate-500">
+          <p className="mt-2 text-sm text-fg-secondary">
             Aggregate metrics only. Private conversation content is never exposed here.
           </p>
         </div>
         {message && (
-          <div className="rounded-xl bg-violet-50 px-4 py-3 text-sm text-violet-800 dark:bg-violet-950 dark:text-violet-200">
+          <div className="rounded-brand bg-primary-soft px-4 py-3 text-sm text-primary-text">
             {message}
             <button className="float-right" onClick={() => setMessage('')}>
               ×
@@ -314,7 +314,7 @@ export function AdminDashboard() {
           <Button variant="ghost" onClick={() => applyFilters(noFilters)}>
             Reset
           </Button>
-          <p className="ml-auto text-xs text-slate-500">Filters apply to metrics, charts, and cost breakdown.</p>
+          <p className="ml-auto text-xs text-fg-secondary">Filters apply to metrics, charts, and cost breakdown.</p>
         </Card>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
@@ -336,10 +336,10 @@ export function AdminDashboard() {
 
         {guard && (
           <Card className="flex flex-wrap items-center gap-4 p-5">
-            <ShieldAlert className="text-amber-600" />
+            <ShieldAlert className="text-warning" />
             <div className="min-w-60 flex-1">
               <h2 className="font-semibold">External provider guardrail (today, UTC)</h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-fg-secondary">
                 Installation-wide ceiling across OpenAI, Anthropic, and Gemini. Requests beyond either limit are
                 refused; local models are unaffected. Set via EXTERNAL_DAILY_REQUEST_LIMIT / EXTERNAL_DAILY_TOKEN_LIMIT.
               </p>
@@ -352,17 +352,17 @@ export function AdminDashboard() {
         <div className="grid gap-6 lg:grid-cols-2">
           <Card className="p-5">
             <h2 className="font-semibold">Requests per day</h2>
-            <p className="mb-4 text-xs text-slate-500">All usage kinds in the selected range</p>
+            <p className="mb-4 text-xs text-fg-secondary">All usage kinds in the selected range</p>
             <SimpleBarChart data={summary?.daily || []} x="day" y="requests" label="Requests" />
           </Card>
           <Card className="p-5">
             <h2 className="font-semibold">Requests by provider</h2>
-            <p className="mb-4 text-xs text-slate-500">Mock usage is synthetic; Ollama has $0 external API cost</p>
+            <p className="mb-4 text-xs text-fg-secondary">Mock usage is synthetic; Ollama has $0 external API cost</p>
             <SimpleBarChart data={summary?.byProvider || []} x="provider" y="_count" label="Requests" />
           </Card>
           <Card className="p-5">
             <h2 className="font-semibold">Requests by model</h2>
-            <p className="mb-4 text-xs text-slate-500">Registry display names</p>
+            <p className="mb-4 text-xs text-fg-secondary">Registry display names</p>
             <SimpleBarChart data={summary?.byModel || []} x="displayName" y="_count" label="Requests" />
           </Card>
           <Card className="p-5">
@@ -390,28 +390,30 @@ export function AdminDashboard() {
               {summary?.byKind.map((kind) => (
                 <Badge
                   key={kind.usageKind}
-                  tone={kind.usageKind === 'ACTUAL' ? 'green' : kind.usageKind === 'SYNTHETIC' ? 'purple' : 'amber'}
+                  tone={
+                    kind.usageKind === 'ACTUAL' ? 'success' : kind.usageKind === 'SYNTHETIC' ? 'primary' : 'warning'
+                  }
                 >
                   {kind.usageKind}: {number(kind._count)} req · {number(kind._sum.totalTokens)} tok
                 </Badge>
               ))}
             </div>
-            <p className="mt-4 text-xs text-slate-500">
+            <p className="mt-4 text-xs text-fg-secondary">
               Simulation is a planning view only; this POC creates no invoice and processes no payment.
             </p>
           </Card>
         </div>
 
         <Card className="overflow-hidden">
-          <div className="border-b border-slate-200 p-5 dark:border-slate-800">
+          <div className="border-b border-line-secondary p-5">
             <h2 className="font-semibold">Cost breakdown by model</h2>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-fg-secondary">
               Snapshots stored on each usage record; later pricing changes never alter these values.
             </p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-left text-xs text-slate-500 uppercase dark:bg-slate-950">
+              <thead className="bg-fill-quaternary text-left text-xs text-fg-secondary uppercase">
                 <tr>
                   {[
                     'Model',
@@ -428,7 +430,7 @@ export function AdminDashboard() {
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              <tbody className="divide-y divide-line-secondary">
                 {summary?.byModel.map((row) => (
                   <tr key={row.modelId}>
                     <td className="px-5 py-3 font-medium">{row.displayName}</td>
@@ -446,16 +448,16 @@ export function AdminDashboard() {
         </Card>
 
         <Card className="overflow-hidden">
-          <div className="border-b border-slate-200 p-5 dark:border-slate-800">
+          <div className="border-b border-line-secondary p-5">
             <h2 className="font-semibold">Model registry</h2>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-fg-secondary">
               External models can be enabled only when ENABLE_EXTERNAL_PROVIDERS=true and the server holds the provider
               credential. Availability reads gateway configuration and never calls a paid provider.
             </p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-left text-xs text-slate-500 uppercase dark:bg-slate-950">
+              <thead className="bg-fill-quaternary text-left text-xs text-fg-secondary uppercase">
                 <tr>
                   {['Model', 'Provider', 'Location', 'Availability', 'Enabled', 'Allowed roles'].map((item) => (
                     <th key={item} className="px-5 py-3">
@@ -464,25 +466,25 @@ export function AdminDashboard() {
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              <tbody className="divide-y divide-line-secondary">
                 {models.map((model) => (
                   <tr key={model.id}>
                     <td className="px-5 py-4 font-medium">
                       {model.displayName}
-                      <div className="font-mono text-[11px] text-slate-400">{model.id}</div>
+                      <div className="font-mono text-[11px] text-fg-tertiary">{model.id}</div>
                     </td>
                     <td className="px-5 py-4">{model.provider}</td>
                     <td className="px-5 py-4">
-                      <Badge tone={model.local ? 'green' : 'amber'}>{model.local ? 'LOCAL' : 'EXTERNAL'}</Badge>
+                      <Badge tone={model.local ? 'success' : 'warning'}>{model.local ? 'LOCAL' : 'EXTERNAL'}</Badge>
                     </td>
                     <td className="px-5 py-4">
                       <Badge
                         tone={
                           model.status === 'Available'
-                            ? 'green'
+                            ? 'success'
                             : model.status === 'Ready (disabled)'
                               ? 'neutral'
-                              : 'red'
+                              : 'error'
                         }
                       >
                         {model.status}
@@ -498,10 +500,10 @@ export function AdminDashboard() {
                             : undefined
                         }
                         onClick={() => updateModel(model, { enabled: !model.enabled })}
-                        className={`h-6 w-11 rounded-full p-1 transition disabled:cursor-not-allowed disabled:opacity-40 ${model.enabled ? 'bg-brand' : 'bg-slate-300 dark:bg-slate-700'}`}
+                        className={`h-6 w-11 rounded-full p-1 transition disabled:cursor-not-allowed disabled:opacity-40 ${model.enabled ? 'bg-primary' : 'bg-fill'}`}
                       >
                         <span
-                          className={`block h-4 w-4 rounded-full bg-white transition ${model.enabled ? 'translate-x-5' : ''}`}
+                          className={`block h-4 w-4 rounded-full bg-on-primary transition ${model.enabled ? 'translate-x-5' : ''}`}
                         />
                       </button>
                     </td>
@@ -533,15 +535,15 @@ export function AdminDashboard() {
         </Card>
 
         <Card className="overflow-hidden">
-          <div className="border-b border-slate-200 p-5 dark:border-slate-800">
+          <div className="border-b border-line-secondary p-5">
             <h2 className="font-semibold">Current model prices</h2>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-fg-secondary">
               Latest version per model, USD per one million tokens. Select a row to edit.
             </p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 uppercase dark:bg-slate-950">
+              <thead className="bg-fill-quaternary text-fg-secondary uppercase">
                 <tr>
                   {[
                     'Model',
@@ -559,7 +561,7 @@ export function AdminDashboard() {
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              <tbody className="divide-y divide-line-secondary">
                 {pricing.map((item) => {
                   const version = item.versions[0];
                   if (!version) return null;
@@ -568,7 +570,7 @@ export function AdminDashboard() {
                     <tr
                       key={item.id}
                       onClick={() => setSelectedModel(item.modelId)}
-                      className={`cursor-pointer ${item.modelId === selectedModel ? 'bg-violet-50 dark:bg-violet-950/40' : 'hover:bg-slate-50 dark:hover:bg-slate-900'}`}
+                      className={`cursor-pointer ${item.modelId === selectedModel ? 'bg-primary-soft' : 'hover:bg-fill-quaternary'}`}
                     >
                       <td className="px-5 py-3 font-medium">{item.model.displayName}</td>
                       <td className="px-5 py-3">v{version.version}</td>
@@ -585,7 +587,7 @@ export function AdminDashboard() {
                       </td>
                       <td className="px-5 py-3">
                         {new Date(version.effectiveAt).toLocaleString()}{' '}
-                        {scheduled && <Badge tone="amber">scheduled</Badge>}
+                        {scheduled && <Badge tone="warning">scheduled</Badge>}
                       </td>
                     </tr>
                   );
@@ -599,7 +601,7 @@ export function AdminDashboard() {
           <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="font-semibold">Pricing management</h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-fg-secondary">
                 Rates are per one million tokens. Saving always creates a new version.
               </p>
             </div>
@@ -689,7 +691,7 @@ export function AdminDashboard() {
                 </Button>
               </div>
             </div>
-            <div className="rounded-2xl bg-slate-50 p-5 dark:bg-slate-950">
+            <div className="rounded-brand-lg bg-fill-quaternary p-5">
               <h3 className="text-sm font-semibold">Charge preview</h3>
               <div className="mt-3 grid grid-cols-2 gap-3">
                 <Field label="Input tokens">
@@ -727,7 +729,7 @@ export function AdminDashboard() {
                   <Value label="Gross margin (actual)" value={money(preview.grossMargin)} />
                 </div>
               ) : (
-                <p className="mt-3 text-xs text-slate-500">
+                <p className="mt-3 text-xs text-fg-secondary">
                   Preview compares clearly labeled actual and simulation results without saving anything.
                 </p>
               )}
@@ -737,7 +739,7 @@ export function AdminDashboard() {
             <h3 className="text-sm font-semibold">Version history</h3>
             <div className="mt-2 overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="text-slate-500">
+                <thead className="text-fg-secondary">
                   <tr>
                     {[
                       'Version',
@@ -757,7 +759,7 @@ export function AdminDashboard() {
                 </thead>
                 <tbody>
                   {selectedPricing?.versions.map((version) => (
-                    <tr key={version.id} className="border-t border-slate-100 dark:border-slate-800">
+                    <tr key={version.id} className="border-t border-line-secondary">
                       <td className="py-3 pr-4 font-semibold">v{version.version}</td>
                       <td className="py-3 pr-4">{new Date(version.effectiveAt).toLocaleString()}</td>
                       <td className="py-3 pr-4">{version.strategy}</td>
@@ -781,13 +783,13 @@ export function AdminDashboard() {
         </Card>
 
         <Card className="overflow-hidden">
-          <div className="border-b border-slate-200 p-5 dark:border-slate-800">
+          <div className="border-b border-line-secondary p-5">
             <h2 className="font-semibold">User model permissions</h2>
-            <p className="text-xs text-slate-500">An explicit choice overrides the model’s role defaults.</p>
+            <p className="text-xs text-fg-secondary">An explicit choice overrides the model’s role defaults.</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-left text-xs text-slate-500 uppercase dark:bg-slate-950">
+              <thead className="bg-fill-quaternary text-left text-xs text-fg-secondary uppercase">
                 <tr>
                   <th className="px-5 py-3">User</th>
                   {models.map((model) => (
@@ -797,12 +799,12 @@ export function AdminDashboard() {
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              <tbody className="divide-y divide-line-secondary">
                 {users.map((user) => (
                   <tr key={user.id}>
                     <td className="px-5 py-4">
                       <span className="font-medium">{user.username}</span>
-                      <div className="text-xs text-slate-400">
+                      <div className="text-xs text-fg-tertiary">
                         {user.roles.map((role) => role.role.name).join(', ')}
                       </div>
                     </td>
@@ -832,15 +834,15 @@ export function AdminDashboard() {
         </Card>
 
         <Card className="overflow-hidden">
-          <div className="border-b border-slate-200 p-5 dark:border-slate-800">
+          <div className="border-b border-line-secondary p-5">
             <h2 className="font-semibold">Audit log</h2>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-fg-secondary">
               Latest 100 model, permission, and pricing changes. Full before/after snapshots are stored in PostgreSQL.
             </p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-500 uppercase dark:bg-slate-950">
+              <thead className="bg-fill-quaternary text-fg-secondary uppercase">
                 <tr>
                   {['Time', 'Actor', 'Action', 'Entity', 'Change'].map((item) => (
                     <th key={item} className="px-5 py-3">
@@ -849,7 +851,7 @@ export function AdminDashboard() {
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              <tbody className="divide-y divide-line-secondary">
                 {audit.map((entry) => (
                   <tr key={entry.id}>
                     <td className="px-5 py-3 whitespace-nowrap">{new Date(entry.createdAt).toLocaleString()}</td>
@@ -857,14 +859,14 @@ export function AdminDashboard() {
                     <td className="px-5 py-3 font-mono">{entry.action}</td>
                     <td className="px-5 py-3">
                       {entry.entityType}
-                      <div className="font-mono text-[10px] text-slate-400">{entry.entityId}</div>
+                      <div className="font-mono text-[10px] text-fg-tertiary">{entry.entityId}</div>
                     </td>
                     <td className="px-5 py-3">{auditDetail(entry)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {!audit.length && <p className="p-5 text-xs text-slate-500">No changes recorded yet.</p>}
+            {!audit.length && <p className="p-5 text-xs text-fg-secondary">No changes recorded yet.</p>}
           </div>
         </Card>
       </div>
@@ -874,9 +876,9 @@ export function AdminDashboard() {
 function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; value: string | number }) {
   return (
     <Card className="p-5">
-      <div className="mb-3 inline-flex rounded-xl bg-violet-50 p-2 text-brand dark:bg-violet-950">{icon}</div>
+      <div className="mb-3 inline-flex rounded-brand bg-primary-soft p-2 text-primary">{icon}</div>
       <div className="text-2xl font-semibold">{typeof value === 'number' ? value.toLocaleString() : value}</div>
-      <div className="text-xs text-slate-500">{label}</div>
+      <div className="text-xs text-fg-secondary">{label}</div>
     </Card>
   );
 }
@@ -885,25 +887,25 @@ function GuardMeter({ label, used, limit }: { label: string; used: number; limit
   return (
     <div className="w-48">
       <div className="flex justify-between text-xs">
-        <span className="text-slate-500">{label}</span>
+        <span className="text-fg-secondary">{label}</span>
         <span className="font-mono">
           {used.toLocaleString()} / {limit.toLocaleString()}
         </span>
       </div>
-      <div className="mt-1 h-2 rounded-full bg-slate-100 dark:bg-slate-800">
+      <div className="mt-1 h-2 rounded-full bg-fill-secondary">
         <div
-          className={`h-2 rounded-full ${ratio >= 1 ? 'bg-red-500' : ratio >= 0.8 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+          className={`h-2 rounded-full ${ratio >= 1 ? 'bg-error' : ratio >= 0.8 ? 'bg-warning' : 'bg-success'}`}
           style={{ width: `${ratio * 100}%` }}
         />
       </div>
-      {ratio >= 1 && <p className="mt-1 text-[11px] text-red-600">Limit reached — external requests blocked</p>}
+      {ratio >= 1 && <p className="mt-1 text-[11px] text-error">Limit reached — external requests blocked</p>}
     </div>
   );
 }
 function Value({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-      <p className="text-[11px] text-slate-500">{label}</p>
+    <div className="rounded-brand border border-line-secondary bg-surface p-3">
+      <p className="text-[11px] text-fg-secondary">{label}</p>
       <p className="mt-1 font-mono text-sm font-semibold">{value}</p>
     </div>
   );
@@ -911,7 +913,7 @@ function Value({ label, value }: { label: string; value: string }) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-xs font-medium text-slate-500">{label}</span>
+      <span className="text-xs font-medium text-fg-secondary">{label}</span>
       {children}
     </label>
   );

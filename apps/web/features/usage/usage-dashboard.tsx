@@ -54,11 +54,11 @@ export function UsageDashboard() {
     <Shell active="usage">
       <div className="mx-auto max-w-7xl space-y-6 p-8">
         <div>
-          <p className="text-sm font-medium text-brand">YOUR ACCOUNT</p>
+          <p className="text-sm font-medium text-primary">YOUR ACCOUNT</p>
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">Usage dashboard</h1>
-          <p className="mt-2 text-sm text-slate-500">Actual, estimated, and simulated amounts are kept separate.</p>
+          <p className="mt-2 text-sm text-fg-secondary">Actual, estimated, and simulated amounts are kept separate.</p>
         </div>
-        {error && <Card className="border-red-200 p-4 text-red-600">{error}</Card>}
+        {error && <Card className="border-error-border p-4 text-error">{error}</Card>}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Metric icon={<Activity />} label="AI requests" value={number(data?.totals._count)} />
           <Metric icon={<ArrowDownToLine />} label="Input tokens" value={number(totals.inputTokens)} />
@@ -70,7 +70,7 @@ export function UsageDashboard() {
         <div className="grid gap-6 lg:grid-cols-3">
           <Card className="p-5 lg:col-span-2">
             <h2 className="font-semibold">Tokens by model</h2>
-            <p className="mb-5 text-xs text-slate-500">Input and output combined</p>
+            <p className="mb-5 text-xs text-fg-secondary">Input and output combined</p>
             <SimpleBarChart data={data?.byModel || []} x="modelId" y="_sum.totalTokens" label="Tokens" height={256} />
           </Card>
           <Card className="p-5">
@@ -96,15 +96,15 @@ export function UsageDashboard() {
           </Card>
         </div>
         <Card className="overflow-hidden">
-          <div className="border-b border-slate-200 p-5 dark:border-slate-800">
+          <div className="border-b border-line-secondary p-5">
             <h2 className="font-semibold">Request history</h2>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-fg-secondary">
               Latest 100 requests; prompt and response content are intentionally excluded.
             </p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-xs text-slate-500 uppercase dark:bg-slate-950">
+              <thead className="bg-fill-quaternary text-xs text-fg-secondary uppercase">
                 <tr>
                   {[
                     'Time',
@@ -123,7 +123,7 @@ export function UsageDashboard() {
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+              <tbody className="divide-y divide-line-secondary">
                 {data?.records.map((record) => (
                   <tr key={record.id}>
                     <td className="px-4 py-3 whitespace-nowrap">{new Date(record.createdAt).toLocaleString()}</td>
@@ -131,7 +131,7 @@ export function UsageDashboard() {
                     <td className="px-4 py-3">{record.provider}</td>
                     <td className="px-4 py-3">
                       {number(record.totalTokens)}{' '}
-                      <span className="text-xs text-slate-400">
+                      <span className="text-xs text-fg-tertiary">
                         ({record.inputTokens} in / {record.outputTokens} out)
                       </span>
                     </td>
@@ -143,10 +143,10 @@ export function UsageDashboard() {
                       <Badge
                         tone={
                           record.usageKind === 'ACTUAL'
-                            ? 'green'
+                            ? 'success'
                             : record.usageKind === 'SYNTHETIC'
-                              ? 'purple'
-                              : 'amber'
+                              ? 'primary'
+                              : 'warning'
                         }
                       >
                         {record.usageKind}
@@ -168,9 +168,9 @@ export function UsageDashboard() {
 function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
     <Card className="p-5">
-      <div className="mb-4 inline-flex rounded-xl bg-violet-50 p-2 text-brand dark:bg-violet-950">{icon}</div>
+      <div className="mb-4 inline-flex rounded-brand bg-primary-soft p-2 text-primary">{icon}</div>
       <div className="text-2xl font-semibold">{value}</div>
-      <div className="mt-1 text-xs text-slate-500">{label}</div>
+      <div className="mt-1 text-xs text-fg-secondary">{label}</div>
     </Card>
   );
 }
@@ -178,10 +178,10 @@ function Cost({ label, value, note }: { label: string; value: string; note: stri
   return (
     <div>
       <div className="flex justify-between gap-4">
-        <span className="text-sm text-slate-600 dark:text-slate-300">{label}</span>
+        <span className="text-sm text-fg-secondary">{label}</span>
         <span className="font-mono text-sm font-semibold">{value}</span>
       </div>
-      <p className="text-[11px] text-slate-400">{note}</p>
+      <p className="text-[11px] text-fg-tertiary">{note}</p>
     </div>
   );
 }

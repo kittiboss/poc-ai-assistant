@@ -85,6 +85,24 @@ The mock provider supports deterministic test controls:
 
 Mock usage is always `SYNTHETIC`; actual provider cost is always `$0`. Pricing simulation is clearly separate and never creates an invoice.
 
+## Branding and theme (web)
+
+One installation serves one customer, so the brand is chosen when the web image is built:
+
+```bash
+NEXT_PUBLIC_BRAND=acme docker compose up --build -d frontend
+```
+
+`default` is the Enterprise AI look; `acme` is a fictional example brand. To add a customer brand:
+
+1. Copy `apps/web/config/brands/acme.ts`, give it a new `id`, and register it in `apps/web/config/brands/index.ts`.
+2. Put the logo and favicon in `apps/web/public/brands/<id>/`.
+3. Build with `NEXT_PUBLIC_BRAND=<id>`. An unknown id fails the build rather than shipping another brand.
+
+A brand sets the product name, organization, logo, favicon, primary color, corner radius, font (one of the fonts bundled in `apps/web/theme/fonts.ts`), default language, default theme mode, and optional Ant Design token overrides per mode. Fonts are committed to the repository, so builds need no internet access.
+
+Users switch between light, dark, and system themes in the sidebar; the choice is stored in a cookie. Colors in both Ant Design components and Tailwind classes come from the same brand tokens (see [Architecture](docs/ARCHITECTURE.md)).
+
 ## Tests and verification
 
 Install dependencies and run the offline/default test suite:

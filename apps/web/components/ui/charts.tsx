@@ -1,7 +1,7 @@
 'use client';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
-/** Single-series bar chart: the card title names the series, so there is no legend. Colors come from theme tokens in globals.css. */
+/** Single-series bar chart: the card title names the series, so there is no legend. Colors come from the --chart-* variables in globals.css, which follow the theme tokens. */
 export function SimpleBarChart({
   data,
   x,
@@ -17,7 +17,7 @@ export function SimpleBarChart({
 }) {
   if (!data.length)
     return (
-      <div className="grid place-items-center text-xs text-slate-500" style={{ height }}>
+      <div className="grid place-items-center text-xs text-fg-secondary" style={{ height }}>
         No usage in this range
       </div>
     );
@@ -44,7 +44,7 @@ export function SimpleBarChart({
             contentStyle={{
               background: 'var(--chart-tooltip-bg)',
               border: '1px solid var(--chart-grid)',
-              borderRadius: 10,
+              borderRadius: 'var(--app-radius)',
               fontSize: 12,
             }}
             labelStyle={{ color: 'var(--chart-ink-strong)' }}
