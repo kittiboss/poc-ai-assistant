@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { AuthProvider } from '../components/auth/auth-provider';
+import { AuthProvider } from '@/components/auth/auth-provider';
 import 'highlight.js/styles/github-dark.css';
 import './globals.css';
 

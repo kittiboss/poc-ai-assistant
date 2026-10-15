@@ -1,7 +1,7 @@
 'use client';
 import { LoaderCircle, LockKeyhole } from 'lucide-react';
 import { useAuth } from 'react-oidc-context';
-import { Button, Card } from '../ui/primitives';
+import { Button, Card } from '@/components/ui/primitives';
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const auth = useAuth();

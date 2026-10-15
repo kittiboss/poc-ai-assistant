@@ -1,13 +1,13 @@
 'use client';
-import { Check, Copy, LoaderCircle, MessageSquare, MoreHorizontal, Pencil, Plus, Search, Send, Square, Trash2 } from 'lucide-react';
+import { Check, Copy, LoaderCircle, MessageSquare, Pencil, Plus, Search, Send, Square, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import remarkGfm from 'remark-gfm';
-import { useApi } from '../../lib/api';
-import type { Conversation, Message, Model } from '../../lib/types';
-import { Shell } from '../../components/layout/shell';
-import { Badge, Button, Card, Select, Textarea, cn } from '../../components/ui/primitives';
+import { useApi } from '@/lib/api';
+import type { Conversation, Message, Model } from '@/lib/types';
+import { Shell } from '@/components/layout/shell';
+import { Badge, Button, Card, Select, Textarea, cn } from '@/components/ui/primitives';
 
 export function ChatApp() {
   const api = useApi();

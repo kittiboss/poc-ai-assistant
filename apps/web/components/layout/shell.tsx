@@ -1,16 +1,21 @@
 'use client';
 import Link from 'next/link';
 import { BarChart3, Bot, LogOut, Moon, Settings, ShieldCheck, Sun } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { useAuth } from 'react-oidc-context';
-import { Button, cn } from '../ui/primitives';
+import { cn } from '@/components/ui/primitives';
+
+// The saved theme lives in localStorage, read as an external store; toggling notifies the subscribers.
+const themeListeners = new Set<() => void>();
+const subscribeTheme = (listener: () => void) => { themeListeners.add(listener); return () => { themeListeners.delete(listener); }; };
+const readDarkTheme = () => localStorage.getItem('theme') === 'dark';
 
 export function Shell({ children, active, sidebar }: { children: React.ReactNode; active: 'chat' | 'usage' | 'admin' | 'settings'; sidebar?: React.ReactNode }) {
   const auth = useAuth();
-  const [dark, setDark] = useState(false);
-  useEffect(() => { const enabled = localStorage.getItem('theme') === 'dark'; setDark(enabled); document.documentElement.classList.toggle('dark', enabled); }, []);
+  const dark = useSyncExternalStore(subscribeTheme, readDarkTheme, () => false);
+  useEffect(() => { document.documentElement.classList.toggle('dark', dark); }, [dark]);
   const roles = ((auth.user?.profile as { realm_access?: { roles?: string[] } })?.realm_access?.roles || []);
-  const toggle = () => { const next = !dark; setDark(next); document.documentElement.classList.toggle('dark', next); localStorage.setItem('theme', next ? 'dark' : 'light'); };
+  const toggle = () => { localStorage.setItem('theme', dark ? 'light' : 'dark'); themeListeners.forEach((listener) => listener()); };
   return <div className="flex h-screen overflow-hidden">
     <aside className="flex w-72 shrink-0 flex-col border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
       <div className="flex h-16 items-center gap-3 border-b border-slate-100 px-5 dark:border-slate-800"><span className="grid h-9 w-9 place-items-center rounded-xl bg-brand text-white"><Bot size={20}/></span><div><div className="font-semibold">Enterprise AI</div><div className="text-[11px] text-slate-500">LOCAL POC</div></div></div>

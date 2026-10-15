@@ -1,10 +1,10 @@
 'use client';
 import { Activity, ArrowDownToLine, ArrowUpFromLine, Coins, Database, Hash, Timer } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { useApi } from '../../lib/api';
-import { SimpleBarChart } from '../../components/ui/charts';
-import { Shell } from '../../components/layout/shell';
-import { Badge, Card } from '../../components/ui/primitives';
+import { useApi } from '@/lib/api';
+import { SimpleBarChart } from '@/components/ui/charts';
+import { Shell } from '@/components/layout/shell';
+import { Badge, Card } from '@/components/ui/primitives';
 
 type UsageRecord = { id: string; requestId: string; modelId: string; provider: string; inputTokens: number; outputTokens: number; totalTokens: number; durationMs: number; status: string; usageKind: 'ACTUAL' | 'ESTIMATED' | 'SYNTHETIC'; currency: string; actualProviderCost: string; customerCharge: string; simulatedProviderCost: string; simulatedCustomerCharge: string; createdAt: string; model: { displayName: string } };
 type UsageData = { totals: { _count: number; _sum: Record<string, number | string | null> }; byModel: Array<{ modelId: string; _count: number; _sum: { totalTokens: number | null } }>; records: UsageRecord[] };

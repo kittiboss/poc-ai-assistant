@@ -1,9 +1,9 @@
 'use client';
 import { KeyRound, Server, ShieldCheck, User } from 'lucide-react';
 import { useAuth } from 'react-oidc-context';
-import { useApi } from '../../lib/api';
-import { Shell } from '../../components/layout/shell';
-import { Badge, Card } from '../../components/ui/primitives';
+import { useApi } from '@/lib/api';
+import { Shell } from '@/components/layout/shell';
+import { Badge, Card } from '@/components/ui/primitives';
 
 export function SettingsPage() {
   const auth = useAuth();

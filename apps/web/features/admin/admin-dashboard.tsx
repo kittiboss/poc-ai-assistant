@@ -1,10 +1,10 @@
 'use client';
 import { ArrowDownToLine, ArrowUpFromLine, BarChart3, Coins, Save, ShieldAlert, Users, Zap } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { useApi } from '../../lib/api';
-import { SimpleBarChart } from '../../components/ui/charts';
-import { Shell } from '../../components/layout/shell';
-import { Badge, Button, Card, Input, Select } from '../../components/ui/primitives';
+import { useApi } from '@/lib/api';
+import { SimpleBarChart } from '@/components/ui/charts';
+import { Shell } from '@/components/layout/shell';
+import { Badge, Button, Card, Input, Select } from '@/components/ui/primitives';
 
 type Sum = { totalTokens?: number | null; actualProviderCost?: string | null; customerCharge?: string | null; simulatedProviderCost?: string | null; simulatedCustomerCharge?: string | null };
 type Summary = {
@@ -70,13 +70,19 @@ export function AdminDashboard() {
   const [preview, setPreview] = useState<Record<string, string> | null>(null);
   const [message, setMessage] = useState('');
   const loadSummary = async (next: Filters) => setSummary(await api.request<Summary>(`/admin/summary${summaryQuery(next)}`));
-  const load = async () => {
-    const [nextModels, nextPricing, nextUsers, nextAudit] = await Promise.all([api.request<AdminModel[]>('/admin/models'), api.request<Pricing[]>('/admin/pricing'), api.request<User[]>('/admin/users'), api.request<Audit[]>('/admin/audit'), loadSummary(filters)]);
-    setModels(nextModels); setPricing(nextPricing); setUsers(nextUsers); setAudit(nextAudit);
-  };
-  useEffect(() => { load().catch((cause) => setMessage(cause.message)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const fetchAll = (next: Filters) => Promise.all([api.request<AdminModel[]>('/admin/models'), api.request<Pricing[]>('/admin/pricing'), api.request<User[]>('/admin/users'), api.request<Audit[]>('/admin/audit'), api.request<Summary>(`/admin/summary${summaryQuery(next)}`)]);
+  const apply = ([nextModels, nextPricing, nextUsers, nextAudit, nextSummary]: Awaited<ReturnType<typeof fetchAll>>) => { setModels(nextModels); setPricing(nextPricing); setUsers(nextUsers); setAudit(nextAudit); setSummary(nextSummary); };
+  const load = () => fetchAll(filters).then(apply);
+  useEffect(() => { fetchAll(noFilters).then(apply).catch((cause) => setMessage(cause.message)); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const selectedPricing = useMemo(() => pricing.find((item) => item.modelId === selectedModel), [pricing, selectedModel]);
-  useEffect(() => { const version = selectedPricing?.versions[0]; if (version) setForm((current) => ({ ...emptyForm, ...Object.fromEntries(pricingFields.map((field) => [field, version[field] ?? emptyForm[field]])), effectiveAt: '', inputTokens: current.inputTokens, outputTokens: current.outputTokens })); setPreview(null); }, [selectedPricing]);
+  // Reset the form to the latest version when the selected model or its pricing changes. Adjusted during render rather than in an effect, as React recommends.
+  const [formSource, setFormSource] = useState(selectedPricing);
+  if (formSource !== selectedPricing) {
+    setFormSource(selectedPricing);
+    const version = selectedPricing?.versions[0];
+    if (version) setForm((current) => ({ ...emptyForm, ...Object.fromEntries(pricingFields.map((field) => [field, version[field] ?? emptyForm[field]])), effectiveAt: '', inputTokens: current.inputTokens, outputTokens: current.outputTokens }));
+    setPreview(null);
+  }
   const applyFilters = async (next: Filters) => { setFilters(next); try { await loadSummary(next); } catch (cause) { setMessage((cause as Error).message); } };
   const updateModel = async (model: AdminModel, change: Partial<Pick<AdminModel, 'enabled' | 'allowedRoles'>>) => { try { await api.request(`/admin/models/${model.id}`, { method: 'PATCH', body: JSON.stringify(change) }); await load(); setMessage(`${model.displayName} updated.`); } catch (cause) { setMessage((cause as Error).message); } };
   const previewPrice = async () => { try { setPreview(await api.request('/admin/pricing/preview/calculate', { method: 'POST', body: JSON.stringify({ ...pricingBody(form), inputTokens: form.inputTokens, outputTokens: form.outputTokens }) })); } catch (cause) { setMessage((cause as Error).message); } };
