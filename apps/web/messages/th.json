@@ -1,0 +1,324 @@
+{
+  "meta": {
+    "description": "ผู้ช่วย AI สำหรับองค์กรที่ติดตั้งภายในองค์กรเอง (POC)"
+  },
+  "language": {
+    "label": "ภาษา"
+  },
+  "theme": {
+    "label": "ธีม",
+    "light": "สว่าง",
+    "system": "ตามระบบ",
+    "dark": "มืด"
+  },
+  "common": {
+    "loading": "กำลังโหลด",
+    "dismiss": "ปิด",
+    "system": "ระบบ"
+  },
+  "errors": {
+    "requestFailed": "ส่งคำขอไม่สำเร็จ ({status})"
+  },
+  "auth": {
+    "signInFailed": "เข้าสู่ระบบไม่สำเร็จ",
+    "tryAgain": "ลองอีกครั้ง",
+    "intro": "ผู้ช่วย AI ส่วนตัวที่ติดตั้งภายในองค์กร เข้าสู่ระบบผ่านผู้ให้บริการยืนยันตัวตนสำหรับทดสอบของบริษัท",
+    "continue": "เข้าสู่ระบบด้วย SSO ของบริษัท",
+    "noPaidProvider": "POC นี้ไม่ได้เปิดใช้ผู้ให้บริการ AI แบบเสียค่าใช้จ่าย"
+  },
+  "nav": {
+    "openMenu": "เปิดเมนู",
+    "tagline": "LOCAL POC",
+    "chat": "แชท",
+    "usage": "แดชบอร์ดการใช้งาน",
+    "admin": "คอนโซลผู้ดูแลระบบ",
+    "settings": "ตั้งค่า",
+    "logout": "ออกจากระบบ",
+    "signedInAs": "เข้าสู่ระบบในชื่อ {username}"
+  },
+  "charts": {
+    "empty": "ไม่มีการใช้งานในช่วงนี้"
+  },
+  "chat": {
+    "newChat": "แชทใหม่",
+    "search": "ค้นหาแชท",
+    "rename": "เปลี่ยนชื่อ",
+    "delete": "ลบ",
+    "renamePrompt": "ชื่อแชท",
+    "deleteConfirm": "ลบ “{title}” ใช่ไหม? การลบนี้ย้อนกลับไม่ได้",
+    "newConversation": "แชทใหม่",
+    "private": "เป็นส่วนตัวสำหรับบัญชีองค์กรของคุณ",
+    "model": "โมเดล",
+    "modelOption": "{name} · {provider} · {location} · {status}",
+    "modelLocal": "ในองค์กร · ไม่มีค่า API ภายนอก",
+    "modelExternal": "ภายนอก",
+    "modelBadge": "{location} · {status}",
+    "externalNotice": "โมเดลภายนอก: ข้อความในแชทนี้จะถูกส่งไปยัง {provider} ภายใต้เงื่อนไขข้อมูลของผู้ให้บริการรายนั้น ผู้ให้บริการแบบใช้ฟรีอาจนำข้อมูลไปพัฒนาผลิตภัณฑ์ — ห้ามส่งข้อมูลที่เป็นความลับ",
+    "stopped": "หยุดสร้างคำตอบแล้ว ส่วนที่ได้มาก่อนหยุดถูกเก็บไว้",
+    "failed": "สร้างคำตอบไม่สำเร็จ",
+    "failedStatus": "สร้างคำตอบไม่สำเร็จ ({status})",
+    "placeholder": "พิมพ์ข้อความถึงผู้ช่วยของคุณ…",
+    "stop": "หยุดสร้างคำตอบ",
+    "send": "ส่ง",
+    "disclaimer": "คำตอบจาก AI อาจไม่ถูกต้อง การประมวลผลภายในองค์กรยังใช้ทรัพยากรเครื่อง หน่วยความจำ พื้นที่ดิสก์ และไฟฟ้า",
+    "emptyTitle": "มีอะไรให้ช่วยไหม?",
+    "emptyBody": "เลือกโมเดลที่พร้อมใช้งานแล้วเริ่มแชทแบบส่วนตัว มีโมเดลพร้อมใช้ {count} โมเดล",
+    "copy": "คัดลอกคำตอบ"
+  },
+  "usage": {
+    "eyebrow": "บัญชีของคุณ",
+    "title": "แดชบอร์ดการใช้งาน",
+    "intro": "แยกยอดจริง ยอดประมาณการ และยอดจำลองออกจากกัน",
+    "requests": "จำนวนคำขอ AI",
+    "inputTokens": "โทเคนขาเข้า",
+    "outputTokens": "โทเคนขาออก",
+    "totalTokens": "โทเคนทั้งหมด",
+    "actualCost": "ค่า API ภายนอกที่เกิดขึ้นจริง",
+    "simulatedCost": "ค่าใช้จ่ายจำลอง (ไม่เรียกเก็บ)",
+    "tokensByModel": "โทเคนแยกตามโมเดล",
+    "tokensByModelNote": "รวมขาเข้าและขาออก",
+    "tokens": "โทเคน",
+    "costClassification": "ประเภทค่าใช้จ่าย",
+    "actualProviderCost": "ต้นทุนผู้ให้บริการจริง",
+    "actualProviderCostNote": "ยอดที่ต้องจ่ายให้ภายนอก",
+    "customerCharge": "ค่าบริการลูกค้า",
+    "customerChargeNote": "ตามราคาปัจจุบันที่ไม่ใช่การจำลอง",
+    "simulatedProviderCost": "ต้นทุนผู้ให้บริการจำลอง",
+    "simulatedProviderCostNote": "เป็นเพียงสถานการณ์สมมติ เช่น โมเดลแบบใช้ฟรีคิดตามราคาแบบเสียเงิน ไม่ต้องจ่ายจริง",
+    "simulatedCustomerCharge": "ค่าบริการลูกค้าจำลอง",
+    "simulatedCustomerChargeNote": "เป็นเพียงสถานการณ์สมมติ ไม่มีการออกใบแจ้งหนี้",
+    "history": "ประวัติคำขอ",
+    "historyNote": "แสดง 100 คำขอล่าสุด โดยตั้งใจไม่เก็บเนื้อหาของข้อความและคำตอบ",
+    "columns": {
+      "time": "เวลา",
+      "model": "โมเดล",
+      "provider": "ผู้ให้บริการ",
+      "tokens": "โทเคน",
+      "duration": "ระยะเวลา",
+      "usage": "ประเภท",
+      "status": "สถานะ",
+      "actualCost": "ต้นทุนจริง",
+      "simulatedCost": "ต้นทุนจำลอง"
+    },
+    "tokenSplit": "(เข้า {input} / ออก {output})"
+  },
+  "admin": {
+    "eyebrow": "คอนโซลผู้ดูแลระบบ",
+    "title": "ภาพรวมการทำงานของระบบ",
+    "intro": "แสดงเฉพาะตัวเลขรวม ไม่แสดงเนื้อหาแชทส่วนตัวในหน้านี้",
+    "modelUpdated": "อัปเดต {model} แล้ว",
+    "pricingCreated": "สร้างเวอร์ชันราคาใหม่แล้ว (เวอร์ชันราคาแก้ไขย้อนหลังไม่ได้)",
+    "filters": {
+      "from": "ตั้งแต่",
+      "to": "ถึง",
+      "provider": "ผู้ให้บริการ",
+      "model": "โมเดล",
+      "allProviders": "ทุกผู้ให้บริการ",
+      "allModels": "ทุกโมเดล",
+      "reset": "ล้างตัวกรอง",
+      "note": "ตัวกรองมีผลกับตัวเลขสรุป กราฟ และรายละเอียดค่าใช้จ่าย"
+    },
+    "metrics": {
+      "users": "ผู้ใช้ (ใช้งานในช่วงนี้ {active} คน)",
+      "requests": "จำนวนคำขอ AI",
+      "inputTokens": "โทเคนขาเข้า",
+      "outputTokens": "โทเคนขาออก",
+      "actualProviderCost": "ต้นทุนผู้ให้บริการจริง",
+      "simulatedCost": "ค่าใช้จ่ายจำลอง (ไม่เรียกเก็บ)"
+    },
+    "guard": {
+      "title": "เพดานการใช้ผู้ให้บริการภายนอก (วันนี้ ตามเวลา UTC)",
+      "description": "เพดานรวมทั้งระบบสำหรับ OpenAI, Anthropic และ Gemini คำขอที่เกินเพดานใดเพดานหนึ่งจะถูกปฏิเสธ โมเดลภายในองค์กรไม่ได้รับผลกระทบ ตั้งค่าผ่าน EXTERNAL_DAILY_REQUEST_LIMIT / EXTERNAL_DAILY_TOKEN_LIMIT",
+      "requests": "คำขอ",
+      "tokens": "โทเคน",
+      "reached": "ถึงเพดานแล้ว — ระงับคำขอไปยังภายนอก"
+    },
+    "charts": {
+      "perDay": "จำนวนคำขอรายวัน",
+      "perDayNote": "ทุกประเภทการใช้งานในช่วงที่เลือก",
+      "byProvider": "คำขอแยกตามผู้ให้บริการ",
+      "byProviderNote": "การใช้งาน Mock เป็นข้อมูลสังเคราะห์ ส่วน Ollama ไม่มีค่า API ภายนอก",
+      "byModel": "คำขอแยกตามโมเดล",
+      "byModelNote": "ชื่อที่แสดงในทะเบียนโมเดล",
+      "requests": "คำขอ"
+    },
+    "snapshot": {
+      "title": "สรุปต้นทุนและกำไร",
+      "actualExternalCost": "ต้นทุนภายนอกจริง",
+      "customerCharge": "ค่าบริการลูกค้า",
+      "simulatedProviderCost": "ต้นทุนผู้ให้บริการจำลอง",
+      "simulatedCustomerCharge": "ค่าบริการลูกค้าจำลอง",
+      "actualMargin": "กำไรขั้นต้นจริง",
+      "simulatedMargin": "กำไรขั้นต้นจำลอง",
+      "kind": "{kind}: {requests} คำขอ · {tokens} โทเคน",
+      "note": "การจำลองใช้เพื่อวางแผนเท่านั้น POC นี้ไม่ออกใบแจ้งหนี้และไม่รับชำระเงิน"
+    },
+    "breakdown": {
+      "title": "ค่าใช้จ่ายแยกตามโมเดล",
+      "note": "บันทึกค่าไว้กับรายการใช้งานแต่ละรายการ การเปลี่ยนราคาภายหลังจะไม่กระทบตัวเลขเหล่านี้",
+      "model": "โมเดล",
+      "requests": "คำขอ",
+      "tokens": "โทเคน",
+      "actualProviderCost": "ต้นทุนผู้ให้บริการจริง",
+      "customerCharge": "ค่าบริการลูกค้า",
+      "simulatedProviderCost": "ต้นทุนผู้ให้บริการจำลอง",
+      "simulatedCustomerCharge": "ค่าบริการลูกค้าจำลอง"
+    },
+    "registry": {
+      "title": "ทะเบียนโมเดล",
+      "note": "โมเดลภายนอกจะเปิดใช้ได้เมื่อตั้ง ENABLE_EXTERNAL_PROVIDERS=true และเซิร์ฟเวอร์มีข้อมูลรับรองของผู้ให้บริการแล้วเท่านั้น การตรวจความพร้อมใช้งานอ่านจากการตั้งค่า gateway และไม่เรียกผู้ให้บริการแบบเสียเงิน",
+      "model": "โมเดล",
+      "provider": "ผู้ให้บริการ",
+      "location": "ที่ตั้ง",
+      "availability": "ความพร้อม",
+      "enabled": "เปิดใช้",
+      "allowedRoles": "บทบาทที่อนุญาต",
+      "enable": "เปิดใช้ {model}",
+      "disable": "ปิดใช้ {model}",
+      "notConfigured": "ยังไม่ได้เปิดและตั้งค่าผู้ให้บริการนี้บนเซิร์ฟเวอร์"
+    },
+    "prices": {
+      "title": "ราคาโมเดลปัจจุบัน",
+      "note": "เวอร์ชันล่าสุดของแต่ละโมเดล หน่วยเป็น USD ต่อหนึ่งล้านโทเคน เลือกแถวเพื่อแก้ไข",
+      "model": "โมเดล",
+      "version": "เวอร์ชัน",
+      "strategy": "รูปแบบราคา",
+      "providerRates": "ผู้ให้บริการ เข้า / ออก",
+      "customerRates": "ลูกค้า เข้า / ออก",
+      "markup": "ส่วนเพิ่ม",
+      "simulationRates": "จำลอง เข้า / ออก",
+      "effective": "มีผลตั้งแต่",
+      "scheduled": "ตั้งเวลาไว้",
+      "versionLabel": "v{version}"
+    },
+    "pricing": {
+      "title": "จัดการราคา",
+      "note": "อัตราคิดต่อหนึ่งล้านโทเคน การบันทึกจะสร้างเวอร์ชันใหม่เสมอ",
+      "strategy": "รูปแบบราคา",
+      "providerInput": "ผู้ให้บริการ ขาเข้า",
+      "providerOutput": "ผู้ให้บริการ ขาออก",
+      "cachedInput": "ขาเข้าที่แคชไว้",
+      "additionalFee": "ค่าธรรมเนียมผู้ให้บริการเพิ่มเติม",
+      "customerInput": "ลูกค้า ขาเข้า",
+      "customerOutput": "ลูกค้า ขาออก",
+      "markupPercent": "ส่วนเพิ่ม %",
+      "simulationInput": "จำลอง ขาเข้า",
+      "simulationOutput": "จำลอง ขาออก",
+      "currency": "สกุลเงิน",
+      "effectiveAt": "วันที่มีผล (ไม่บังคับ)",
+      "save": "บันทึกเป็นเวอร์ชันใหม่",
+      "preview": "ตัวอย่างการคิดค่าบริการ",
+      "inputTokens": "โทเคนขาเข้า",
+      "outputTokens": "โทเคนขาออก",
+      "previewButton": "คำนวณตัวอย่าง",
+      "actualProviderCost": "ต้นทุนผู้ให้บริการจริง",
+      "actualCustomerCharge": "ค่าบริการลูกค้าจริง",
+      "simulatedProviderCost": "ต้นทุนผู้ให้บริการจำลอง",
+      "simulatedCustomerCharge": "ค่าบริการลูกค้าจำลอง",
+      "grossMargin": "กำไรขั้นต้น (จริง)",
+      "previewNote": "เปรียบเทียบผลแบบจริงกับแบบจำลองที่ระบุไว้ชัดเจน โดยไม่บันทึกข้อมูลใด ๆ",
+      "history": "ประวัติเวอร์ชัน",
+      "historyColumns": {
+        "version": "เวอร์ชัน",
+        "effective": "มีผลตั้งแต่",
+        "strategy": "รูปแบบราคา",
+        "providerRates": "ผู้ให้บริการ เข้า/ออก",
+        "customerRates": "ลูกค้า เข้า/ออก",
+        "markup": "ส่วนเพิ่ม",
+        "simulationRates": "จำลอง เข้า/ออก",
+        "createdBy": "สร้างโดย"
+      }
+    },
+    "permissions": {
+      "title": "สิทธิ์ใช้โมเดลของผู้ใช้",
+      "note": "สิทธิ์ที่กำหนดรายคนจะมีผลเหนือค่าเริ่มต้นตามบทบาทของโมเดล",
+      "user": "ผู้ใช้",
+      "explicit": "กำหนดรายคน",
+      "roleDefault": "ตามบทบาท"
+    },
+    "audit": {
+      "title": "บันทึกการเปลี่ยนแปลง",
+      "note": "การเปลี่ยนแปลงโมเดล สิทธิ์ และราคา 100 รายการล่าสุด ข้อมูลก่อน/หลังแบบเต็มเก็บไว้ใน PostgreSQL",
+      "time": "เวลา",
+      "actor": "ผู้ดำเนินการ",
+      "action": "การกระทำ",
+      "entity": "รายการ",
+      "change": "การเปลี่ยนแปลง",
+      "empty": "ยังไม่มีการเปลี่ยนแปลง",
+      "pricingDetail": "v{version} · {strategy}",
+      "modelDetail": "เปิดใช้: {enabled, select, true {ใช่} other {ไม่}} · บทบาท: {roles}",
+      "permissionDetail": "{model}: {allowed, select, true {อนุญาต} other {ไม่อนุญาต}}"
+    }
+  },
+  "settings": {
+    "eyebrow": "ตั้งค่า",
+    "title": "บัญชีและการติดตั้ง",
+    "preferences": "การแสดงผล",
+    "preferencesNote": "บันทึกไว้ในเบราว์เซอร์นี้",
+    "themeNote": "สว่าง มืด หรือตามอุปกรณ์ของคุณ",
+    "languageNote": "เมนู ข้อความ วันที่ และตัวเลข",
+    "identity": "ข้อมูลบัญชีองค์กร",
+    "username": "ชื่อผู้ใช้",
+    "email": "อีเมล",
+    "roles": "บทบาท",
+    "deployment": "การติดตั้งภายในองค์กร",
+    "localByDefault": "ทำงานภายในเป็นค่าเริ่มต้น",
+    "routing": "ทุกคำขอผ่าน NestJS และ LiteLLM โมเดลเริ่มต้นคือ mock ภายในที่ตอบแบบกำหนดไว้ล่วงหน้า Ollama และผู้ให้บริการภายนอกจะปิดไว้จนกว่าผู้ดูแลระบบจะเปิดใช้เอง",
+    "resources": "บริการภายในยังใช้ CPU หน่วยความจำ พื้นที่ดิสก์ และไฟฟ้า",
+    "apiDocs": "เอกสาร API (Swagger)",
+    "privacy": "การควบคุมความเป็นส่วนตัว",
+    "privacyBody": "ระบบหลังบ้านตรวจความเป็นเจ้าของแชทจากผู้ใช้ใน token ที่ตรวจสอบแล้ว ผู้ดูแลระบบเห็นเฉพาะข้อมูลการใช้งานแบบรวม ไม่เห็นเนื้อหาแชทส่วนตัว และโดยค่าเริ่มต้นจะไม่บันทึกข้อความและคำตอบแบบเต็ม",
+    "session": "เซสชัน",
+    "sessionBody": "การยืนยันตัวตนใช้ Keycloak แบบ Authorization Code Flow ร่วมกับ PKCE กดออกจากระบบที่แถบด้านข้างเพื่อปิดเซสชันกับผู้ให้บริการยืนยันตัวตน"
+  },
+  "enums": {
+    "messageStatus": {
+      "PENDING": "รอดำเนินการ",
+      "STREAMING": "กำลังตอบ",
+      "COMPLETED": "เสร็จแล้ว",
+      "INTERRUPTED": "หยุดกลางคัน",
+      "ERROR": "ผิดพลาด"
+    },
+    "requestStatus": {
+      "PENDING": "รอดำเนินการ",
+      "STREAMING": "กำลังตอบ",
+      "COMPLETED": "สำเร็จ",
+      "CANCELLED": "ยกเลิก",
+      "ERROR": "ผิดพลาด"
+    },
+    "usageKind": {
+      "ACTUAL": "จริง",
+      "ESTIMATED": "ประมาณการ",
+      "SYNTHETIC": "สังเคราะห์"
+    },
+    "strategy": {
+      "PASS_THROUGH": "คิดตามต้นทุน",
+      "PERCENTAGE_MARKUP": "บวกเพิ่มเป็นเปอร์เซ็นต์",
+      "FIXED_RATE": "อัตราคงที่",
+      "SIMULATION": "จำลอง"
+    },
+    "modelStatus": {
+      "available": "พร้อมใช้งาน",
+      "readyDisabled": "พร้อม (ปิดอยู่)",
+      "disabled": "ปิดใช้งาน",
+      "notPermitted": "ไม่มีสิทธิ์",
+      "notConfigured": "ยังไม่ได้ตั้งค่า",
+      "dailyLimitReached": "ถึงเพดานรายวันแล้ว",
+      "unavailable": "ไม่พร้อมใช้งาน"
+    },
+    "location": {
+      "LOCAL": "ภายใน",
+      "EXTERNAL": "ภายนอก"
+    },
+    "auditAction": {
+      "PRICING_VERSION_CREATE": "สร้างเวอร์ชันราคา",
+      "MODEL_UPDATE": "แก้ไขโมเดล",
+      "MODEL_PERMISSION_UPDATE": "แก้ไขสิทธิ์โมเดล"
+    },
+    "entityType": {
+      "AIModel": "โมเดล AI",
+      "PricingConfiguration": "การตั้งค่าราคา",
+      "UserModelPermission": "สิทธิ์ใช้โมเดลของผู้ใช้"
+    }
+  }
+}

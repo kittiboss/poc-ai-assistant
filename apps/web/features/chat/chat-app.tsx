@@ -1,9 +1,11 @@
 'use client';
 import { Check, Copy, LoaderCircle, MessageSquare, Pencil, Plus, Search, Send, Square, Trash2 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import remarkGfm from 'remark-gfm';
+import { useEnumLabel } from '@/i18n/use-enum-label';
 import { useApi } from '@/lib/api';
 import type { Conversation, Message, Model } from '@/lib/types';
 import { Shell } from '@/components/layout/shell';
@@ -13,6 +15,8 @@ import { useUIStore } from '@/stores/ui-store-provider';
 
 export function ChatApp() {
   const api = useApi();
+  const t = useTranslations('chat');
+  const enums = useEnumLabel();
   const setMobileNavOpen = useUIStore((state) => state.setMobileNavOpen);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [active, setActive] = useState<Conversation | null>(null);
@@ -63,7 +67,7 @@ export function ChatApp() {
     }
   };
   const rename = async (conversation: Conversation) => {
-    const title = window.prompt('Conversation name', conversation.title)?.trim();
+    const title = window.prompt(t('renamePrompt'), conversation.title)?.trim();
     if (!title) return;
     const updated = await api.request<Conversation>(`/conversations/${conversation.id}`, {
       method: 'PATCH',
@@ -75,7 +79,7 @@ export function ChatApp() {
     if (active?.id === updated.id) setActive((value) => (value ? { ...value, title: updated.title } : value));
   };
   const remove = async (conversation: Conversation) => {
-    if (!window.confirm(`Delete “${conversation.title}”? This cannot be undone.`)) return;
+    if (!window.confirm(t('deleteConfirm', { title: conversation.title }))) return;
     await api.request(`/conversations/${conversation.id}`, { method: 'DELETE' });
     setConversations((items) => items.filter((item) => item.id !== conversation.id));
     if (active?.id === conversation.id) setActive(null);
@@ -120,7 +124,7 @@ export function ChatApp() {
       });
       if (!response.ok || !response.body) {
         const payload = (await response.json().catch(() => ({}))) as { message?: string };
-        throw new Error(payload.message || `Generation failed (${response.status})`);
+        throw new Error(payload.message || t('failedStatus', { status: response.status }));
       }
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -149,7 +153,7 @@ export function ChatApp() {
                 : current,
             );
           }
-          if (event === 'error') throw new Error(data.message || 'Generation failed');
+          if (event === 'error') throw new Error(data.message || t('failed'));
         }
         if (done) break;
       }
@@ -166,7 +170,7 @@ export function ChatApp() {
       await loadConversations();
     } catch (cause) {
       const aborted = (cause as Error).name === 'AbortError';
-      setError(aborted ? 'Generation stopped. The partial response was preserved.' : (cause as Error).message);
+      setError(aborted ? t('stopped') : (cause as Error).message);
       setActive((current) =>
         current
           ? {
@@ -192,14 +196,14 @@ export function ChatApp() {
     <>
       <div className="space-y-3 p-3">
         <Button className="w-full" onClick={create}>
-          <Plus size={17} /> New chat
+          <Plus size={17} /> {t('newChat')}
         </Button>
         <div className="relative">
           <Search className="absolute top-2.5 left-3 text-fg-tertiary" size={16} />
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search conversations"
+            placeholder={t('search')}
             className="h-10 w-full rounded-brand bg-fill-tertiary pr-3 pl-9 text-sm outline-none focus:ring-2 focus:ring-primary/30"
           />
         </div>
@@ -221,14 +225,14 @@ export function ChatApp() {
               <span className="truncate">{conversation.title}</span>
             </button>
             <button
-              title="Rename"
+              title={t('rename')}
               onClick={() => rename(conversation)}
               className="hidden p-1 text-fg-tertiary group-focus-within:block group-hover:block hover:text-primary pointer-coarse:block"
             >
               <Pencil size={14} />
             </button>
             <button
-              title="Delete"
+              title={t('delete')}
               onClick={() => remove(conversation)}
               className="hidden p-1 text-fg-tertiary group-focus-within:block group-hover:block hover:text-error pointer-coarse:block"
             >
@@ -243,26 +247,33 @@ export function ChatApp() {
   const header = (
     <>
       <div className="min-w-0 flex-1">
-        <h1 className="truncate font-semibold">{active?.title || 'New conversation'}</h1>
-        <p className="hidden truncate text-xs text-fg-secondary sm:block">Private to your company account</p>
+        <h1 className="truncate font-semibold">{active?.title || t('newConversation')}</h1>
+        <p className="hidden truncate text-xs text-fg-secondary sm:block">{t('private')}</p>
       </div>
       <div className="flex shrink-0 items-center gap-3">
         <Select
-          aria-label="Model"
+          aria-label={t('model')}
           className="w-40 sm:w-64 lg:w-auto"
           value={modelId}
           onChange={(event) => setModelId(event.target.value)}
         >
           {models.map((model) => (
             <option key={model.id} value={model.id} disabled={!model.available}>
-              {model.displayName} · {model.provider} · {model.local ? 'Local · $0 external API' : 'External'} ·{' '}
-              {model.status}
+              {t('modelOption', {
+                name: model.displayName,
+                provider: model.provider,
+                location: model.local ? t('modelLocal') : t('modelExternal'),
+                status: enums.modelStatus(model.status),
+              })}
             </option>
           ))}
         </Select>
         {selectedModel && (
           <Badge className="hidden xl:inline-flex" tone={selectedModel.available ? 'success' : 'error'}>
-            {selectedModel.local ? 'LOCAL' : 'EXTERNAL'} · {selectedModel.status}
+            {t('modelBadge', {
+              location: enums.label('location', selectedModel.local ? 'LOCAL' : 'EXTERNAL'),
+              status: enums.modelStatus(selectedModel.status),
+            })}
           </Badge>
         )}
       </div>
@@ -285,8 +296,7 @@ export function ChatApp() {
           <div className="mx-auto max-w-3xl">
             {selectedModel && !selectedModel.local && (
               <div className="mb-2 rounded-brand bg-warning-soft px-3 py-2 text-xs text-warning-text">
-                External model: messages in this conversation are sent to {selectedModel.provider} under that provider’s
-                data terms. Free-tier providers may use them to improve their products — do not send confidential data.
+                {t('externalNotice', { provider: selectedModel.provider })}
               </div>
             )}
             {error && <div className="mb-2 rounded-brand bg-error-soft px-3 py-2 text-sm text-error-text">{error}</div>}
@@ -302,7 +312,7 @@ export function ChatApp() {
                     send();
                   }
                 }}
-                placeholder="Message your enterprise assistant…"
+                placeholder={t('placeholder')}
                 className="max-h-40 min-h-11 border-0 shadow-none focus:ring-0"
               />
               {generating ? (
@@ -310,7 +320,7 @@ export function ChatApp() {
                   variant="secondary"
                   className="h-11 w-11 shrink-0 px-0"
                   onClick={() => abortRef.current?.abort()}
-                  title="Stop generation"
+                  title={t('stop')}
                 >
                   <Square size={16} />
                 </Button>
@@ -319,15 +329,13 @@ export function ChatApp() {
                   className="h-11 w-11 shrink-0 px-0"
                   onClick={send}
                   disabled={!input.trim() || !selectedModel?.available}
-                  title="Send"
+                  title={t('send')}
                 >
                   <Send size={17} />
                 </Button>
               )}
             </Card>
-            <p className="mt-2 text-center text-[11px] text-fg-secondary">
-              AI responses may be inaccurate. Local inference still uses compute, memory, disk, and electricity.
-            </p>
+            <p className="mt-2 text-center text-[11px] text-fg-secondary">{t('disclaimer')}</p>
           </div>
         </footer>
       </div>
@@ -336,20 +344,22 @@ export function ChatApp() {
 }
 
 function EmptyState({ models }: { models: Model[] }) {
+  const t = useTranslations('chat');
   return (
     <div className="py-20 text-center">
       <div className="mx-auto grid h-14 w-14 place-items-center rounded-brand-lg bg-primary-soft text-primary">
         <MessageSquare />
       </div>
-      <h2 className="mt-5 text-2xl font-semibold">How can I help?</h2>
+      <h2 className="mt-5 text-2xl font-semibold">{t('emptyTitle')}</h2>
       <p className="mx-auto mt-2 max-w-md text-sm text-fg-secondary">
-        Choose an available model and start a private conversation. {models.filter((model) => model.available).length}{' '}
-        model(s) available.
+        {t('emptyBody', { count: models.filter((model) => model.available).length })}
       </p>
     </div>
   );
 }
 function MessageBubble({ message }: { message: Message }) {
+  const t = useTranslations('chat');
+  const enums = useEnumLabel();
   const [copied, setCopied] = useState(false);
   const mine = message.role === 'USER';
   return (
@@ -377,7 +387,7 @@ function MessageBubble({ message }: { message: Message }) {
               setTimeout(() => setCopied(false), 1200);
             }}
             className="absolute top-1 -right-9 hidden rounded-brand-sm p-2 text-fg-tertiary group-focus-within:block group-hover:block hover:bg-fill-tertiary pointer-coarse:block"
-            title="Copy response"
+            title={t('copy')}
           >
             {copied ? <Check size={15} /> : <Copy size={15} />}
           </button>
@@ -390,7 +400,7 @@ function MessageBubble({ message }: { message: Message }) {
             )}
           >
             {message.status === 'STREAMING' && <LoaderCircle className="animate-spin" size={11} />}{' '}
-            {message.status.toLowerCase()}
+            {enums.label('messageStatus', message.status)}
           </div>
         )}
       </div>

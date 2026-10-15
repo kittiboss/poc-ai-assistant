@@ -1,6 +1,9 @@
 'use client';
 import { ArrowDownToLine, ArrowUpFromLine, BarChart3, Coins, Save, ShieldAlert, Users, Zap } from 'lucide-react';
+import { useFormatter, useTranslations } from 'next-intl';
 import { useEffect, useMemo, useState } from 'react';
+import { costFormat, dateTimeFormat } from '@/i18n/formats';
+import { useEnumLabel } from '@/i18n/use-enum-label';
 import { useApi } from '@/lib/api';
 import { SimpleBarChart } from '@/components/ui/charts';
 import { Shell } from '@/components/layout/shell';
@@ -109,9 +112,6 @@ const pricingFields = [
   'simulationOutputRate',
   'currency',
 ] as const;
-const money = (value: unknown) => `$${Number(value || 0).toFixed(6)}`;
-const number = (value: unknown) => Number(value || 0).toLocaleString();
-
 /** Only the fields the pricing API accepts; it rejects unknown properties such as a version's id. effectiveAt is kept as datetime-local text until sent. */
 function pricingBody(form: PriceForm) {
   const body: Record<string, unknown> = Object.fromEntries(
@@ -133,17 +133,34 @@ function summaryQuery(filters: Filters) {
   return query ? `?${query}` : '';
 }
 
-function auditDetail(entry: Audit) {
-  const after = entry.after || {};
-  if (entry.action === 'PRICING_VERSION_CREATE') return `v${after.version} · ${after.strategy}`;
-  if (entry.action === 'MODEL_UPDATE')
-    return `enabled=${after.enabled} · roles=${(after.allowedRoles as string[] | undefined)?.join('/') || '—'}`;
-  if (entry.action === 'MODEL_PERMISSION_UPDATE') return `${after.modelId}: ${after.allowed ? 'allowed' : 'denied'}`;
-  return '';
-}
-
 export function AdminDashboard() {
   const api = useApi();
+  const t = useTranslations('admin');
+  const tCommon = useTranslations('common');
+  const enums = useEnumLabel();
+  const format = useFormatter();
+  const money = (value: unknown) => format.number(Number(value || 0), costFormat('USD', 6));
+  const number = (value: unknown) => format.number(Number(value || 0));
+  const percent = (value: string) => format.number(Number(value) / 100, { style: 'percent', maximumFractionDigits: 6 });
+  const dateTime = (value: string) => format.dateTime(new Date(value), dateTimeFormat);
+  // Daily buckets are UTC dates; formatting them in UTC keeps each bar on its own day.
+  const day = (value: string) => format.dateTime(new Date(value), { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const auditDetail = (entry: Audit) => {
+    const after = entry.after || {};
+    if (entry.action === 'PRICING_VERSION_CREATE')
+      return t('audit.pricingDetail', {
+        version: String(after.version),
+        strategy: enums.label('strategy', String(after.strategy)),
+      });
+    if (entry.action === 'MODEL_UPDATE')
+      return t('audit.modelDetail', {
+        enabled: String(after.enabled),
+        roles: (after.allowedRoles as string[] | undefined)?.join('/') || '—',
+      });
+    if (entry.action === 'MODEL_PERMISSION_UPDATE')
+      return t('audit.permissionDetail', { model: String(after.modelId), allowed: String(Boolean(after.allowed)) });
+    return '';
+  };
   const [summary, setSummary] = useState<Summary | null>(null);
   const [models, setModels] = useState<AdminModel[]>([]);
   const [pricing, setPricing] = useState<Pricing[]>([]);
@@ -210,7 +227,7 @@ export function AdminDashboard() {
     try {
       await api.request(`/admin/models/${model.id}`, { method: 'PATCH', body: JSON.stringify(change) });
       await load();
-      setMessage(`${model.displayName} updated.`);
+      setMessage(t('modelUpdated', { model: model.displayName }));
     } catch (cause) {
       setMessage((cause as Error).message);
     }
@@ -235,7 +252,7 @@ export function AdminDashboard() {
     try {
       await api.request(`/admin/pricing/${selectedModel}`, { method: 'POST', body: JSON.stringify(pricingBody(form)) });
       await load();
-      setMessage('A new immutable pricing version was created.');
+      setMessage(t('pricingCreated'));
     } catch (cause) {
       setMessage((cause as Error).message);
     }
@@ -257,53 +274,51 @@ export function AdminDashboard() {
     <Shell active="admin">
       <div className="mx-auto max-w-7xl space-y-7 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:p-8">
         <div>
-          <p className="text-sm font-medium text-primary">ADMIN CONSOLE</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">Platform operations</h1>
-          <p className="mt-2 text-sm text-fg-secondary">
-            Aggregate metrics only. Private conversation content is never exposed here.
-          </p>
+          <p className="text-sm font-medium text-primary">{t('eyebrow')}</p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight">{t('title')}</h1>
+          <p className="mt-2 text-sm text-fg-secondary">{t('intro')}</p>
         </div>
         {message && (
           <div className="rounded-brand bg-primary-soft px-4 py-3 text-sm text-primary-text">
             {message}
-            <button className="float-right" onClick={() => setMessage('')}>
+            <button className="float-right" onClick={() => setMessage('')} aria-label={tCommon('dismiss')}>
               ×
             </button>
           </div>
         )}
 
         <Card className="flex flex-wrap items-end gap-3 p-4">
-          <Field label="From">
+          <Field label={t('filters.from')}>
             <Input
               type="date"
               value={filters.from}
               onChange={(event) => applyFilters({ ...filters, from: event.target.value })}
             />
           </Field>
-          <Field label="To">
+          <Field label={t('filters.to')}>
             <Input
               type="date"
               value={filters.to}
               onChange={(event) => applyFilters({ ...filters, to: event.target.value })}
             />
           </Field>
-          <Field label="Provider">
+          <Field label={t('filters.provider')}>
             <Select
               value={filters.provider}
               onChange={(event) => applyFilters({ ...filters, provider: event.target.value })}
             >
-              <option value="">All providers</option>
+              <option value="">{t('filters.allProviders')}</option>
               {['MOCK', 'OLLAMA', 'OPENAI', 'ANTHROPIC', 'GEMINI'].map((provider) => (
                 <option key={provider}>{provider}</option>
               ))}
             </Select>
           </Field>
-          <Field label="Model">
+          <Field label={t('filters.model')}>
             <Select
               value={filters.modelId}
               onChange={(event) => applyFilters({ ...filters, modelId: event.target.value })}
             >
-              <option value="">All models</option>
+              <option value="">{t('filters.allModels')}</option>
               {models.map((model) => (
                 <option key={model.id} value={model.id}>
                   {model.displayName}
@@ -312,24 +327,36 @@ export function AdminDashboard() {
             </Select>
           </Field>
           <Button variant="ghost" onClick={() => applyFilters(noFilters)}>
-            Reset
+            {t('filters.reset')}
           </Button>
-          <p className="ml-auto text-xs text-fg-secondary">Filters apply to metrics, charts, and cost breakdown.</p>
+          <p className="ml-auto text-xs text-fg-secondary">{t('filters.note')}</p>
         </Card>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <Metric
             icon={<Users />}
-            label={`Users (${number(summary?.activeUsers)} active in range)`}
-            value={summary?.users || 0}
+            label={t('metrics.users', { active: number(summary?.activeUsers) })}
+            value={number(summary?.users)}
           />
-          <Metric icon={<Zap />} label="AI requests" value={summary?.requests || 0} />
-          <Metric icon={<ArrowDownToLine />} label="Input tokens" value={summary?.tokens.inputTokens || 0} />
-          <Metric icon={<ArrowUpFromLine />} label="Output tokens" value={summary?.tokens.outputTokens || 0} />
-          <Metric icon={<Coins />} label="Actual provider cost" value={money(summary?.costs.actualProviderCost)} />
+          <Metric icon={<Zap />} label={t('metrics.requests')} value={number(summary?.requests)} />
+          <Metric
+            icon={<ArrowDownToLine />}
+            label={t('metrics.inputTokens')}
+            value={number(summary?.tokens.inputTokens)}
+          />
+          <Metric
+            icon={<ArrowUpFromLine />}
+            label={t('metrics.outputTokens')}
+            value={number(summary?.tokens.outputTokens)}
+          />
+          <Metric
+            icon={<Coins />}
+            label={t('metrics.actualProviderCost')}
+            value={money(summary?.costs.actualProviderCost)}
+          />
           <Metric
             icon={<BarChart3 />}
-            label="Simulated cost (not billed)"
+            label={t('metrics.simulatedCost')}
             value={money(summary?.costs.simulatedProviderCost)}
           />
         </div>
@@ -338,48 +365,54 @@ export function AdminDashboard() {
           <Card className="flex flex-wrap items-center gap-4 p-5">
             <ShieldAlert className="text-warning" />
             <div className="min-w-60 flex-1">
-              <h2 className="font-semibold">External provider guardrail (today, UTC)</h2>
-              <p className="text-xs text-fg-secondary">
-                Installation-wide ceiling across OpenAI, Anthropic, and Gemini. Requests beyond either limit are
-                refused; local models are unaffected. Set via EXTERNAL_DAILY_REQUEST_LIMIT / EXTERNAL_DAILY_TOKEN_LIMIT.
-              </p>
+              <h2 className="font-semibold">{t('guard.title')}</h2>
+              <p className="text-xs text-fg-secondary">{t('guard.description')}</p>
             </div>
-            <GuardMeter label="Requests" used={guard.used.requests} limit={guard.limits.requests} />
-            <GuardMeter label="Tokens" used={guard.used.tokens} limit={guard.limits.tokens} />
+            <GuardMeter label={t('guard.requests')} used={guard.used.requests} limit={guard.limits.requests} />
+            <GuardMeter label={t('guard.tokens')} used={guard.used.tokens} limit={guard.limits.tokens} />
           </Card>
         )}
 
         <div className="grid gap-6 lg:grid-cols-2">
           <Card className="p-5">
-            <h2 className="font-semibold">Requests per day</h2>
-            <p className="mb-4 text-xs text-fg-secondary">All usage kinds in the selected range</p>
-            <SimpleBarChart data={summary?.daily || []} x="day" y="requests" label="Requests" />
+            <h2 className="font-semibold">{t('charts.perDay')}</h2>
+            <p className="mb-4 text-xs text-fg-secondary">{t('charts.perDayNote')}</p>
+            <SimpleBarChart
+              data={summary?.daily || []}
+              x="day"
+              y="requests"
+              label={t('charts.requests')}
+              formatX={day}
+            />
           </Card>
           <Card className="p-5">
-            <h2 className="font-semibold">Requests by provider</h2>
-            <p className="mb-4 text-xs text-fg-secondary">Mock usage is synthetic; Ollama has $0 external API cost</p>
-            <SimpleBarChart data={summary?.byProvider || []} x="provider" y="_count" label="Requests" />
+            <h2 className="font-semibold">{t('charts.byProvider')}</h2>
+            <p className="mb-4 text-xs text-fg-secondary">{t('charts.byProviderNote')}</p>
+            <SimpleBarChart data={summary?.byProvider || []} x="provider" y="_count" label={t('charts.requests')} />
           </Card>
           <Card className="p-5">
-            <h2 className="font-semibold">Requests by model</h2>
-            <p className="mb-4 text-xs text-fg-secondary">Registry display names</p>
-            <SimpleBarChart data={summary?.byModel || []} x="displayName" y="_count" label="Requests" />
+            <h2 className="font-semibold">{t('charts.byModel')}</h2>
+            <p className="mb-4 text-xs text-fg-secondary">{t('charts.byModelNote')}</p>
+            <SimpleBarChart data={summary?.byModel || []} x="displayName" y="_count" label={t('charts.requests')} />
           </Card>
           <Card className="p-5">
-            <h2 className="font-semibold">Cost and profitability snapshot</h2>
+            <h2 className="font-semibold">{t('snapshot.title')}</h2>
             <div className="mt-5 grid grid-cols-2 gap-4">
-              <Value label="Actual external cost" value={money(summary?.costs.actualProviderCost)} />
-              <Value label="Customer charge" value={money(summary?.costs.customerCharge)} />
-              <Value label="Simulated provider cost" value={money(summary?.costs.simulatedProviderCost)} />
-              <Value label="Simulated customer charge" value={money(summary?.costs.simulatedCustomerCharge)} />
+              <Value label={t('snapshot.actualExternalCost')} value={money(summary?.costs.actualProviderCost)} />
+              <Value label={t('snapshot.customerCharge')} value={money(summary?.costs.customerCharge)} />
+              <Value label={t('snapshot.simulatedProviderCost')} value={money(summary?.costs.simulatedProviderCost)} />
               <Value
-                label="Actual gross margin"
+                label={t('snapshot.simulatedCustomerCharge')}
+                value={money(summary?.costs.simulatedCustomerCharge)}
+              />
+              <Value
+                label={t('snapshot.actualMargin')}
                 value={money(
                   Number(summary?.costs.customerCharge || 0) - Number(summary?.costs.actualProviderCost || 0),
                 )}
               />
               <Value
-                label="Simulated gross margin"
+                label={t('snapshot.simulatedMargin')}
                 value={money(
                   Number(summary?.costs.simulatedCustomerCharge || 0) -
                     Number(summary?.costs.simulatedProviderCost || 0),
@@ -394,38 +427,40 @@ export function AdminDashboard() {
                     kind.usageKind === 'ACTUAL' ? 'success' : kind.usageKind === 'SYNTHETIC' ? 'primary' : 'warning'
                   }
                 >
-                  {kind.usageKind}: {number(kind._count)} req · {number(kind._sum.totalTokens)} tok
+                  {t('snapshot.kind', {
+                    kind: enums.label('usageKind', kind.usageKind),
+                    requests: number(kind._count),
+                    tokens: number(kind._sum.totalTokens),
+                  })}
                 </Badge>
               ))}
             </div>
-            <p className="mt-4 text-xs text-fg-secondary">
-              Simulation is a planning view only; this POC creates no invoice and processes no payment.
-            </p>
+            <p className="mt-4 text-xs text-fg-secondary">{t('snapshot.note')}</p>
           </Card>
         </div>
 
         <Card className="overflow-hidden">
           <div className="border-b border-line-secondary p-5">
-            <h2 className="font-semibold">Cost breakdown by model</h2>
-            <p className="text-xs text-fg-secondary">
-              Snapshots stored on each usage record; later pricing changes never alter these values.
-            </p>
+            <h2 className="font-semibold">{t('breakdown.title')}</h2>
+            <p className="text-xs text-fg-secondary">{t('breakdown.note')}</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-fill-quaternary text-left text-xs text-fg-secondary uppercase">
                 <tr>
-                  {[
-                    'Model',
-                    'Requests',
-                    'Tokens',
-                    'Actual provider cost',
-                    'Customer charge',
-                    'Simulated provider cost',
-                    'Simulated customer charge',
-                  ].map((item) => (
-                    <th key={item} className="px-5 py-3">
-                      {item}
+                  {(
+                    [
+                      'model',
+                      'requests',
+                      'tokens',
+                      'actualProviderCost',
+                      'customerCharge',
+                      'simulatedProviderCost',
+                      'simulatedCustomerCharge',
+                    ] as const
+                  ).map((column) => (
+                    <th key={column} className="px-5 py-3">
+                      {t(`breakdown.${column}`)}
                     </th>
                   ))}
                 </tr>
@@ -449,21 +484,20 @@ export function AdminDashboard() {
 
         <Card className="overflow-hidden">
           <div className="border-b border-line-secondary p-5">
-            <h2 className="font-semibold">Model registry</h2>
-            <p className="text-xs text-fg-secondary">
-              External models can be enabled only when ENABLE_EXTERNAL_PROVIDERS=true and the server holds the provider
-              credential. Availability reads gateway configuration and never calls a paid provider.
-            </p>
+            <h2 className="font-semibold">{t('registry.title')}</h2>
+            <p className="text-xs text-fg-secondary">{t('registry.note')}</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-fill-quaternary text-left text-xs text-fg-secondary uppercase">
                 <tr>
-                  {['Model', 'Provider', 'Location', 'Availability', 'Enabled', 'Allowed roles'].map((item) => (
-                    <th key={item} className="px-5 py-3">
-                      {item}
-                    </th>
-                  ))}
+                  {(['model', 'provider', 'location', 'availability', 'enabled', 'allowedRoles'] as const).map(
+                    (column) => (
+                      <th key={column} className="px-5 py-3">
+                        {t(`registry.${column}`)}
+                      </th>
+                    ),
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-line-secondary">
@@ -475,7 +509,9 @@ export function AdminDashboard() {
                     </td>
                     <td className="px-5 py-4">{model.provider}</td>
                     <td className="px-5 py-4">
-                      <Badge tone={model.local ? 'success' : 'warning'}>{model.local ? 'LOCAL' : 'EXTERNAL'}</Badge>
+                      <Badge tone={model.local ? 'success' : 'warning'}>
+                        {enums.label('location', model.local ? 'LOCAL' : 'EXTERNAL')}
+                      </Badge>
                     </td>
                     <td className="px-5 py-4">
                       <Badge
@@ -487,18 +523,16 @@ export function AdminDashboard() {
                               : 'error'
                         }
                       >
-                        {model.status}
+                        {enums.modelStatus(model.status)}
                       </Badge>
                     </td>
                     <td className="px-5 py-4">
                       <button
-                        aria-label={`${model.enabled ? 'Disable' : 'Enable'} ${model.displayName}`}
+                        aria-label={t(model.enabled ? 'registry.disable' : 'registry.enable', {
+                          model: model.displayName,
+                        })}
                         disabled={!model.enabled && !model.configured}
-                        title={
-                          !model.configured
-                            ? 'Provider is not explicitly enabled and configured on the server'
-                            : undefined
-                        }
+                        title={!model.configured ? t('registry.notConfigured') : undefined}
                         onClick={() => updateModel(model, { enabled: !model.enabled })}
                         className={`h-6 w-11 rounded-full p-1 transition disabled:cursor-not-allowed disabled:opacity-40 ${model.enabled ? 'bg-primary' : 'bg-fill'}`}
                       >
@@ -536,27 +570,27 @@ export function AdminDashboard() {
 
         <Card className="overflow-hidden">
           <div className="border-b border-line-secondary p-5">
-            <h2 className="font-semibold">Current model prices</h2>
-            <p className="text-xs text-fg-secondary">
-              Latest version per model, USD per one million tokens. Select a row to edit.
-            </p>
+            <h2 className="font-semibold">{t('prices.title')}</h2>
+            <p className="text-xs text-fg-secondary">{t('prices.note')}</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-fill-quaternary text-fg-secondary uppercase">
                 <tr>
-                  {[
-                    'Model',
-                    'Version',
-                    'Strategy',
-                    'Provider in / out',
-                    'Customer in / out',
-                    'Markup',
-                    'Simulation in / out',
-                    'Effective',
-                  ].map((item) => (
-                    <th key={item} className="px-5 py-3">
-                      {item}
+                  {(
+                    [
+                      'model',
+                      'version',
+                      'strategy',
+                      'providerRates',
+                      'customerRates',
+                      'markup',
+                      'simulationRates',
+                      'effective',
+                    ] as const
+                  ).map((column) => (
+                    <th key={column} className="px-5 py-3">
+                      {t(`prices.${column}`)}
                     </th>
                   ))}
                 </tr>
@@ -573,21 +607,21 @@ export function AdminDashboard() {
                       className={`cursor-pointer ${item.modelId === selectedModel ? 'bg-primary-soft' : 'hover:bg-fill-quaternary'}`}
                     >
                       <td className="px-5 py-3 font-medium">{item.model.displayName}</td>
-                      <td className="px-5 py-3">v{version.version}</td>
-                      <td className="px-5 py-3">{version.strategy}</td>
+                      <td className="px-5 py-3">{t('prices.versionLabel', { version: version.version })}</td>
+                      <td className="px-5 py-3">{enums.label('strategy', version.strategy)}</td>
                       <td className="px-5 py-3 font-mono">
                         {version.providerInputRate} / {version.providerOutputRate}
                       </td>
                       <td className="px-5 py-3 font-mono">
                         {version.customerInputRate} / {version.customerOutputRate}
                       </td>
-                      <td className="px-5 py-3">{version.markupPercent}%</td>
+                      <td className="px-5 py-3">{percent(version.markupPercent)}</td>
                       <td className="px-5 py-3 font-mono">
                         {version.simulationInputRate} / {version.simulationOutputRate}
                       </td>
                       <td className="px-5 py-3">
-                        {new Date(version.effectiveAt).toLocaleString()}{' '}
-                        {scheduled && <Badge tone="warning">scheduled</Badge>}
+                        {dateTime(version.effectiveAt)}{' '}
+                        {scheduled && <Badge tone="warning">{t('prices.scheduled')}</Badge>}
                       </td>
                     </tr>
                   );
@@ -600,10 +634,8 @@ export function AdminDashboard() {
         <Card className="p-6">
           <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h2 className="font-semibold">Pricing management</h2>
-              <p className="text-xs text-fg-secondary">
-                Rates are per one million tokens. Saving always creates a new version.
-              </p>
+              <h2 className="font-semibold">{t('pricing.title')}</h2>
+              <p className="text-xs text-fg-secondary">{t('pricing.note')}</p>
             </div>
             <Select value={selectedModel} onChange={(event) => setSelectedModel(event.target.value)}>
               {models.map((model) => (
@@ -615,70 +647,72 @@ export function AdminDashboard() {
           </div>
           <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <Field label="Strategy">
+              <Field label={t('pricing.strategy')}>
                 <Select
                   className="w-full"
                   value={form.strategy}
                   onChange={(event) => setForm({ ...form, strategy: event.target.value as Strategy })}
                 >
                   {['PASS_THROUGH', 'PERCENTAGE_MARKUP', 'FIXED_RATE', 'SIMULATION'].map((value) => (
-                    <option key={value}>{value}</option>
+                    <option key={value} value={value}>
+                      {enums.label('strategy', value)}
+                    </option>
                   ))}
                 </Select>
               </Field>
               <Rate
-                label="Provider input"
+                label={t('pricing.providerInput')}
                 value={form.providerInputRate}
                 set={(value) => setForm({ ...form, providerInputRate: value })}
               />
               <Rate
-                label="Provider output"
+                label={t('pricing.providerOutput')}
                 value={form.providerOutputRate}
                 set={(value) => setForm({ ...form, providerOutputRate: value })}
               />
               <Rate
-                label="Cached input"
+                label={t('pricing.cachedInput')}
                 value={form.cachedInputRate || '0'}
                 set={(value) => setForm({ ...form, cachedInputRate: value })}
               />
               <Rate
-                label="Additional provider fee"
+                label={t('pricing.additionalFee')}
                 value={form.additionalFee}
                 set={(value) => setForm({ ...form, additionalFee: value })}
               />
               <Rate
-                label="Customer input"
+                label={t('pricing.customerInput')}
                 value={form.customerInputRate}
                 set={(value) => setForm({ ...form, customerInputRate: value })}
               />
               <Rate
-                label="Customer output"
+                label={t('pricing.customerOutput')}
                 value={form.customerOutputRate}
                 set={(value) => setForm({ ...form, customerOutputRate: value })}
               />
               <Rate
-                label="Markup %"
+                label={t('pricing.markupPercent')}
                 value={form.markupPercent}
                 set={(value) => setForm({ ...form, markupPercent: value })}
               />
               <Rate
-                label="Simulation input"
+                label={t('pricing.simulationInput')}
                 value={form.simulationInputRate}
                 set={(value) => setForm({ ...form, simulationInputRate: value })}
               />
               <Rate
-                label="Simulation output"
+                label={t('pricing.simulationOutput')}
                 value={form.simulationOutputRate}
                 set={(value) => setForm({ ...form, simulationOutputRate: value })}
               />
-              <Field label="Currency">
+              <Field label={t('pricing.currency')}>
                 <Input
                   maxLength={3}
                   value={form.currency}
                   onChange={(event) => setForm({ ...form, currency: event.target.value.toUpperCase() })}
                 />
               </Field>
-              <Field label="Effective date (optional)">
+              <Field label={t('pricing.effectiveAt')}>
                 <Input
                   type="datetime-local"
                   value={form.effectiveAt || ''}
@@ -687,14 +721,14 @@ export function AdminDashboard() {
               </Field>
               <div className="sm:col-span-2 lg:col-span-3">
                 <Button onClick={savePrice}>
-                  <Save size={16} /> Save new version
+                  <Save size={16} /> {t('pricing.save')}
                 </Button>
               </div>
             </div>
             <div className="rounded-brand-lg bg-fill-quaternary p-5">
-              <h3 className="text-sm font-semibold">Charge preview</h3>
+              <h3 className="text-sm font-semibold">{t('pricing.preview')}</h3>
               <div className="mt-3 grid grid-cols-2 gap-3">
-                <Field label="Input tokens">
+                <Field label={t('pricing.inputTokens')}>
                   <Input
                     type="number"
                     min="0"
@@ -705,7 +739,7 @@ export function AdminDashboard() {
                     }
                   />
                 </Field>
-                <Field label="Output tokens">
+                <Field label={t('pricing.outputTokens')}>
                   <Input
                     type="number"
                     min="0"
@@ -718,41 +752,41 @@ export function AdminDashboard() {
                 </Field>
               </div>
               <Button variant="secondary" className="mt-3 w-full" onClick={previewPrice}>
-                Preview charge
+                {t('pricing.previewButton')}
               </Button>
               {preview ? (
                 <div className="mt-4 space-y-3">
-                  <Value label="Actual provider cost" value={money(preview.actualProviderCost)} />
-                  <Value label="Actual customer charge" value={money(preview.customerCharge)} />
-                  <Value label="Simulated provider cost" value={money(preview.simulatedProviderCost)} />
-                  <Value label="Simulated customer charge" value={money(preview.simulatedCustomerCharge)} />
-                  <Value label="Gross margin (actual)" value={money(preview.grossMargin)} />
+                  <Value label={t('pricing.actualProviderCost')} value={money(preview.actualProviderCost)} />
+                  <Value label={t('pricing.actualCustomerCharge')} value={money(preview.customerCharge)} />
+                  <Value label={t('pricing.simulatedProviderCost')} value={money(preview.simulatedProviderCost)} />
+                  <Value label={t('pricing.simulatedCustomerCharge')} value={money(preview.simulatedCustomerCharge)} />
+                  <Value label={t('pricing.grossMargin')} value={money(preview.grossMargin)} />
                 </div>
               ) : (
-                <p className="mt-3 text-xs text-fg-secondary">
-                  Preview compares clearly labeled actual and simulation results without saving anything.
-                </p>
+                <p className="mt-3 text-xs text-fg-secondary">{t('pricing.previewNote')}</p>
               )}
             </div>
           </div>
           <div className="mt-7">
-            <h3 className="text-sm font-semibold">Version history</h3>
+            <h3 className="text-sm font-semibold">{t('pricing.history')}</h3>
             <div className="mt-2 overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead className="text-fg-secondary">
                   <tr>
-                    {[
-                      'Version',
-                      'Effective',
-                      'Strategy',
-                      'Provider in/out',
-                      'Customer in/out',
-                      'Markup',
-                      'Simulation in/out',
-                      'Created by',
-                    ].map((item) => (
-                      <th key={item} className="py-2 pr-4">
-                        {item}
+                    {(
+                      [
+                        'version',
+                        'effective',
+                        'strategy',
+                        'providerRates',
+                        'customerRates',
+                        'markup',
+                        'simulationRates',
+                        'createdBy',
+                      ] as const
+                    ).map((column) => (
+                      <th key={column} className="py-2 pr-4">
+                        {t(`pricing.historyColumns.${column}`)}
                       </th>
                     ))}
                   </tr>
@@ -760,20 +794,22 @@ export function AdminDashboard() {
                 <tbody>
                   {selectedPricing?.versions.map((version) => (
                     <tr key={version.id} className="border-t border-line-secondary">
-                      <td className="py-3 pr-4 font-semibold">v{version.version}</td>
-                      <td className="py-3 pr-4">{new Date(version.effectiveAt).toLocaleString()}</td>
-                      <td className="py-3 pr-4">{version.strategy}</td>
+                      <td className="py-3 pr-4 font-semibold">
+                        {t('prices.versionLabel', { version: version.version })}
+                      </td>
+                      <td className="py-3 pr-4">{dateTime(version.effectiveAt)}</td>
+                      <td className="py-3 pr-4">{enums.label('strategy', version.strategy)}</td>
                       <td className="py-3 pr-4">
                         {version.providerInputRate} / {version.providerOutputRate}
                       </td>
                       <td className="py-3 pr-4">
                         {version.customerInputRate} / {version.customerOutputRate}
                       </td>
-                      <td className="py-3 pr-4">{version.markupPercent}%</td>
+                      <td className="py-3 pr-4">{percent(version.markupPercent)}</td>
                       <td className="py-3 pr-4">
                         {version.simulationInputRate} / {version.simulationOutputRate}
                       </td>
-                      <td className="py-3 pr-4">{version.createdBy || 'system'}</td>
+                      <td className="py-3 pr-4">{version.createdBy || tCommon('system')}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -784,14 +820,14 @@ export function AdminDashboard() {
 
         <Card className="overflow-hidden">
           <div className="border-b border-line-secondary p-5">
-            <h2 className="font-semibold">User model permissions</h2>
-            <p className="text-xs text-fg-secondary">An explicit choice overrides the model’s role defaults.</p>
+            <h2 className="font-semibold">{t('permissions.title')}</h2>
+            <p className="text-xs text-fg-secondary">{t('permissions.note')}</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-fill-quaternary text-left text-xs text-fg-secondary uppercase">
                 <tr>
-                  <th className="px-5 py-3">User</th>
+                  <th className="px-5 py-3">{t('permissions.user')}</th>
                   {models.map((model) => (
                     <th key={model.id} className="px-5 py-3">
                       {model.displayName}
@@ -821,7 +857,7 @@ export function AdminDashboard() {
                               checked={checked}
                               onChange={(event) => permission(user.id, model.id, event.target.checked)}
                             />
-                            {explicit ? 'Explicit' : 'Role default'}
+                            {explicit ? t('permissions.explicit') : t('permissions.roleDefault')}
                           </label>
                         </td>
                       );
@@ -835,18 +871,16 @@ export function AdminDashboard() {
 
         <Card className="overflow-hidden">
           <div className="border-b border-line-secondary p-5">
-            <h2 className="font-semibold">Audit log</h2>
-            <p className="text-xs text-fg-secondary">
-              Latest 100 model, permission, and pricing changes. Full before/after snapshots are stored in PostgreSQL.
-            </p>
+            <h2 className="font-semibold">{t('audit.title')}</h2>
+            <p className="text-xs text-fg-secondary">{t('audit.note')}</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-fill-quaternary text-fg-secondary uppercase">
                 <tr>
-                  {['Time', 'Actor', 'Action', 'Entity', 'Change'].map((item) => (
-                    <th key={item} className="px-5 py-3">
-                      {item}
+                  {(['time', 'actor', 'action', 'entity', 'change'] as const).map((column) => (
+                    <th key={column} className="px-5 py-3">
+                      {t(`audit.${column}`)}
                     </th>
                   ))}
                 </tr>
@@ -854,11 +888,11 @@ export function AdminDashboard() {
               <tbody className="divide-y divide-line-secondary">
                 {audit.map((entry) => (
                   <tr key={entry.id}>
-                    <td className="px-5 py-3 whitespace-nowrap">{new Date(entry.createdAt).toLocaleString()}</td>
-                    <td className="px-5 py-3">{entry.actor?.username || 'system'}</td>
-                    <td className="px-5 py-3 font-mono">{entry.action}</td>
+                    <td className="px-5 py-3 whitespace-nowrap">{dateTime(entry.createdAt)}</td>
+                    <td className="px-5 py-3">{entry.actor?.username || tCommon('system')}</td>
+                    <td className="px-5 py-3">{enums.label('auditAction', entry.action)}</td>
                     <td className="px-5 py-3">
-                      {entry.entityType}
+                      {enums.label('entityType', entry.entityType)}
                       <div className="font-mono text-[10px] text-fg-tertiary">{entry.entityId}</div>
                     </td>
                     <td className="px-5 py-3">{auditDetail(entry)}</td>
@@ -866,30 +900,32 @@ export function AdminDashboard() {
                 ))}
               </tbody>
             </table>
-            {!audit.length && <p className="p-5 text-xs text-fg-secondary">No changes recorded yet.</p>}
+            {!audit.length && <p className="p-5 text-xs text-fg-secondary">{t('audit.empty')}</p>}
           </div>
         </Card>
       </div>
     </Shell>
   );
 }
-function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; value: string | number }) {
+function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
     <Card className="p-5">
       <div className="mb-3 inline-flex rounded-brand bg-primary-soft p-2 text-primary">{icon}</div>
-      <div className="text-2xl font-semibold">{typeof value === 'number' ? value.toLocaleString() : value}</div>
+      <div className="text-2xl font-semibold">{value}</div>
       <div className="text-xs text-fg-secondary">{label}</div>
     </Card>
   );
 }
 function GuardMeter({ label, used, limit }: { label: string; used: number; limit: number }) {
+  const t = useTranslations('admin.guard');
+  const format = useFormatter();
   const ratio = limit ? Math.min(1, used / limit) : 1;
   return (
     <div className="w-48">
       <div className="flex justify-between text-xs">
         <span className="text-fg-secondary">{label}</span>
         <span className="font-mono">
-          {used.toLocaleString()} / {limit.toLocaleString()}
+          {format.number(used)} / {format.number(limit)}
         </span>
       </div>
       <div className="mt-1 h-2 rounded-full bg-fill-secondary">
@@ -898,7 +934,7 @@ function GuardMeter({ label, used, limit }: { label: string; used: number; limit
           style={{ width: `${ratio * 100}%` }}
         />
       </div>
-      {ratio >= 1 && <p className="mt-1 text-[11px] text-error">Limit reached — external requests blocked</p>}
+      {ratio >= 1 && <p className="mt-1 text-[11px] text-error">{t('reached')}</p>}
     </div>
   );
 }
