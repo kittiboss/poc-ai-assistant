@@ -1,9 +1,9 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { Button, Card, Input, Select, Textarea } from '../../components/ui/primitives';
-import { useApi } from '../../lib/api';
+import { useApi } from '@/components/api/api-provider';
+import type { AdminModel as Model } from '@/lib/api/types';
 import { download } from '../../lib/download';
-import type { Model, PromptTemplate } from '../../lib/types';
 
 type Policy = {
   id: string;
@@ -37,6 +37,18 @@ type Dashboard = {
     _sum: { totalTokens: number | null; simulatedProviderCost: string | null };
   }[];
 };
+
+type PromptTemplate = {
+  id: string;
+  name: string;
+  description: string;
+  systemPrompt: string;
+  allowedModels: string[];
+  allowedRoles: string[];
+  temperature: number;
+  maxOutputTokens: number;
+  enabled: boolean;
+};
 const emptyTemplate = {
   name: '',
   description: '',
@@ -57,7 +69,7 @@ const emptyPolicy = {
 };
 
 export function WorkspaceControls() {
-  const api = useApi();
+  const { request } = useApi();
   const [data, setData] = useState<Dashboard>(),
     [models, setModels] = useState<Model[]>([]),
     [templates, setTemplates] = useState<PromptTemplate[]>([]);
@@ -73,9 +85,9 @@ export function WorkspaceControls() {
     [busy, setBusy] = useState(false);
   const fetchAll = () =>
     Promise.all([
-      api.request<Dashboard>('/admin/workspace'),
-      api.request<Model[]>('/admin/models'),
-      api.request<PromptTemplate[]>('/admin/workspace/templates'),
+      request<Dashboard>('/admin/workspace'),
+      request<Model[]>('/admin/models'),
+      request<PromptTemplate[]>('/admin/workspace/templates'),
     ]);
   const apply = ([d, m, t]: Awaited<ReturnType<typeof fetchAll>>) => {
     setData(d);
@@ -122,7 +134,7 @@ export function WorkspaceControls() {
               const next = { ...(data?.settings || settings), externalBlocked: e.target.checked };
               void act(
                 () =>
-                  api.request('/admin/workspace/settings', {
+                  request('/admin/workspace/settings', {
                     method: 'PATCH',
                     body: JSON.stringify(next),
                   }),
@@ -185,7 +197,7 @@ export function WorkspaceControls() {
               )
                 return;
               void act(() =>
-                api.request('/admin/workspace/settings', {
+                request('/admin/workspace/settings', {
                   method: 'PATCH',
                   body: JSON.stringify(settings),
                 }),
@@ -198,7 +210,7 @@ export function WorkspaceControls() {
             variant="secondary"
             onClick={() =>
               act(async () => {
-                const p = await api.request<{
+                const p = await request<{
                   conversations: number;
                   retentionDays: number;
                 }>('/admin/workspace/retention');
@@ -212,7 +224,7 @@ export function WorkspaceControls() {
             variant="secondary"
             onClick={() =>
               act(async () => {
-                const d = await api.request<{
+                const d = await request<{
                   content: string;
                   filename: string;
                 }>('/admin/workspace/usage.csv');
@@ -300,7 +312,7 @@ export function WorkspaceControls() {
           disabled={busy || !policy.subject}
           onClick={() =>
             act(async () => {
-              await api.request('/admin/workspace/quotas', {
+              await request('/admin/workspace/quotas', {
                 method: 'POST',
                 body: JSON.stringify({
                   ...policy,
@@ -362,7 +374,7 @@ export function WorkspaceControls() {
                       onClick={() =>
                         act(
                           () =>
-                            api.request(`/admin/workspace/quotas/${p.id}`, {
+                            request(`/admin/workspace/quotas/${p.id}`, {
                               method: 'DELETE',
                             }),
                           'Quota removed',
@@ -392,7 +404,7 @@ export function WorkspaceControls() {
                 onBlur={(e) => {
                   if (e.target.value !== u.department)
                     void act(() =>
-                      api.request(`/admin/workspace/users/${u.id}`, {
+                      request(`/admin/workspace/users/${u.id}`, {
                         method: 'PATCH',
                         body: JSON.stringify({ department: e.target.value }),
                       }),
@@ -549,7 +561,7 @@ export function WorkspaceControls() {
           disabled={busy || !template.name.trim() || !template.systemPrompt.trim()}
           onClick={() =>
             act(async () => {
-              const t = await api.request<PromptTemplate>(
+              const t = await request<PromptTemplate>(
                 templateId ? `/admin/workspace/templates/${templateId}` : '/admin/workspace/templates',
                 {
                   method: templateId ? 'PATCH' : 'POST',

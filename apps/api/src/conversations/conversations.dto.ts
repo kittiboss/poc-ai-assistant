@@ -8,7 +8,7 @@ export class CreateConversationDto {
   @ApiPropertyOptional() @IsOptional() @IsUUID() projectId?: string;
 }
 export class UpdateConversationDto {
-  @ApiProperty({ minLength: 1, maxLength: 120, example: 'Renamed conversation' })
+  @ApiPropertyOptional({ minLength: 1, maxLength: 120, example: 'Renamed conversation' })
   @IsOptional() @IsString() @Length(1, 120) title?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() pinned?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() archived?: boolean;

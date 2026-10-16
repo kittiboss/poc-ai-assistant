@@ -6,7 +6,7 @@ import { useTranslations } from 'next-intl';
 import { useAuth } from 'react-oidc-context';
 import { BrandLogo } from '@/components/brand/brand-logo';
 import { useBrand } from '@/components/brand/brand-provider';
-import { userRoles } from '@/lib/auth-roles';
+import { useRoles } from '@/lib/auth/use-roles';
 import { cn } from '@/lib/cn';
 import { useUIStore } from '@/stores/ui-store-provider';
 
@@ -97,7 +97,7 @@ function Navigation({
   const auth = useAuth();
   const brand = useBrand();
   const t = useTranslations('nav');
-  const roles = userRoles(auth.user);
+  const roles = useRoles();
   return (
     <>
       <div className="flex h-16 shrink-0 items-center gap-3 border-b border-line-secondary px-5">

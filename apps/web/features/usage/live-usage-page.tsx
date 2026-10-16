@@ -4,42 +4,16 @@ import { Activity, ArrowDownToLine, ArrowUpFromLine, Clock3, Radio, RefreshCw, S
 import { useEffect, useRef, useState } from 'react';
 import { Shell } from '@/components/layout/shell';
 import { Badge, Card } from '@/components/ui/primitives';
-import { useApi } from '@/lib/api';
+import { useApi } from '@/components/api/api-provider';
+import type { LiveUsage } from '@/lib/api/types';
 import { cn } from '@/lib/cn';
 
-type Totals = {
-  requests: number;
-  inputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-};
-type LiveRecord = {
-  id: string;
-  requestId: string;
-  modelId: string;
-  provider: string;
-  inputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-  durationMs: number;
-  status: string;
-  usageKind: 'ACTUAL' | 'ESTIMATED' | 'SYNTHETIC';
-  createdAt: string;
-  model: { displayName: string };
-};
-type LiveUsage = {
-  updatedAt: string;
-  pollAfterMs: number;
-  totals: Totals;
-  today: Totals;
-  active: { requests: number; reservedTokens: number };
-  recent: LiveRecord[];
-};
+type LiveRecord = LiveUsage['recent'][number];
 
 const format = (value: number) => new Intl.NumberFormat().format(value);
 
 export function LiveUsagePage() {
-  const api = useApi();
+  const { client, unwrap } = useApi();
   const [data, setData] = useState<LiveUsage>();
   const [error, setError] = useState('');
   const [increase, setIncrease] = useState(0);
@@ -51,9 +25,7 @@ export function LiveUsagePage() {
     let increaseTimer: ReturnType<typeof setTimeout>;
     const update = async () => {
       try {
-        const next = await api.request<LiveUsage>('/usage/me/live', {
-          cache: 'no-store',
-        });
+        const next = unwrap(await client.GET('/api/usage/me/live', { cache: 'no-store' }));
         if (stopped) return;
         if (previousTotal.current !== undefined && next.totals.totalTokens > previousTotal.current) {
           setIncrease(next.totals.totalTokens - previousTotal.current);

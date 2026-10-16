@@ -105,15 +105,15 @@ apps/
       testing/            unit-test fixtures (excluded from the build)
     test/                 vitest setup (offline network guard)
   web/                    Next.js app
-    app/                  routes (/, /usage, /admin, /settings), root layout and providers
+    app/                  routes (/ and /c/[id] for chat, /usage, /admin, /settings), root layout and providers
     features/             one folder per screen: chat, usage, admin, settings
     components/           shared: auth (OIDC provider, gate), brand (provider, logo), layout (shell, theme switcher), ui (primitives, charts)
     config/brands/        one file per customer brand, selected with NEXT_PUBLIC_BRAND at build time
     theme/                AntD theme from the brand, --app-* CSS variables, light/dark/system mode, bundled fonts
     i18n/                 next-intl setup (locale cookie, AntD locales, formats, browser time zone)
     messages/             UI texts per language (en, th)
-    stores/               Zustand UI state (mobile navigation drawer)
-    lib/                  API client, shared types, small helpers
+    stores/               Zustand UI state (navigation drawer, chosen model, active stream, session notice)
+    lib/                  API client and types generated from the OpenAPI document, auth helpers, small helpers
   mock-provider/          offline OpenAI-compatible deterministic provider
   gemini-proxy/           opt-in credential proxy and cost allowlist for Gemini
   groq-proxy/             opt-in credential proxy and cost allowlist for Groq
@@ -129,7 +129,8 @@ Reasons for this layout:
 
 - **Feature modules in the API.** Each folder owns its controller, service, DTOs (`*.dto.ts`) and OpenAPI response schemas (`*.schemas.ts`), and is a Nest module that exports only its service. Dependencies point one way (`admin` → `models` → `usage` → `pricing`; `conversations` → `models`/`usage`/`gateway`), so a future feature (RAG, agents, budgets) is a new folder, not more lines in a shared service. Pure rules (`model-policies.ts`, `external-limits.ts`, `chat-history.ts`) are plain functions next to the module that owns them, and are unit-tested without Nest.
 - **Tests next to the code.** `*.test.ts` sits beside the file it covers; shared fixtures live in `src/testing/` and are excluded from the production build.
-- **Routes stay thin in the web app.** `app/` only composes an auth gate and a feature, so moving to different routing or adding pages doesn't touch feature code.
+- **Routes stay thin in the web app.** `app/` only composes an auth gate and a feature, so moving to different routing or adding pages doesn't touch feature code. The chat's `/` (new chat) and `/c/<id>` share one layout, so switching chats or creating one keeps a streaming reply alive.
+- **Server data and UI state are kept apart in the web app.** API data goes through TanStack Query (`features/*/…-queries.ts`) with a typed client generated from the API's OpenAPI document; state that only the UI cares about lives in a Zustand store. A request refused with 401 renews the token once and is repeated; if that fails, the user is signed out and returned to the same page after signing in again.
 - **One brand source in the web app.** Everything that changes per customer (name, logo, favicon, colors, radius, font, default language) lives in `config/brands/<id>.ts`. Only the root layout calls `getBrand()`; it passes the brand to `<BrandProvider>` and client components read it with `useBrand()` (an ESLint rule rejects other imports). Loading a brand at runtime later, for example from a mounted file, therefore changes `getBrand()` only.
 - **One set of theme tokens.** Ant Design tokens generated from the brand are the only color source: AntD components read them through `ConfigProvider`, and the same tokens are emitted as `--app-*` CSS variables that Tailwind maps to classes such as `bg-primary` or `text-fg-secondary`. The chosen mode sits in a cookie, so the server renders the right theme and an inline script covers the first visit and `system` mode without a flash.
 - **Dockerfiles stay with each app** instead of a central `infra/docker/`: each image builds from the repository root (for the shared workspace package) but is owned and versioned with the app it packages. `infra/` holds only deployment configuration (identity realm, gateway routes) that a customer environment would replace.

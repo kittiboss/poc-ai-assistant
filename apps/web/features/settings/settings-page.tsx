@@ -2,8 +2,8 @@
 import { KeyRound, Languages, Server, ShieldCheck, SlidersHorizontal, SunMoon, User } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useAuth } from 'react-oidc-context';
-import { userRoles } from '@/lib/auth-roles';
-import { useApi } from '@/lib/api';
+import { API_URL } from '@/lib/api/client';
+import { useRoles } from '@/lib/auth/use-roles';
 import { LanguageSwitcher } from '@/components/layout/language-switcher';
 import { Shell } from '@/components/layout/shell';
 import { ThemeSwitcher } from '@/components/layout/theme-switcher';
@@ -11,15 +11,11 @@ import { Badge, Card } from '@/components/ui/primitives';
 
 export function SettingsPage() {
   const auth = useAuth();
-  const api = useApi();
+  const roles = useRoles();
   const t = useTranslations('settings');
   const tTheme = useTranslations('theme');
   const tLanguage = useTranslations('language');
-  const profile = auth.user?.profile as {
-    preferred_username?: string;
-    email?: string;
-    realm_access?: { roles?: string[] };
-  };
+  const profile = auth.user?.profile;
   return (
     <Shell active="settings">
       <div className="mx-auto max-w-4xl space-y-6 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:p-8">
@@ -49,14 +45,9 @@ export function SettingsPage() {
             <User className="text-primary" />
             <h2 className="mt-4 font-semibold">{t('identity')}</h2>
             <dl className="mt-4 space-y-3 text-sm">
-              <Row label={t('username')} value={profile.preferred_username || '—'} />
-              <Row label={t('email')} value={profile.email || '—'} />
-              <Row
-                label={t('roles')}
-                value={userRoles(auth.user)
-                  .filter((role) => ['ADMIN', 'USER'].includes(role))
-                  .join(', ')}
-              />
+              <Row label={t('username')} value={profile?.preferred_username || '—'} />
+              <Row label={t('email')} value={profile?.email || '—'} />
+              <Row label={t('roles')} value={roles.filter((role) => ['ADMIN', 'USER'].includes(role)).join(', ')} />
             </dl>
           </Card>
           <Card className="p-6">
@@ -71,7 +62,7 @@ export function SettingsPage() {
               <p>
                 <a
                   className="font-medium text-primary underline"
-                  href={`${api.apiBase}/docs`}
+                  href={`${API_URL}/docs`}
                   target="_blank"
                   rel="noreferrer"
                 >

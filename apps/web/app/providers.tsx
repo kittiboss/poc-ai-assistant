@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { ApiProvider } from '@/components/api/api-provider';
 import { AuthProvider } from '@/components/auth/auth-provider';
 import { BrandProvider } from '@/components/brand/brand-provider';
 import { BrowserTimeZone } from '@/i18n/browser-time-zone';
@@ -34,7 +35,9 @@ export function AppProviders({
         >
           <AntdProvider>
             <UIStoreProvider>
-              <AuthProvider>{children}</AuthProvider>
+              <AuthProvider>
+                <ApiProvider>{children}</ApiProvider>
+              </AuthProvider>
             </UIStoreProvider>
           </AntdProvider>
         </ThemeModeProvider>

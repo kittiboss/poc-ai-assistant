@@ -39,7 +39,7 @@ export class ConversationsController {
   @ConversationId() @ApiOkResponse({ type: ConversationView }) @Invalid({ id: true }) @NotFound('Conversation')
   @Patch(':id') rename(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateConversationDto) { return this.conversations.update(user, id, dto); }
 
-  @Post(':id/branch') @ApiOperation({ summary: 'Branch before or after a message without duplicating usage' }) @ApiCreatedResponse()
+  @Post(':id/branch') @ApiOperation({ summary: 'Branch before or after a message without duplicating usage' }) @ApiCreatedResponse({ type: ConversationView })
   @ConversationId() @Invalid({ id: true })
   branch(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() dto: BranchDto) { return this.conversations.branch(user, id, dto.messageId, dto.before); }
   @Post(':id/messages/:messageId/feedback') @ApiOperation({ summary: 'Rate an assistant response and optionally leave feedback for admins' }) @ApiOkResponse()

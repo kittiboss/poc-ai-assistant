@@ -24,7 +24,8 @@
     "tryAgain": "Try again",
     "intro": "A private, locally hosted assistant. Sign in through the development company identity provider.",
     "continue": "Continue with company SSO",
-    "noPaidProvider": "No paid AI provider is enabled in this POC."
+    "noPaidProvider": "No paid AI provider is enabled in this POC.",
+    "sessionExpired": "Your session has expired. Sign in again to continue."
   },
   "nav": {
     "openMenu": "Open menu",
@@ -91,7 +92,10 @@
     "downloadFile": "Download {filename}",
     "messageLabel": "Message",
     "chatModel": "Chat model",
-    "searchLabel": "Search conversation content"
+    "searchLabel": "Search conversation content",
+    "notFound": "Conversation not found",
+    "notFoundBody": "It may have been deleted, or it belongs to another account.",
+    "startNew": "Start a new chat"
   },
   "usage": {
     "eyebrow": "YOUR ACCOUNT",
@@ -128,7 +132,8 @@
       "actualCost": "Actual cost",
       "simulatedCost": "Simulated cost"
     },
-    "tokenSplit": "({input} in / {output} out)"
+    "tokenSplit": "({input} in / {output} out)",
+    "exportCsv": "Export usage CSV"
   },
   "admin": {
     "eyebrow": "ADMIN CONSOLE",
