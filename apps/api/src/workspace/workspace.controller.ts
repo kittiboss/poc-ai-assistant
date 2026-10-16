@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   UploadedFile,
@@ -22,7 +23,12 @@ import {
   Roles,
   type AuthUser,
 } from "../common/auth/auth.decorators";
-import { Secured } from "../common/swagger/api-docs.decorators";
+import {
+  Invalid,
+  MalformedId,
+  Secured,
+  UuidParam,
+} from "../common/swagger/api-docs.decorators";
 import {
   DepartmentDto,
   GovernanceDto,
@@ -58,24 +64,30 @@ export class WorkspaceController {
   }
   @Patch("projects/:id")
   @ApiOperation({ summary: "Update project instructions" })
+  @UuidParam("id", "Project ID")
+  @Invalid({ id: true })
   @ApiOkResponse()
   project(
     @CurrentUser() auth: AuthUser,
-    @Param("id") id: string,
+    @Param("id", ParseUUIDPipe) id: string,
     @Body() dto: ProjectDto,
   ) {
     return this.service.saveProject(auth, dto, id);
   }
   @Delete("projects/:id")
   @ApiOperation({ summary: "Delete project and sources; keep chats ungrouped" })
+  @UuidParam("id", "Project ID")
+  @MalformedId()
   @ApiOkResponse()
-  deleteProject(@CurrentUser() auth: AuthUser, @Param("id") id: string) {
+  deleteProject(@CurrentUser() auth: AuthUser, @Param("id", ParseUUIDPipe) id: string) {
     return this.service.deleteProject(auth, id);
   }
   @Post("projects/:id/sources")
   @ApiOperation({
     summary: "Extract and index a document locally (5 MB, 100 PDF pages)",
   })
+  @UuidParam("id", "Project ID")
+  @MalformedId()
   @ApiOkResponse()
   @ApiConsumes("multipart/form-data")
   @ApiBody({
@@ -92,7 +104,7 @@ export class WorkspaceController {
   )
   upload(
     @CurrentUser() auth: AuthUser,
-    @Param("id") id: string,
+    @Param("id", ParseUUIDPipe) id: string,
     @UploadedFile() file?: { originalname: string; buffer: Buffer },
   ) {
     return this.service.upload(auth, id, file);
@@ -101,14 +113,18 @@ export class WorkspaceController {
   @ApiOperation({
     summary: "View extracted source text belonging to the caller",
   })
+  @UuidParam("id", "Source ID")
+  @MalformedId()
   @ApiOkResponse()
-  source(@CurrentUser() auth: AuthUser, @Param("id") id: string) {
+  source(@CurrentUser() auth: AuthUser, @Param("id", ParseUUIDPipe) id: string) {
     return this.service.source(auth, id);
   }
   @Delete("sources/:id")
   @ApiOperation({ summary: "Remove source from future retrieval" })
+  @UuidParam("id", "Source ID")
+  @MalformedId()
   @ApiOkResponse()
-  removeSource(@CurrentUser() auth: AuthUser, @Param("id") id: string) {
+  removeSource(@CurrentUser() auth: AuthUser, @Param("id", ParseUUIDPipe) id: string) {
     return this.service.deleteSource(auth, id);
   }
   @Get("preferences")
@@ -131,18 +147,22 @@ export class WorkspaceController {
   }
   @Patch("memories/:id")
   @ApiOperation({ summary: "Edit or disable memory" })
+  @UuidParam("id", "Memory ID")
+  @Invalid({ id: true })
   @ApiOkResponse()
   memory(
     @CurrentUser() auth: AuthUser,
-    @Param("id") id: string,
+    @Param("id", ParseUUIDPipe) id: string,
     @Body() dto: MemoryDto,
   ) {
     return this.service.memory(auth, dto, id);
   }
   @Delete("memories/:id")
   @ApiOperation({ summary: "Delete memory" })
+  @UuidParam("id", "Memory ID")
+  @MalformedId()
   @ApiOkResponse()
-  deleteMemory(@CurrentUser() auth: AuthUser, @Param("id") id: string) {
+  deleteMemory(@CurrentUser() auth: AuthUser, @Param("id", ParseUUIDPipe) id: string) {
     return this.service.deleteMemory(auth, id);
   }
   @Get("templates")
@@ -201,16 +221,20 @@ export class WorkspaceAdminController {
   }
   @Delete("quotas/:id")
   @ApiOperation({ summary: "Remove quota policy" })
+  @UuidParam("id", "Quota policy ID")
+  @MalformedId()
   @ApiOkResponse()
-  deleteQuota(@CurrentUser() auth: AuthUser, @Param("id") id: string) {
+  deleteQuota(@CurrentUser() auth: AuthUser, @Param("id", ParseUUIDPipe) id: string) {
     return this.governance.deleteQuota(auth, id);
   }
   @Patch("users/:id")
   @ApiOperation({ summary: "Assign department for usage budgets" })
+  @UuidParam("id", "User ID")
+  @Invalid({ id: true })
   @ApiOkResponse()
   department(
     @CurrentUser() auth: AuthUser,
-    @Param("id") id: string,
+    @Param("id", ParseUUIDPipe) id: string,
     @Body() dto: DepartmentDto,
   ) {
     return this.governance.department(auth, id, dto.department);
@@ -229,10 +253,12 @@ export class WorkspaceAdminController {
   }
   @Patch("templates/:id")
   @ApiOperation({ summary: "Edit or disable an audited template" })
+  @UuidParam("id", "Template ID")
+  @Invalid({ id: true })
   @ApiOkResponse()
   editTemplate(
     @CurrentUser() auth: AuthUser,
-    @Param("id") id: string,
+    @Param("id", ParseUUIDPipe) id: string,
     @Body() dto: TemplateDto,
   ) {
     return this.service.saveTemplate(auth, dto, id);

@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Provider, UsageKind } from '@prisma/client';
-import { DATE, NULLABLE_DECIMAL } from '../common/swagger/schema-types';
+import { DATE, NULLABLE_DECIMAL, NULLABLE_INT, NULLABLE_STRING } from '../common/swagger/schema-types';
 import { AIModelView } from '../models/models.schemas';
 import { PricingVersionView } from '../pricing/pricing.schemas';
 import { TokenSum } from '../usage/usage.schemas';
@@ -38,9 +38,9 @@ class DailyPoint {
 }
 
 class TokenTotals {
-  @ApiProperty({ nullable: true }) inputTokens!: number | null;
-  @ApiProperty({ nullable: true }) outputTokens!: number | null;
-  @ApiProperty({ nullable: true }) totalTokens!: number | null;
+  @ApiProperty(NULLABLE_INT) inputTokens!: number | null;
+  @ApiProperty(NULLABLE_INT) outputTokens!: number | null;
+  @ApiProperty(NULLABLE_INT) totalTokens!: number | null;
 }
 
 class ExternalUsage {
@@ -97,7 +97,7 @@ export class UserModelPermissionView {
 export class AdminUserView {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty({ example: 'employee1' }) username!: string;
-  @ApiProperty({ nullable: true, example: 'employee1@enterprise.local' }) email!: string | null;
+  @ApiProperty({ ...NULLABLE_STRING, example: 'employee1@enterprise.local' }) email!: string | null;
   @ApiProperty(DATE) createdAt!: string;
   @ApiProperty({ type: [UserRoleView] }) roles!: UserRoleView[];
   @ApiProperty({ type: [UserModelPermissionView] }) modelPermissions!: UserModelPermissionView[];

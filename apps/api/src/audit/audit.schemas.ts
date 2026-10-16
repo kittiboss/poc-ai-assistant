@@ -1,11 +1,11 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { DATE } from '../common/swagger/schema-types';
+import { DATE, NULLABLE_UUID } from '../common/swagger/schema-types';
 
 class AuditActor { @ApiProperty({ example: 'admin' }) username!: string; }
 
 export class AuditLogView {
   @ApiProperty({ format: 'uuid' }) id!: string;
-  @ApiProperty({ format: 'uuid', nullable: true }) actorId!: string | null;
+  @ApiProperty(NULLABLE_UUID) actorId!: string | null;
   @ApiProperty({ example: 'PRICING_VERSION_CREATE' }) action!: string;
   @ApiProperty({ example: 'PricingConfiguration' }) entityType!: string;
   @ApiProperty() entityId!: string;

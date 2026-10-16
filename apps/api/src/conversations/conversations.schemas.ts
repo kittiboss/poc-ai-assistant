@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { MessageRole, MessageStatus } from '@prisma/client';
-import { DATE } from '../common/swagger/schema-types';
+import { DATE, NULLABLE_STRING } from '../common/swagger/schema-types';
 
 export class ConversationView {
   @ApiProperty({ format: 'uuid' }) id!: string;
@@ -27,8 +27,8 @@ export class MessageView {
   @ApiProperty({ enum: MessageRole }) role!: MessageRole;
   @ApiProperty({ example: 'This is a mock AI response for local POC testing.' }) content!: string;
   @ApiProperty({ enum: MessageStatus, description: 'INTERRUPTED keeps partial content after cancellation or an API restart.' }) status!: MessageStatus;
-  @ApiProperty({ nullable: true, example: 'local-mock' }) modelId!: string | null;
-  @ApiProperty({ nullable: true, description: 'Set on assistant messages; matches the usage record.' }) requestId!: string | null;
+  @ApiProperty({ ...NULLABLE_STRING, example: 'local-mock' }) modelId!: string | null;
+  @ApiProperty({ ...NULLABLE_STRING, description: 'Set on assistant messages; matches the usage record.' }) requestId!: string | null;
   @ApiProperty(DATE) createdAt!: string;
   @ApiProperty(DATE) updatedAt!: string;
 }

@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsBoolean, IsOptional, IsString, IsUUID, Length } from 'class-validator';
+import { NULLABLE_UUID } from '../common/swagger/schema-types';
 
 export class CreateConversationDto {
   @ApiPropertyOptional({ minLength: 1, maxLength: 120, example: 'Quarterly planning notes', description: 'Defaults to "New conversation"; the first message renames an untitled conversation.' })
@@ -11,7 +12,7 @@ export class UpdateConversationDto {
   @IsOptional() @IsString() @Length(1, 120) title?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() pinned?: boolean;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() archived?: boolean;
-  @ApiPropertyOptional({ nullable: true }) @IsOptional() @IsUUID() projectId?: string | null;
+  @ApiPropertyOptional(NULLABLE_UUID) @IsOptional() @IsUUID() projectId?: string | null;
 }
 export class SendMessageDto {
   @ApiProperty({ minLength: 1, maxLength: 20000, example: 'Explain Docker Compose' })

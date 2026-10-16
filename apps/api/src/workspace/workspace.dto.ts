@@ -14,6 +14,7 @@ import {
   MaxLength,
   Min,
 } from "class-validator";
+import { NULLABLE_INT, NULLABLE_NUMBER } from "../common/swagger/schema-types";
 
 export class ProjectDto {
   @ApiProperty() @IsString() @Length(1, 120) name!: string;
@@ -98,26 +99,26 @@ export class QuotaDto {
   @IsIn(["USER", "ROLE", "MODEL", "DEPARTMENT"])
   scope!: string;
   @ApiProperty() @IsString() @Length(1, 120) subject!: string;
-  @ApiPropertyOptional({ nullable: true })
+  @ApiPropertyOptional(NULLABLE_INT)
   @IsOptional()
   @IsInt()
   @Min(0)
   @Max(1000000)
   dailyRequests?: number | null;
-  @ApiPropertyOptional({ nullable: true })
+  @ApiPropertyOptional(NULLABLE_INT)
   @IsOptional()
   @IsInt()
   @Min(0)
   @Max(1000000000)
   dailyTokens?: number | null;
-  @ApiPropertyOptional({ nullable: true })
+  @ApiPropertyOptional(NULLABLE_INT)
   @IsOptional()
   @IsInt()
   @Min(0)
   @Max(1000000)
   perRequestTokens?: number | null;
   @ApiPropertyOptional({
-    nullable: true,
+    ...NULLABLE_NUMBER,
     description: "Daily simulated provider cost limit in USD.",
   })
   @IsOptional()

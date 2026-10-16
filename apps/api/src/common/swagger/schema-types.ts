@@ -4,6 +4,11 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 export const DECIMAL = { type: String, format: 'decimal', example: '0.000000000000' } as const;
 export const NULLABLE_DECIMAL = { ...DECIMAL, nullable: true } as const;
 export const DATE = { type: String, format: 'date-time' } as const;
+// Nullable properties need an explicit type: `number | null` is reflected as Object and documented as an empty object.
+export const NULLABLE_INT = { type: 'integer', nullable: true } as const;
+export const NULLABLE_NUMBER = { type: Number, nullable: true } as const;
+export const NULLABLE_STRING = { type: String, nullable: true } as const;
+export const NULLABLE_UUID = { type: String, format: 'uuid', nullable: true } as const;
 
 export class ErrorResponse {
   @ApiProperty({ example: 404 }) statusCode!: number;

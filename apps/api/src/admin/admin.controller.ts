@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiBadRequestResponse, ApiCreatedResponse, ApiForbiddenResponse, ApiOkResponse, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { AuditQueryDto } from '../audit/audit.dto';
 import { AuditLogView } from '../audit/audit.schemas';
@@ -53,8 +53,8 @@ export class AdminController {
 
   @ApiOperation({ summary: 'Set an explicit per-user model permission (audited)', description: 'Overrides the model\'s role defaults for this user.' })
   @ApiParam({ name: 'userId', format: 'uuid' }) @ApiParam({ name: 'modelId', example: 'google-gemini' })
-  @ApiOkResponse({ type: UserModelPermissionView }) @Invalid()
-  @Patch('users/:userId/models/:modelId') permission(@CurrentUser() user: AuthUser, @Param('userId') userId: string, @Param('modelId') modelId: string, @Body() dto: UpdatePermissionDto) {
+  @ApiOkResponse({ type: UserModelPermissionView }) @Invalid({ id: true })
+  @Patch('users/:userId/models/:modelId') permission(@CurrentUser() user: AuthUser, @Param('userId', ParseUUIDPipe) userId: string, @Param('modelId') modelId: string, @Body() dto: UpdatePermissionDto) {
     return this.admin.setModelPermission(user, userId, modelId, dto.allowed);
   }
 

@@ -4,16 +4,18 @@ import {
   DATE,
   DECIMAL,
   NULLABLE_DECIMAL,
+  NULLABLE_INT,
+  NULLABLE_UUID,
 } from "../common/swagger/schema-types";
 
 export class TokenSum {
-  @ApiProperty({ nullable: true, example: 437 }) totalTokens!: number | null;
+  @ApiProperty({ ...NULLABLE_INT, example: 437 }) totalTokens!: number | null;
 }
 
 class UsageTotalsSum {
-  @ApiProperty({ nullable: true }) inputTokens!: number | null;
-  @ApiProperty({ nullable: true }) outputTokens!: number | null;
-  @ApiProperty({ nullable: true }) totalTokens!: number | null;
+  @ApiProperty(NULLABLE_INT) inputTokens!: number | null;
+  @ApiProperty(NULLABLE_INT) outputTokens!: number | null;
+  @ApiProperty(NULLABLE_INT) totalTokens!: number | null;
   @ApiProperty({
     ...NULLABLE_DECIMAL,
     description: "Externally payable amount.",
@@ -54,8 +56,7 @@ export class UsageRecordView {
   @ApiProperty({ format: "uuid" }) conversationId!: string;
   @ApiProperty({ example: "local-mock" }) modelId!: string;
   @ApiProperty({
-    format: "uuid",
-    nullable: true,
+    ...NULLABLE_UUID,
     description: "Pricing version used for the snapshot below.",
   })
   pricingVersionId!: string | null;
