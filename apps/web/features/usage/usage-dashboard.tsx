@@ -1,6 +1,9 @@
 'use client';
 import { Activity, ArrowDownToLine, ArrowUpFromLine, Coins, Database, Hash, Timer } from 'lucide-react';
+import { useFormatter, useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
+import { costFormat, dateTimeFormat } from '@/i18n/formats';
+import { useEnumLabel } from '@/i18n/use-enum-label';
 import { useApi } from '@/lib/api';
 import { SimpleBarChart } from '@/components/ui/charts';
 import { Shell } from '@/components/layout/shell';
@@ -30,17 +33,13 @@ type UsageData = {
   byModel: Array<{ modelId: string; _count: number; _sum: { totalTokens: number | null } }>;
   records: UsageRecord[];
 };
-const money = (value: unknown, currency = 'USD') =>
-  new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 4,
-    maximumFractionDigits: 8,
-  }).format(Number(value || 0));
-const number = (value: unknown) => new Intl.NumberFormat().format(Number(value || 0));
-
 export function UsageDashboard() {
   const api = useApi();
+  const t = useTranslations('usage');
+  const enums = useEnumLabel();
+  const format = useFormatter();
+  const money = (value: unknown, currency = 'USD') => format.number(Number(value || 0), costFormat(currency, 4, 8));
+  const number = (value: unknown) => format.number(Number(value || 0));
   const [data, setData] = useState<UsageData | null>(null);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -54,71 +53,77 @@ export function UsageDashboard() {
     <Shell active="usage">
       <div className="mx-auto max-w-7xl space-y-6 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:p-8">
         <div>
-          <p className="text-sm font-medium text-primary">YOUR ACCOUNT</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">Usage dashboard</h1>
-          <p className="mt-2 text-sm text-fg-secondary">Actual, estimated, and simulated amounts are kept separate.</p>
+          <p className="text-sm font-medium text-primary">{t('eyebrow')}</p>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight">{t('title')}</h1>
+          <p className="mt-2 text-sm text-fg-secondary">{t('intro')}</p>
         </div>
         {error && <Card className="border-error-border p-4 text-error">{error}</Card>}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Metric icon={<Activity />} label="AI requests" value={number(data?.totals._count)} />
-          <Metric icon={<ArrowDownToLine />} label="Input tokens" value={number(totals.inputTokens)} />
-          <Metric icon={<ArrowUpFromLine />} label="Output tokens" value={number(totals.outputTokens)} />
-          <Metric icon={<Hash />} label="Total tokens" value={number(totals.totalTokens)} />
-          <Metric icon={<Database />} label="Actual external API cost" value={money(totals.actualProviderCost)} />
-          <Metric icon={<Coins />} label="Simulated cost (not billed)" value={money(totals.simulatedProviderCost)} />
+          <Metric icon={<Activity />} label={t('requests')} value={number(data?.totals._count)} />
+          <Metric icon={<ArrowDownToLine />} label={t('inputTokens')} value={number(totals.inputTokens)} />
+          <Metric icon={<ArrowUpFromLine />} label={t('outputTokens')} value={number(totals.outputTokens)} />
+          <Metric icon={<Hash />} label={t('totalTokens')} value={number(totals.totalTokens)} />
+          <Metric icon={<Database />} label={t('actualCost')} value={money(totals.actualProviderCost)} />
+          <Metric icon={<Coins />} label={t('simulatedCost')} value={money(totals.simulatedProviderCost)} />
         </div>
         <div className="grid gap-6 lg:grid-cols-3">
           <Card className="p-5 lg:col-span-2">
-            <h2 className="font-semibold">Tokens by model</h2>
-            <p className="mb-5 text-xs text-fg-secondary">Input and output combined</p>
-            <SimpleBarChart data={data?.byModel || []} x="modelId" y="_sum.totalTokens" label="Tokens" height={256} />
+            <h2 className="font-semibold">{t('tokensByModel')}</h2>
+            <p className="mb-5 text-xs text-fg-secondary">{t('tokensByModelNote')}</p>
+            <SimpleBarChart
+              data={data?.byModel || []}
+              x="modelId"
+              y="_sum.totalTokens"
+              label={t('tokens')}
+              height={256}
+            />
           </Card>
           <Card className="p-5">
-            <h2 className="font-semibold">Cost classification</h2>
+            <h2 className="font-semibold">{t('costClassification')}</h2>
             <div className="mt-5 space-y-4">
               <Cost
-                label="Actual provider cost"
+                label={t('actualProviderCost')}
                 value={money(totals.actualProviderCost)}
-                note="Externally payable amount"
+                note={t('actualProviderCostNote')}
               />
-              <Cost label="Customer charge" value={money(totals.customerCharge)} note="Current non-simulated pricing" />
+              <Cost label={t('customerCharge')} value={money(totals.customerCharge)} note={t('customerChargeNote')} />
               <Cost
-                label="Simulated provider cost"
+                label={t('simulatedProviderCost')}
                 value={money(totals.simulatedProviderCost)}
-                note="Scenario only, e.g. a free-tier model at paid-tier list price; not payable"
+                note={t('simulatedProviderCostNote')}
               />
               <Cost
-                label="Simulated customer charge"
+                label={t('simulatedCustomerCharge')}
                 value={money(totals.simulatedCustomerCharge)}
-                note="Scenario only; never invoiced"
+                note={t('simulatedCustomerChargeNote')}
               />
             </div>
           </Card>
         </div>
         <Card className="overflow-hidden">
           <div className="border-b border-line-secondary p-5">
-            <h2 className="font-semibold">Request history</h2>
-            <p className="text-xs text-fg-secondary">
-              Latest 100 requests; prompt and response content are intentionally excluded.
-            </p>
+            <h2 className="font-semibold">{t('history')}</h2>
+            <p className="text-xs text-fg-secondary">{t('historyNote')}</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="bg-fill-quaternary text-xs text-fg-secondary uppercase">
                 <tr>
-                  {[
-                    'Time',
-                    'Model',
-                    'Provider',
-                    'Tokens',
-                    'Duration',
-                    'Usage',
-                    'Status',
-                    'Actual cost',
-                    'Simulated cost',
-                  ].map((item) => (
-                    <th key={item} className="px-4 py-3 font-medium">
-                      {item}
+                  {(
+                    [
+                      'time',
+                      'model',
+                      'provider',
+                      'tokens',
+                      'duration',
+                      'usage',
+                      'status',
+                      'actualCost',
+                      'simulatedCost',
+                    ] as const
+                  ).map((column) => (
+                    <th key={column} className="px-4 py-3 font-medium">
+                      {t(`columns.${column}`)}
                     </th>
                   ))}
                 </tr>
@@ -126,18 +131,20 @@ export function UsageDashboard() {
               <tbody className="divide-y divide-line-secondary">
                 {data?.records.map((record) => (
                   <tr key={record.id}>
-                    <td className="px-4 py-3 whitespace-nowrap">{new Date(record.createdAt).toLocaleString()}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {format.dateTime(new Date(record.createdAt), dateTimeFormat)}
+                    </td>
                     <td className="px-4 py-3 font-medium">{record.model.displayName}</td>
                     <td className="px-4 py-3">{record.provider}</td>
                     <td className="px-4 py-3">
                       {number(record.totalTokens)}{' '}
                       <span className="text-xs text-fg-tertiary">
-                        ({record.inputTokens} in / {record.outputTokens} out)
+                        {t('tokenSplit', { input: number(record.inputTokens), output: number(record.outputTokens) })}
                       </span>
                     </td>
                     <td className="px-4 py-3">
                       <Timer className="mr-1 inline" size={13} />
-                      {record.durationMs} ms
+                      {format.number(record.durationMs, { style: 'unit', unit: 'millisecond' })}
                     </td>
                     <td className="px-4 py-3">
                       <Badge
@@ -149,10 +156,10 @@ export function UsageDashboard() {
                               : 'warning'
                         }
                       >
-                        {record.usageKind}
+                        {enums.label('usageKind', record.usageKind)}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3">{record.status}</td>
+                    <td className="px-4 py-3">{enums.label('requestStatus', record.status)}</td>
                     <td className="px-4 py-3">{money(record.actualProviderCost, record.currency)}</td>
                     <td className="px-4 py-3">{money(record.simulatedProviderCost, record.currency)}</td>
                   </tr>

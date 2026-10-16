@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react';
 import { AuthProvider } from '@/components/auth/auth-provider';
 import { BrandProvider } from '@/components/brand/brand-provider';
+import { BrowserTimeZone } from '@/i18n/browser-time-zone';
 import { UIStoreProvider } from '@/stores/ui-store-provider';
 import { AntdProvider } from '@/theme/antd-provider';
 import type { ResolvedTheme, ThemeMode } from '@/theme/theme-mode';
@@ -23,19 +24,21 @@ export function AppProviders({
   children: ReactNode;
 }) {
   return (
-    <BrandProvider brand={brand}>
-      <ThemeStyles />
-      <ThemeModeProvider
-        initialMode={initialMode}
-        initialSystemTheme={initialSystemTheme}
-        defaultMode={brand.theme.defaultMode}
-      >
-        <AntdProvider>
-          <UIStoreProvider>
-            <AuthProvider>{children}</AuthProvider>
-          </UIStoreProvider>
-        </AntdProvider>
-      </ThemeModeProvider>
-    </BrandProvider>
+    <BrowserTimeZone>
+      <BrandProvider brand={brand}>
+        <ThemeStyles />
+        <ThemeModeProvider
+          initialMode={initialMode}
+          initialSystemTheme={initialSystemTheme}
+          defaultMode={brand.theme.defaultMode}
+        >
+          <AntdProvider>
+            <UIStoreProvider>
+              <AuthProvider>{children}</AuthProvider>
+            </UIStoreProvider>
+          </AntdProvider>
+        </ThemeModeProvider>
+      </BrandProvider>
+    </BrowserTimeZone>
   );
 }

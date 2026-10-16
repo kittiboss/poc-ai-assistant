@@ -15,7 +15,7 @@ export default defineConfig([
           patterns: [
             {
               group: ['@/config/brands', '@/config/brands/*'],
-              message: 'Read the brand with useBrand(); only app/layout.tsx calls getBrand().',
+              message: 'Read the brand with useBrand(); only server entry points (see below) call getBrand().',
             },
           ],
         },
@@ -23,7 +23,7 @@ export default defineConfig([
     },
   },
   {
-    files: ['app/layout.tsx'],
+    files: ['app/layout.tsx', 'app/favicon.ico/route.ts', 'i18n/request.ts'],
     rules: { 'no-restricted-imports': 'off' },
   },
   // Must come last: turns off rules that conflict with Prettier formatting.

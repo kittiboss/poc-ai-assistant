@@ -101,7 +101,11 @@ NEXT_PUBLIC_BRAND=acme docker compose up --build -d frontend
 
 A brand sets the product name, organization, logo, favicon, primary color, corner radius, font (one of the fonts bundled in `apps/web/theme/fonts.ts`), default language, default theme mode, and optional Ant Design token overrides per mode. Fonts are committed to the repository, so builds need no internet access.
 
-Users switch between light, dark, and system themes in the sidebar; the choice is stored in a cookie. Colors in both Ant Design components and Tailwind classes come from the same brand tokens (see [Architecture](docs/ARCHITECTURE.md)).
+Users pick light, dark, or system theme and Thai or English on the **Settings** page (language also on the sign-in screen); both choices are stored in cookies. Colors in both Ant Design components and Tailwind classes come from the same brand tokens (see [Architecture](docs/ARCHITECTURE.md)).
+
+## Languages (web)
+
+The web app is available in Thai and English. Texts live in `apps/web/messages/{en,th}.json`; TypeScript checks every key used in the code and fails if the two files do not have the same keys. Numbers, currency, and dates follow the selected language, and times are shown in each user's device time zone. The default language comes from the brand. Ant Design and Ant Design X use the matching locale (Thai strings for Ant Design X are in `apps/web/i18n/antd-locale.ts`). Sign-in passes the language to Keycloak as `ui_locales`, which takes effect only if the realm enables that language.
 
 ## Tests and verification
 

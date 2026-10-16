@@ -1,0 +1,324 @@
+{
+  "meta": {
+    "description": "Self-hosted enterprise AI assistant POC"
+  },
+  "language": {
+    "label": "Language"
+  },
+  "theme": {
+    "label": "Theme",
+    "light": "Light",
+    "system": "System",
+    "dark": "Dark"
+  },
+  "common": {
+    "loading": "Loading",
+    "dismiss": "Dismiss",
+    "system": "system"
+  },
+  "errors": {
+    "requestFailed": "Request failed ({status})"
+  },
+  "auth": {
+    "signInFailed": "Sign-in failed",
+    "tryAgain": "Try again",
+    "intro": "A private, locally hosted assistant. Sign in through the development company identity provider.",
+    "continue": "Continue with company SSO",
+    "noPaidProvider": "No paid AI provider is enabled in this POC."
+  },
+  "nav": {
+    "openMenu": "Open menu",
+    "tagline": "LOCAL POC",
+    "chat": "Chat",
+    "usage": "Usage dashboard",
+    "admin": "Admin console",
+    "settings": "Settings",
+    "logout": "Logout",
+    "signedInAs": "Signed in as {username}"
+  },
+  "charts": {
+    "empty": "No usage in this range"
+  },
+  "chat": {
+    "newChat": "New chat",
+    "search": "Search conversations",
+    "rename": "Rename",
+    "delete": "Delete",
+    "renamePrompt": "Conversation name",
+    "deleteConfirm": "Delete “{title}”? This cannot be undone.",
+    "newConversation": "New conversation",
+    "private": "Private to your company account",
+    "model": "Model",
+    "modelOption": "{name} · {provider} · {location} · {status}",
+    "modelLocal": "Local · $0 external API",
+    "modelExternal": "External",
+    "modelBadge": "{location} · {status}",
+    "externalNotice": "External model: messages in this conversation are sent to {provider} under that provider’s data terms. Free-tier providers may use them to improve their products — do not send confidential data.",
+    "stopped": "Generation stopped. The partial response was preserved.",
+    "failed": "Generation failed",
+    "failedStatus": "Generation failed ({status})",
+    "placeholder": "Message your enterprise assistant…",
+    "stop": "Stop generation",
+    "send": "Send",
+    "disclaimer": "AI responses may be inaccurate. Local inference still uses compute, memory, disk, and electricity.",
+    "emptyTitle": "How can I help?",
+    "emptyBody": "Choose an available model and start a private conversation. {count} model(s) available.",
+    "copy": "Copy response"
+  },
+  "usage": {
+    "eyebrow": "YOUR ACCOUNT",
+    "title": "Usage dashboard",
+    "intro": "Actual, estimated, and simulated amounts are kept separate.",
+    "requests": "AI requests",
+    "inputTokens": "Input tokens",
+    "outputTokens": "Output tokens",
+    "totalTokens": "Total tokens",
+    "actualCost": "Actual external API cost",
+    "simulatedCost": "Simulated cost (not billed)",
+    "tokensByModel": "Tokens by model",
+    "tokensByModelNote": "Input and output combined",
+    "tokens": "Tokens",
+    "costClassification": "Cost classification",
+    "actualProviderCost": "Actual provider cost",
+    "actualProviderCostNote": "Externally payable amount",
+    "customerCharge": "Customer charge",
+    "customerChargeNote": "Current non-simulated pricing",
+    "simulatedProviderCost": "Simulated provider cost",
+    "simulatedProviderCostNote": "Scenario only, e.g. a free-tier model at paid-tier list price; not payable",
+    "simulatedCustomerCharge": "Simulated customer charge",
+    "simulatedCustomerChargeNote": "Scenario only; never invoiced",
+    "history": "Request history",
+    "historyNote": "Latest 100 requests; prompt and response content are intentionally excluded.",
+    "columns": {
+      "time": "Time",
+      "model": "Model",
+      "provider": "Provider",
+      "tokens": "Tokens",
+      "duration": "Duration",
+      "usage": "Usage",
+      "status": "Status",
+      "actualCost": "Actual cost",
+      "simulatedCost": "Simulated cost"
+    },
+    "tokenSplit": "({input} in / {output} out)"
+  },
+  "admin": {
+    "eyebrow": "ADMIN CONSOLE",
+    "title": "Platform operations",
+    "intro": "Aggregate metrics only. Private conversation content is never exposed here.",
+    "modelUpdated": "{model} updated.",
+    "pricingCreated": "A new immutable pricing version was created.",
+    "filters": {
+      "from": "From",
+      "to": "To",
+      "provider": "Provider",
+      "model": "Model",
+      "allProviders": "All providers",
+      "allModels": "All models",
+      "reset": "Reset",
+      "note": "Filters apply to metrics, charts, and cost breakdown."
+    },
+    "metrics": {
+      "users": "Users ({active} active in range)",
+      "requests": "AI requests",
+      "inputTokens": "Input tokens",
+      "outputTokens": "Output tokens",
+      "actualProviderCost": "Actual provider cost",
+      "simulatedCost": "Simulated cost (not billed)"
+    },
+    "guard": {
+      "title": "External provider guardrail (today, UTC)",
+      "description": "Installation-wide ceiling across OpenAI, Anthropic, and Gemini. Requests beyond either limit are refused; local models are unaffected. Set via EXTERNAL_DAILY_REQUEST_LIMIT / EXTERNAL_DAILY_TOKEN_LIMIT.",
+      "requests": "Requests",
+      "tokens": "Tokens",
+      "reached": "Limit reached — external requests blocked"
+    },
+    "charts": {
+      "perDay": "Requests per day",
+      "perDayNote": "All usage kinds in the selected range",
+      "byProvider": "Requests by provider",
+      "byProviderNote": "Mock usage is synthetic; Ollama has $0 external API cost",
+      "byModel": "Requests by model",
+      "byModelNote": "Registry display names",
+      "requests": "Requests"
+    },
+    "snapshot": {
+      "title": "Cost and profitability snapshot",
+      "actualExternalCost": "Actual external cost",
+      "customerCharge": "Customer charge",
+      "simulatedProviderCost": "Simulated provider cost",
+      "simulatedCustomerCharge": "Simulated customer charge",
+      "actualMargin": "Actual gross margin",
+      "simulatedMargin": "Simulated gross margin",
+      "kind": "{kind}: {requests} req · {tokens} tok",
+      "note": "Simulation is a planning view only; this POC creates no invoice and processes no payment."
+    },
+    "breakdown": {
+      "title": "Cost breakdown by model",
+      "note": "Snapshots stored on each usage record; later pricing changes never alter these values.",
+      "model": "Model",
+      "requests": "Requests",
+      "tokens": "Tokens",
+      "actualProviderCost": "Actual provider cost",
+      "customerCharge": "Customer charge",
+      "simulatedProviderCost": "Simulated provider cost",
+      "simulatedCustomerCharge": "Simulated customer charge"
+    },
+    "registry": {
+      "title": "Model registry",
+      "note": "External models can be enabled only when ENABLE_EXTERNAL_PROVIDERS=true and the server holds the provider credential. Availability reads gateway configuration and never calls a paid provider.",
+      "model": "Model",
+      "provider": "Provider",
+      "location": "Location",
+      "availability": "Availability",
+      "enabled": "Enabled",
+      "allowedRoles": "Allowed roles",
+      "enable": "Enable {model}",
+      "disable": "Disable {model}",
+      "notConfigured": "Provider is not explicitly enabled and configured on the server"
+    },
+    "prices": {
+      "title": "Current model prices",
+      "note": "Latest version per model, USD per one million tokens. Select a row to edit.",
+      "model": "Model",
+      "version": "Version",
+      "strategy": "Strategy",
+      "providerRates": "Provider in / out",
+      "customerRates": "Customer in / out",
+      "markup": "Markup",
+      "simulationRates": "Simulation in / out",
+      "effective": "Effective",
+      "scheduled": "scheduled",
+      "versionLabel": "v{version}"
+    },
+    "pricing": {
+      "title": "Pricing management",
+      "note": "Rates are per one million tokens. Saving always creates a new version.",
+      "strategy": "Strategy",
+      "providerInput": "Provider input",
+      "providerOutput": "Provider output",
+      "cachedInput": "Cached input",
+      "additionalFee": "Additional provider fee",
+      "customerInput": "Customer input",
+      "customerOutput": "Customer output",
+      "markupPercent": "Markup %",
+      "simulationInput": "Simulation input",
+      "simulationOutput": "Simulation output",
+      "currency": "Currency",
+      "effectiveAt": "Effective date (optional)",
+      "save": "Save new version",
+      "preview": "Charge preview",
+      "inputTokens": "Input tokens",
+      "outputTokens": "Output tokens",
+      "previewButton": "Preview charge",
+      "actualProviderCost": "Actual provider cost",
+      "actualCustomerCharge": "Actual customer charge",
+      "simulatedProviderCost": "Simulated provider cost",
+      "simulatedCustomerCharge": "Simulated customer charge",
+      "grossMargin": "Gross margin (actual)",
+      "previewNote": "Preview compares clearly labeled actual and simulation results without saving anything.",
+      "history": "Version history",
+      "historyColumns": {
+        "version": "Version",
+        "effective": "Effective",
+        "strategy": "Strategy",
+        "providerRates": "Provider in/out",
+        "customerRates": "Customer in/out",
+        "markup": "Markup",
+        "simulationRates": "Simulation in/out",
+        "createdBy": "Created by"
+      }
+    },
+    "permissions": {
+      "title": "User model permissions",
+      "note": "An explicit choice overrides the model’s role defaults.",
+      "user": "User",
+      "explicit": "Explicit",
+      "roleDefault": "Role default"
+    },
+    "audit": {
+      "title": "Audit log",
+      "note": "Latest 100 model, permission, and pricing changes. Full before/after snapshots are stored in PostgreSQL.",
+      "time": "Time",
+      "actor": "Actor",
+      "action": "Action",
+      "entity": "Entity",
+      "change": "Change",
+      "empty": "No changes recorded yet.",
+      "pricingDetail": "v{version} · {strategy}",
+      "modelDetail": "enabled={enabled} · roles={roles}",
+      "permissionDetail": "{model}: {allowed, select, true {allowed} other {denied}}"
+    }
+  },
+  "settings": {
+    "eyebrow": "SETTINGS",
+    "title": "Account & deployment",
+    "preferences": "Preferences",
+    "preferencesNote": "Saved in this browser.",
+    "themeNote": "Light, dark, or follow your device.",
+    "languageNote": "Menus, labels, dates, and numbers.",
+    "identity": "Company identity",
+    "username": "Username",
+    "email": "Email",
+    "roles": "Roles",
+    "deployment": "Local deployment",
+    "localByDefault": "LOCAL BY DEFAULT",
+    "routing": "Every request routes through NestJS and LiteLLM. The default model is the local deterministic mock; Ollama and external providers stay disabled until an administrator explicitly enables them.",
+    "resources": "Local services still consume CPU, memory, disk, and electricity.",
+    "apiDocs": "API documentation (Swagger)",
+    "privacy": "Privacy controls",
+    "privacyBody": "Conversation ownership is enforced by the backend from the validated token subject. Administrators receive aggregate usage data, not private chat content. Full prompts and responses are not logged by default.",
+    "session": "Session",
+    "sessionBody": "Authentication uses Keycloak Authorization Code Flow with PKCE. Use Logout in the sidebar to end the identity-provider session."
+  },
+  "enums": {
+    "messageStatus": {
+      "PENDING": "pending",
+      "STREAMING": "streaming",
+      "COMPLETED": "completed",
+      "INTERRUPTED": "interrupted",
+      "ERROR": "error"
+    },
+    "requestStatus": {
+      "PENDING": "PENDING",
+      "STREAMING": "STREAMING",
+      "COMPLETED": "COMPLETED",
+      "CANCELLED": "CANCELLED",
+      "ERROR": "ERROR"
+    },
+    "usageKind": {
+      "ACTUAL": "ACTUAL",
+      "ESTIMATED": "ESTIMATED",
+      "SYNTHETIC": "SYNTHETIC"
+    },
+    "strategy": {
+      "PASS_THROUGH": "PASS_THROUGH",
+      "PERCENTAGE_MARKUP": "PERCENTAGE_MARKUP",
+      "FIXED_RATE": "FIXED_RATE",
+      "SIMULATION": "SIMULATION"
+    },
+    "modelStatus": {
+      "available": "Available",
+      "readyDisabled": "Ready (disabled)",
+      "disabled": "Disabled",
+      "notPermitted": "Not permitted",
+      "notConfigured": "Not configured",
+      "dailyLimitReached": "Daily limit reached",
+      "unavailable": "Unavailable"
+    },
+    "location": {
+      "LOCAL": "LOCAL",
+      "EXTERNAL": "EXTERNAL"
+    },
+    "auditAction": {
+      "PRICING_VERSION_CREATE": "PRICING_VERSION_CREATE",
+      "MODEL_UPDATE": "MODEL_UPDATE",
+      "MODEL_PERMISSION_UPDATE": "MODEL_PERMISSION_UPDATE"
+    },
+    "entityType": {
+      "AIModel": "AIModel",
+      "PricingConfiguration": "PricingConfiguration",
+      "UserModelPermission": "UserModelPermission"
+    }
+  }
+}
