@@ -17,6 +17,7 @@ Requirements:
 
 - Docker Desktop / Docker Engine with Compose v2
 - Approximately 3–4 GB free RAM for the application infrastructure
+- At least 6 GB of memory assigned to Docker Desktop when building the images; with less, `next build` in the web image can be killed (exit code 137) while the rest of the stack is running
 - Ports `3000`, `3001`, and `8080` available
 
 Start the default mock-only stack:
@@ -56,6 +57,33 @@ Delete local volumes and all POC data only when explicitly desired:
 ```bash
 docker compose down --volumes
 ```
+
+### Which Compose files to use
+
+| Stack                            | Command                                                                               |
+| -------------------------------- | ------------------------------------------------------------------------------------- |
+| Default, mock only               | `docker compose up --build -d`                                                        |
+| With Gemini                      | `docker compose -f docker-compose.yml -f docker-compose.gemini.yml up --build -d`     |
+| With Groq                        | `docker compose -f docker-compose.yml -f docker-compose.groq.yml up --build -d`       |
+| With OpenRouter                  | `docker compose -f docker-compose.yml -f docker-compose.openrouter.yml up --build -d` |
+| With Gemini, Groq and OpenRouter | `docker compose -f docker-compose.yml -f docker-compose.external.yml up --build -d`   |
+
+An overlay only adds the gateway routes and credential proxies. Each provider still needs its `.env` settings and an administrator enabling the model; see the provider sections below.
+
+Pass the same `-f` files to every later command (`ps`, `logs`, `down`). Otherwise the proxy containers are left out, or reported as orphans:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.external.yml down
+```
+
+### After pulling or merging changes
+
+```bash
+npm install                    # for tests and tools run on the host
+docker compose up --build -d   # with the same -f files as above, if you use an overlay
+```
+
+`--build` picks up new dependencies and services. The backend applies new Prisma migrations and the seed every time it starts, so there is no separate database step; check `docker compose logs backend` if it does not become healthy.
 
 ## What works
 
