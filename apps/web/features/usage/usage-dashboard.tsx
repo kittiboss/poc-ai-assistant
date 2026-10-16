@@ -1,54 +1,28 @@
 'use client';
 import { Activity, ArrowDownToLine, ArrowUpFromLine, Coins, Database, Hash, Timer } from 'lucide-react';
 import { useFormatter, useTranslations } from 'next-intl';
-import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useApi } from '@/components/api/api-provider';
 import { costFormat, dateTimeFormat } from '@/i18n/formats';
 import { useEnumLabel } from '@/i18n/use-enum-label';
-import { useApi } from '@/lib/api';
+import { queryKeys } from '@/lib/api/query-keys';
+import type { MyUsage } from '@/lib/api/types';
 import { SimpleBarChart } from '@/components/ui/charts';
 import { Shell } from '@/components/layout/shell';
 import { Badge, Card } from '@/components/ui/primitives';
 
-type UsageRecord = {
-  id: string;
-  requestId: string;
-  modelId: string;
-  provider: string;
-  inputTokens: number;
-  outputTokens: number;
-  totalTokens: number;
-  durationMs: number;
-  status: string;
-  usageKind: 'ACTUAL' | 'ESTIMATED' | 'SYNTHETIC';
-  currency: string;
-  actualProviderCost: string;
-  customerCharge: string;
-  simulatedProviderCost: string;
-  simulatedCustomerCharge: string;
-  createdAt: string;
-  model: { displayName: string };
-};
-type UsageData = {
-  totals: { _count: number; _sum: Record<string, number | string | null> };
-  byModel: Array<{ modelId: string; _count: number; _sum: { totalTokens: number | null } }>;
-  records: UsageRecord[];
-};
 export function UsageDashboard() {
-  const api = useApi();
+  const { client, unwrap } = useApi();
   const t = useTranslations('usage');
   const enums = useEnumLabel();
   const format = useFormatter();
   const money = (value: unknown, currency = 'USD') => format.number(Number(value || 0), costFormat(currency, 4, 8));
   const number = (value: unknown) => format.number(Number(value || 0));
-  const [data, setData] = useState<UsageData | null>(null);
-  const [error, setError] = useState('');
-  useEffect(() => {
-    api
-      .request<UsageData>('/usage/me')
-      .then(setData)
-      .catch((cause) => setError(cause.message));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const totals = data?.totals._sum || {};
+  const { data, error } = useQuery<MyUsage>({
+    queryKey: queryKeys.myUsage,
+    queryFn: async ({ signal }) => unwrap(await client.GET('/api/usage/me', { signal })),
+  });
+  const totals: Partial<MyUsage['totals']['_sum']> = data?.totals._sum ?? {};
   return (
     <Shell active="usage">
       <div className="mx-auto max-w-7xl space-y-6 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:p-8">
@@ -57,7 +31,7 @@ export function UsageDashboard() {
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">{t('title')}</h1>
           <p className="mt-2 text-sm text-fg-secondary">{t('intro')}</p>
         </div>
-        {error && <Card className="border-error-border p-4 text-error">{error}</Card>}
+        {error && <Card className="border-error-border p-4 text-error">{error.message}</Card>}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Metric icon={<Activity />} label={t('requests')} value={number(data?.totals._count)} />
           <Metric icon={<ArrowDownToLine />} label={t('inputTokens')} value={number(totals.inputTokens)} />

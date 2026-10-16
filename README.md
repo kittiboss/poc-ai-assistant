@@ -103,6 +103,14 @@ A brand sets the product name, organization, logo, favicon, primary color, corne
 
 Users pick light, dark, or system theme and Thai or English on the **Settings** page (language also on the sign-in screen); both choices are stored in cookies. Colors in both Ant Design components and Tailwind classes come from the same brand tokens (see [Architecture](docs/ARCHITECTURE.md)).
 
+## API types (web)
+
+The web app's API client and types are generated from the API's OpenAPI document and committed (`apps/web/lib/api/schema.d.ts`). After changing an API route or DTO, start the API and run:
+
+```bash
+npm run api:types -w @enterprise/web
+```
+
 ## Languages (web)
 
 The web app is available in Thai and English. Texts live in `apps/web/messages/{en,th}.json`; TypeScript checks every key used in the code and fails if the two files do not have the same keys. Numbers, currency, and dates follow the selected language, and times are shown in each user's device time zone. The default language comes from the brand. Ant Design and Ant Design X use the matching locale (Thai strings for Ant Design X are in `apps/web/i18n/antd-locale.ts`). Sign-in passes the language to Keycloak as `ui_locales`, which takes effect only if the realm enables that language.
