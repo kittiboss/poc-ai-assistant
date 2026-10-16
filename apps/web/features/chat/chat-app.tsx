@@ -1,201 +1,107 @@
 'use client';
 import { Check, Copy, LoaderCircle, MessageSquare, Pencil, Plus, Search, Send, Square, Trash2 } from 'lucide-react';
+import Link from 'next/link';
+import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import remarkGfm from 'remark-gfm';
-import { useEnumLabel } from '@/i18n/use-enum-label';
-import { useApi } from '@/lib/api';
-import type { Conversation, Message, Model } from '@/lib/types';
 import { Shell } from '@/components/layout/shell';
 import { Badge, Button, Card, Select, Textarea } from '@/components/ui/primitives';
+import { useEnumLabel } from '@/i18n/use-enum-label';
+import { ApiError } from '@/lib/api/client';
+import type { Message, Model } from '@/lib/api/types';
 import { cn } from '@/lib/cn';
 import { useUIStore } from '@/stores/ui-store-provider';
+import {
+  isConversationId,
+  useConversation,
+  useConversations,
+  useDeleteConversation,
+  useModels,
+  useRenameConversation,
+} from './chat-queries';
+import { useSendMessage } from './use-send-message';
 
+/** `/` is a new chat and `/c/<id>` an existing one; the id comes from the URL. */
 export function ChatApp() {
-  const api = useApi();
+  const { id: activeId } = useParams<{ id?: string }>();
+  const router = useRouter();
   const t = useTranslations('chat');
   const enums = useEnumLabel();
   const setMobileNavOpen = useUIStore((state) => state.setMobileNavOpen);
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [active, setActive] = useState<Conversation | null>(null);
-  const [models, setModels] = useState<Model[]>([]);
-  const [modelId, setModelId] = useState('');
+  const selectedModelId = useUIStore((state) => state.selectedModelId);
+  const setSelectedModelId = useUIStore((state) => state.setSelectedModelId);
+  const search = useUIStore((state) => state.conversationSearch);
+  const setSearch = useUIStore((state) => state.setConversationSearch);
+  const stream = useUIStore((state) => state.stream);
+  const chatError = useUIStore((state) => state.chatError);
+  const setChatError = useUIStore((state) => state.setChatError);
   const [input, setInput] = useState('');
-  const [search, setSearch] = useState('');
-  const [generating, setGenerating] = useState(false);
-  const [error, setError] = useState('');
-  const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  const loadConversations = useCallback(
-    async () => setConversations(await api.request<Conversation[]>('/conversations')),
-    [], // eslint-disable-line react-hooks/exhaustive-deps
-  );
-  useEffect(() => {
-    Promise.all([api.request<Model[]>('/models'), api.request<Conversation[]>('/conversations')])
-      .then(([nextModels, nextConversations]) => {
-        setModels(nextModels);
-        setConversations(nextConversations);
-        setModelId(nextModels.find((model) => model.available)?.id || nextModels[0]?.id || '');
-      })
-      .catch((cause) => setError(cause.message));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const models = useModels();
+  const conversations = useConversations();
+  const conversation = useConversation(activeId, stream?.conversationId === activeId);
+  const renameConversation = useRenameConversation();
+  const deleteConversation = useDeleteConversation();
+  const send = useSendMessage();
+
+  const messages = conversation.data?.messages;
   // Braces matter: scroll methods return a Promise in current browsers, and React would treat it as the effect cleanup.
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [active?.messages]);
+  }, [messages]);
 
-  const open = async (id: string) => {
+  const modelList = useMemo(() => models.data ?? [], [models.data]);
+  const modelId = selectedModelId || modelList.find((model) => model.available)?.id || modelList[0]?.id || '';
+  const selectedModel = modelList.find((model) => model.id === modelId);
+  const generating = stream !== null;
+  const notFound =
+    (activeId !== undefined && !isConversationId(activeId)) ||
+    (conversation.error instanceof ApiError && [400, 404].includes(conversation.error.status));
+  const loadError = [models.error, conversations.error, notFound ? null : conversation.error].find(Boolean);
+  const error = chatError || loadError?.message;
+  const title =
+    conversation.data?.title ?? conversations.data?.find((item) => item.id === activeId)?.title ?? t('newConversation');
+
+  const reportError = (cause: unknown) => setChatError((cause as Error).message);
+  const leaveSidebar = () => {
     setMobileNavOpen(false);
+    setChatError('');
+  };
+  // The chat itself is created with the first message, so no empty chats pile up in the list.
+  const newChat = () => {
+    leaveSidebar();
+    router.push('/');
+  };
+  const rename = (id: string, current: string) => {
+    const next = window.prompt(t('renamePrompt'), current)?.trim();
+    if (!next) return;
+    renameConversation.mutateAsync({ id, title: next }).catch(reportError);
+  };
+  const remove = async (id: string, current: string) => {
+    if (!window.confirm(t('deleteConfirm', { title: current }))) return;
     try {
-      setError('');
-      setActive(await api.request<Conversation>(`/conversations/${id}`));
+      await deleteConversation.mutateAsync(id);
+      if (id === activeId) router.push('/');
     } catch (cause) {
-      setError((cause as Error).message);
+      reportError(cause);
     }
   };
-  const create = async () => {
-    setMobileNavOpen(false);
-    try {
-      const conversation = await api.request<Conversation>('/conversations', { method: 'POST', body: '{}' });
-      setConversations((items) => [conversation, ...items]);
-      setActive({ ...conversation, messages: [] });
-    } catch (cause) {
-      setError((cause as Error).message);
-    }
-  };
-  const rename = async (conversation: Conversation) => {
-    const title = window.prompt(t('renamePrompt'), conversation.title)?.trim();
-    if (!title) return;
-    const updated = await api.request<Conversation>(`/conversations/${conversation.id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ title }),
-    });
-    setConversations((items) =>
-      items.map((item) => (item.id === updated.id ? { ...item, title: updated.title } : item)),
-    );
-    if (active?.id === updated.id) setActive((value) => (value ? { ...value, title: updated.title } : value));
-  };
-  const remove = async (conversation: Conversation) => {
-    if (!window.confirm(t('deleteConfirm', { title: conversation.title }))) return;
-    await api.request(`/conversations/${conversation.id}`, { method: 'DELETE' });
-    setConversations((items) => items.filter((item) => item.id !== conversation.id));
-    if (active?.id === conversation.id) setActive(null);
-  };
-
-  const send = async () => {
+  const submit = () => {
     const prompt = input.trim();
     if (!prompt || generating || !modelId) return;
     setInput('');
-    setError('');
-    setGenerating(true);
-    let conversation = active;
-    try {
-      if (!conversation) {
-        conversation = await api.request<Conversation>('/conversations', { method: 'POST', body: '{}' });
-        setConversations((items) => [conversation!, ...items]);
-      }
-      const userMessage: Message = {
-        id: crypto.randomUUID(),
-        role: 'USER',
-        content: prompt,
-        status: 'COMPLETED',
-        createdAt: new Date().toISOString(),
-      };
-      const assistantId = crypto.randomUUID();
-      const assistant: Message = {
-        id: assistantId,
-        role: 'ASSISTANT',
-        content: '',
-        status: 'STREAMING',
-        modelId,
-        createdAt: new Date().toISOString(),
-      };
-      const optimistic = { ...conversation, messages: [...(conversation.messages || []), userMessage, assistant] };
-      setActive(optimistic);
-      abortRef.current = new AbortController();
-      const response = await fetch(`${api.apiBase}/conversations/${conversation.id}/messages`, {
-        method: 'POST',
-        signal: abortRef.current.signal,
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${api.accessToken}` },
-        body: JSON.stringify({ content: prompt, modelId, requestId: crypto.randomUUID() }),
-      });
-      if (!response.ok || !response.body) {
-        const payload = (await response.json().catch(() => ({}))) as { message?: string };
-        throw new Error(payload.message || t('failedStatus', { status: response.status }));
-      }
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let assistantText = '';
-      while (true) {
-        const { value, done } = await reader.read();
-        buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
-        const frames = buffer.split('\n\n');
-        buffer = frames.pop() || '';
-        for (const frame of frames) {
-          const event = frame.match(/^event:\s*(.+)$/m)?.[1];
-          const raw = frame.match(/^data:\s*(.+)$/m)?.[1];
-          if (!raw) continue;
-          const data = JSON.parse(raw) as { text?: string; message?: string };
-          if (event === 'token' && data.text) {
-            assistantText += data.text;
-            setActive((current) =>
-              current
-                ? {
-                    ...current,
-                    messages: current.messages?.map((message) =>
-                      message.id === assistantId ? { ...message, content: assistantText } : message,
-                    ),
-                  }
-                : current,
-            );
-          }
-          if (event === 'error') throw new Error(data.message || t('failed'));
-        }
-        if (done) break;
-      }
-      setActive((current) =>
-        current
-          ? {
-              ...current,
-              messages: current.messages?.map((message) =>
-                message.id === assistantId ? { ...message, status: 'COMPLETED' } : message,
-              ),
-            }
-          : current,
-      );
-      await loadConversations();
-    } catch (cause) {
-      const aborted = (cause as Error).name === 'AbortError';
-      setError(aborted ? t('stopped') : (cause as Error).message);
-      setActive((current) =>
-        current
-          ? {
-              ...current,
-              messages: current.messages?.map((message) =>
-                message.status === 'STREAMING' ? { ...message, status: aborted ? 'INTERRUPTED' : 'ERROR' } : message,
-              ),
-            }
-          : current,
-      );
-    } finally {
-      setGenerating(false);
-      abortRef.current = null;
-    }
+    void send({ conversationId: activeId, prompt, modelId });
   };
 
-  const filtered = useMemo(
-    () => conversations.filter((item) => item.title.toLowerCase().includes(search.toLowerCase())),
-    [conversations, search],
-  );
-  const selectedModel = models.find((model) => model.id === modelId);
+  const filtered = (conversations.data ?? []).filter((item) => item.title.toLowerCase().includes(search.toLowerCase()));
   const sidebar = (
     <>
       <div className="space-y-3 p-3">
-        <Button className="w-full" onClick={create}>
+        <Button className="w-full" onClick={newChat}>
           <Plus size={17} /> {t('newChat')}
         </Button>
         <div className="relative">
@@ -209,31 +115,32 @@ export function ChatApp() {
         </div>
       </div>
       <div className="flex-1 space-y-1 overflow-auto px-2 pb-3">
-        {filtered.map((conversation) => (
+        {filtered.map((item) => (
           <div
-            key={conversation.id}
+            key={item.id}
             className={cn(
               'group flex items-center rounded-brand pr-1',
-              active?.id === conversation.id ? 'bg-primary-soft' : 'hover:bg-fill-quaternary',
+              activeId === item.id ? 'bg-primary-soft' : 'hover:bg-fill-quaternary',
             )}
           >
-            <button
-              onClick={() => open(conversation.id)}
+            <Link
+              href={`/c/${item.id}`}
+              onClick={leaveSidebar}
               className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left text-sm"
             >
               <MessageSquare size={15} className="shrink-0 text-fg-tertiary" />
-              <span className="truncate">{conversation.title}</span>
-            </button>
+              <span className="truncate">{item.title}</span>
+            </Link>
             <button
               title={t('rename')}
-              onClick={() => rename(conversation)}
+              onClick={() => rename(item.id, item.title)}
               className="hidden p-1 text-fg-tertiary group-focus-within:block group-hover:block hover:text-primary pointer-coarse:block"
             >
               <Pencil size={14} />
             </button>
             <button
               title={t('delete')}
-              onClick={() => remove(conversation)}
+              onClick={() => remove(item.id, item.title)}
               className="hidden p-1 text-fg-tertiary group-focus-within:block group-hover:block hover:text-error pointer-coarse:block"
             >
               <Trash2 size={14} />
@@ -247,7 +154,7 @@ export function ChatApp() {
   const header = (
     <>
       <div className="min-w-0 flex-1">
-        <h1 className="truncate font-semibold">{active?.title || t('newConversation')}</h1>
+        <h1 className="truncate font-semibold">{title}</h1>
         <p className="hidden truncate text-xs text-fg-secondary sm:block">{t('private')}</p>
       </div>
       <div className="flex shrink-0 items-center gap-3">
@@ -255,9 +162,9 @@ export function ChatApp() {
           aria-label={t('model')}
           className="w-40 sm:w-64 lg:w-auto"
           value={modelId}
-          onChange={(event) => setModelId(event.target.value)}
+          onChange={(event) => setSelectedModelId(event.target.value)}
         >
-          {models.map((model) => (
+          {modelList.map((model) => (
             <option key={model.id} value={model.id} disabled={!model.available}>
               {t('modelOption', {
                 name: model.displayName,
@@ -285,14 +192,24 @@ export function ChatApp() {
       <div className="flex h-full flex-col">
         <section className="flex-1 overflow-auto">
           <div className="mx-auto max-w-3xl space-y-7 px-4 py-6 md:px-6 md:py-10">
-            {!active?.messages?.length && <EmptyState models={models} />}{' '}
-            {active?.messages?.map((message) => (
-              <MessageBubble key={message.id} message={message} />
-            ))}
+            {notFound ? (
+              <NotFound />
+            ) : activeId && conversation.isPending ? (
+              <div className="grid place-items-center py-20">
+                <LoaderCircle className="animate-spin text-primary" />
+              </div>
+            ) : activeId && conversation.isError ? null : (
+              <>
+                {!messages?.length && <EmptyState models={modelList} />}
+                {messages?.map((message) => (
+                  <MessageBubble key={message.id} message={message} />
+                ))}
+              </>
+            )}
             <div ref={bottomRef} />
           </div>
         </section>
-        <footer className="shrink-0 bg-gradient-to-t from-layout via-layout px-3 pt-2 pb-[calc(1.25rem+env(safe-area-inset-bottom))] md:px-5">
+        <footer className="shrink-0 bg-linear-to-t from-layout via-layout px-3 pt-2 pb-[calc(1.25rem+env(safe-area-inset-bottom))] md:px-5">
           <div className="mx-auto max-w-3xl">
             {selectedModel && !selectedModel.local && (
               <div className="mb-2 rounded-brand bg-warning-soft px-3 py-2 text-xs text-warning-text">
@@ -304,12 +221,12 @@ export function ChatApp() {
               <Textarea
                 rows={1}
                 value={input}
-                disabled={generating}
+                disabled={generating || notFound}
                 onChange={(event) => setInput(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' && !event.shiftKey) {
                     event.preventDefault();
-                    send();
+                    submit();
                   }
                 }}
                 placeholder={t('placeholder')}
@@ -319,7 +236,7 @@ export function ChatApp() {
                 <Button
                   variant="secondary"
                   className="h-11 w-11 shrink-0 px-0"
-                  onClick={() => abortRef.current?.abort()}
+                  onClick={() => stream?.abort.abort()}
                   title={t('stop')}
                 >
                   <Square size={16} />
@@ -327,8 +244,8 @@ export function ChatApp() {
               ) : (
                 <Button
                   className="h-11 w-11 shrink-0 px-0"
-                  onClick={send}
-                  disabled={!input.trim() || !selectedModel?.available}
+                  onClick={submit}
+                  disabled={!input.trim() || !selectedModel?.available || notFound}
                   title={t('send')}
                 >
                   <Send size={17} />
@@ -340,6 +257,22 @@ export function ChatApp() {
         </footer>
       </div>
     </Shell>
+  );
+}
+
+function NotFound() {
+  const t = useTranslations('chat');
+  return (
+    <div className="py-20 text-center">
+      <div className="mx-auto grid h-14 w-14 place-items-center rounded-brand-lg bg-fill-tertiary text-fg-tertiary">
+        <MessageSquare />
+      </div>
+      <h2 className="mt-5 text-2xl font-semibold">{t('notFound')}</h2>
+      <p className="mx-auto mt-2 max-w-md text-sm text-fg-secondary">{t('notFoundBody')}</p>
+      <Link href="/" className="mt-6 inline-block font-medium text-primary underline">
+        {t('startNew')}
+      </Link>
+    </div>
   );
 }
 

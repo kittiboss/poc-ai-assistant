@@ -24,7 +24,8 @@
     "tryAgain": "Try again",
     "intro": "A private, locally hosted assistant. Sign in through the development company identity provider.",
     "continue": "Continue with company SSO",
-    "noPaidProvider": "No paid AI provider is enabled in this POC."
+    "noPaidProvider": "No paid AI provider is enabled in this POC.",
+    "sessionExpired": "Your session has expired. Sign in again to continue."
   },
   "nav": {
     "openMenu": "Open menu",
@@ -63,7 +64,10 @@
     "disclaimer": "AI responses may be inaccurate. Local inference still uses compute, memory, disk, and electricity.",
     "emptyTitle": "How can I help?",
     "emptyBody": "Choose an available model and start a private conversation. {count} model(s) available.",
-    "copy": "Copy response"
+    "copy": "Copy response",
+    "notFound": "Conversation not found",
+    "notFoundBody": "It may have been deleted, or it belongs to another account.",
+    "startNew": "Start a new chat"
   },
   "usage": {
     "eyebrow": "YOUR ACCOUNT",

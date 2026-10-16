@@ -1,41 +1,22 @@
 'use client';
 import { ArrowDownToLine, ArrowUpFromLine, BarChart3, Coins, Save, ShieldAlert, Users, Zap } from 'lucide-react';
 import { useFormatter, useTranslations } from 'next-intl';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { costFormat, dateTimeFormat } from '@/i18n/formats';
 import { useEnumLabel } from '@/i18n/use-enum-label';
-import { useApi } from '@/lib/api';
+import type { AdminModel, PriceResult, PricingStrategy, UpdateModel, UpdatePricing } from '@/lib/api/types';
 import { SimpleBarChart } from '@/components/ui/charts';
 import { Shell } from '@/components/layout/shell';
 import { Badge, Button, Card, Input, Select } from '@/components/ui/primitives';
+import { providers, useAdminData, useAdminMutations, type Filters } from './admin-queries';
 
-type Sum = {
-  totalTokens?: number | null;
-  actualProviderCost?: string | null;
-  customerCharge?: string | null;
-  simulatedProviderCost?: string | null;
-  simulatedCustomerCharge?: string | null;
-};
-type Summary = {
-  users: number;
-  activeUsers: number;
-  requests: number;
-  tokens: { inputTokens: number | null; outputTokens: number | null; totalTokens: number | null };
-  byProvider: Array<{ provider: string; _count: number; _sum: Sum }>;
-  byModel: Array<{ modelId: string; displayName: string; _count: number; _sum: Sum }>;
-  byKind: Array<{ usageKind: string; _count: number; _sum: { totalTokens: number | null } }>;
-  costs: Sum;
-  daily: Array<{ day: string; requests: number; tokens: number }>;
-  externalToday: { used: { requests: number; tokens: number }; limits: { requests: number; tokens: number } };
-};
-type Strategy = 'PASS_THROUGH' | 'PERCENTAGE_MARKUP' | 'FIXED_RATE' | 'SIMULATION';
-type Version = {
-  id: string;
-  version: number;
-  strategy: Strategy;
+type Role = NonNullable<UpdateModel['allowedRoles']>[number];
+const roles: Role[] = ['USER', 'ADMIN'];
+type PriceForm = {
+  strategy: PricingStrategy;
   providerInputRate: string;
   providerOutputRate: string;
-  cachedInputRate?: string;
+  cachedInputRate: string;
   additionalFee: string;
   customerInputRate: string;
   customerOutputRate: string;
@@ -43,44 +24,11 @@ type Version = {
   simulationInputRate: string;
   simulationOutputRate: string;
   currency: string;
+  /** datetime-local text until sent */
   effectiveAt: string;
-  createdBy?: string;
-};
-type AdminModel = {
-  id: string;
-  displayName: string;
-  provider: string;
-  enabled: boolean;
-  local: boolean;
-  allowedRoles: string[];
-  configured: boolean;
-  reachable: boolean;
-  status: string;
-  pricing?: { versions: Version[] };
-};
-type Pricing = { id: string; modelId: string; model: AdminModel; versions: Version[] };
-type User = {
-  id: string;
-  username: string;
-  email?: string;
-  roles: Array<{ role: { name: string } }>;
-  modelPermissions: Array<{ modelId: string; allowed: boolean }>;
-};
-type Audit = {
-  id: string;
-  action: string;
-  entityType: string;
-  entityId: string;
-  createdAt: string;
-  actor?: { username: string } | null;
-  after?: Record<string, unknown> | null;
-};
-type PriceForm = Omit<Version, 'id' | 'version' | 'effectiveAt' | 'createdBy'> & {
   inputTokens: number;
   outputTokens: number;
-  effectiveAt?: string;
 };
-type Filters = { from: string; to: string; provider: string; modelId: string };
 
 const emptyForm: PriceForm = {
   strategy: 'SIMULATION',
@@ -112,29 +60,26 @@ const pricingFields = [
   'simulationOutputRate',
   'currency',
 ] as const;
-/** Only the fields the pricing API accepts; it rejects unknown properties such as a version's id. effectiveAt is kept as datetime-local text until sent. */
-function pricingBody(form: PriceForm) {
-  const body: Record<string, unknown> = Object.fromEntries(
-    pricingFields
-      .map((field) => [field, form[field]])
-      .filter(([, value]) => value !== null && value !== undefined && value !== ''),
-  );
-  if (form.effectiveAt) body.effectiveAt = new Date(form.effectiveAt).toISOString();
-  return body;
-}
-
-function summaryQuery(filters: Filters) {
-  const params = new URLSearchParams();
-  if (filters.from) params.set('from', new Date(`${filters.from}T00:00:00`).toISOString());
-  if (filters.to) params.set('to', new Date(`${filters.to}T23:59:59.999`).toISOString());
-  if (filters.provider) params.set('provider', filters.provider);
-  if (filters.modelId) params.set('modelId', filters.modelId);
-  const query = params.toString();
-  return query ? `?${query}` : '';
+/** Only the fields the pricing API accepts; it rejects unknown properties such as a version's id. */
+function pricingBody(form: PriceForm): UpdatePricing {
+  const optional = (value: string) => value || undefined;
+  return {
+    strategy: form.strategy,
+    providerInputRate: form.providerInputRate,
+    providerOutputRate: form.providerOutputRate,
+    cachedInputRate: optional(form.cachedInputRate),
+    additionalFee: optional(form.additionalFee),
+    customerInputRate: optional(form.customerInputRate),
+    customerOutputRate: optional(form.customerOutputRate),
+    markupPercent: optional(form.markupPercent),
+    simulationInputRate: optional(form.simulationInputRate),
+    simulationOutputRate: optional(form.simulationOutputRate),
+    currency: form.currency,
+    effectiveAt: form.effectiveAt ? new Date(form.effectiveAt).toISOString() : undefined,
+  };
 }
 
 export function AdminDashboard() {
-  const api = useApi();
   const t = useTranslations('admin');
   const tCommon = useTranslations('common');
   const enums = useEnumLabel();
@@ -145,7 +90,7 @@ export function AdminDashboard() {
   const dateTime = (value: string) => format.dateTime(new Date(value), dateTimeFormat);
   // Daily buckets are UTC dates; formatting them in UTC keeps each bar on its own day.
   const day = (value: string) => format.dateTime(new Date(value), { month: 'short', day: 'numeric', timeZone: 'UTC' });
-  const auditDetail = (entry: Audit) => {
+  const auditDetail = (entry: { action: string; after: Record<string, unknown> | null }) => {
     const after = entry.after || {};
     if (entry.action === 'PRICING_VERSION_CREATE')
       return t('audit.pricingDetail', {
@@ -161,41 +106,20 @@ export function AdminDashboard() {
       return t('audit.permissionDetail', { model: String(after.modelId), allowed: String(Boolean(after.allowed)) });
     return '';
   };
-  const [summary, setSummary] = useState<Summary | null>(null);
-  const [models, setModels] = useState<AdminModel[]>([]);
-  const [pricing, setPricing] = useState<Pricing[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
-  const [audit, setAudit] = useState<Audit[]>([]);
   const [filters, setFilters] = useState<Filters>(noFilters);
   const [selectedModel, setSelectedModel] = useState('local-mock');
   const [form, setForm] = useState<PriceForm>(emptyForm);
-  const [preview, setPreview] = useState<Record<string, string> | null>(null);
+  const [preview, setPreview] = useState<PriceResult | null>(null);
   const [message, setMessage] = useState('');
-  const loadSummary = async (next: Filters) =>
-    setSummary(await api.request<Summary>(`/admin/summary${summaryQuery(next)}`));
-  const fetchAll = (next: Filters) =>
-    Promise.all([
-      api.request<AdminModel[]>('/admin/models'),
-      api.request<Pricing[]>('/admin/pricing'),
-      api.request<User[]>('/admin/users'),
-      api.request<Audit[]>('/admin/audit'),
-      api.request<Summary>(`/admin/summary${summaryQuery(next)}`),
-    ]);
-  const apply = ([nextModels, nextPricing, nextUsers, nextAudit, nextSummary]: Awaited<
-    ReturnType<typeof fetchAll>
-  >) => {
-    setModels(nextModels);
-    setPricing(nextPricing);
-    setUsers(nextUsers);
-    setAudit(nextAudit);
-    setSummary(nextSummary);
-  };
-  const load = () => fetchAll(filters).then(apply);
-  useEffect(() => {
-    fetchAll(noFilters)
-      .then(apply)
-      .catch((cause) => setMessage(cause.message));
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const data = useAdminData(filters);
+  const mutations = useAdminMutations();
+  const summary = data.summary.data;
+  const models = data.models.data ?? [];
+  const pricing = useMemo(() => data.pricing.data ?? [], [data.pricing.data]);
+  const users = data.users.data ?? [];
+  const audit = data.audit.data ?? [];
+  const loadError = Object.values(data).find((query) => query.error)?.error?.message;
+  const report = (cause: unknown) => setMessage((cause as Error).message);
   const selectedPricing = useMemo(
     () => pricing.find((item) => item.modelId === selectedModel),
     [pricing, selectedModel],
@@ -215,59 +139,39 @@ export function AdminDashboard() {
       }));
     setPreview(null);
   }
-  const applyFilters = async (next: Filters) => {
-    setFilters(next);
+  // The summary query follows the filters, so changing them is enough to reload it.
+  const applyFilters = (next: Filters) => setFilters(next);
+  const updateModel = async (model: AdminModel, change: UpdateModel) => {
     try {
-      await loadSummary(next);
-    } catch (cause) {
-      setMessage((cause as Error).message);
-    }
-  };
-  const updateModel = async (model: AdminModel, change: Partial<Pick<AdminModel, 'enabled' | 'allowedRoles'>>) => {
-    try {
-      await api.request(`/admin/models/${model.id}`, { method: 'PATCH', body: JSON.stringify(change) });
-      await load();
+      await mutations.updateModel.mutateAsync({ id: model.id, change });
       setMessage(t('modelUpdated', { model: model.displayName }));
     } catch (cause) {
-      setMessage((cause as Error).message);
+      report(cause);
     }
   };
   const previewPrice = async () => {
     try {
       setPreview(
-        await api.request('/admin/pricing/preview/calculate', {
-          method: 'POST',
-          body: JSON.stringify({
-            ...pricingBody(form),
-            inputTokens: form.inputTokens,
-            outputTokens: form.outputTokens,
-          }),
+        await mutations.previewPricing.mutateAsync({
+          ...pricingBody(form),
+          inputTokens: form.inputTokens,
+          outputTokens: form.outputTokens,
         }),
       );
     } catch (cause) {
-      setMessage((cause as Error).message);
+      report(cause);
     }
   };
   const savePrice = async () => {
     try {
-      await api.request(`/admin/pricing/${selectedModel}`, { method: 'POST', body: JSON.stringify(pricingBody(form)) });
-      await load();
+      await mutations.createPricing.mutateAsync({ modelId: selectedModel, pricing: pricingBody(form) });
       setMessage(t('pricingCreated'));
     } catch (cause) {
-      setMessage((cause as Error).message);
+      report(cause);
     }
   };
-  const permission = async (userId: string, modelId: string, allowed: boolean) => {
-    try {
-      await api.request(`/admin/users/${userId}/models/${modelId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ allowed }),
-      });
-      await load();
-    } catch (cause) {
-      setMessage((cause as Error).message);
-    }
-  };
+  const permission = (userId: string, modelId: string, allowed: boolean) =>
+    mutations.setPermission.mutateAsync({ userId, modelId, allowed }).catch(report);
   const guard = summary?.externalToday;
 
   return (
@@ -278,9 +182,9 @@ export function AdminDashboard() {
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">{t('title')}</h1>
           <p className="mt-2 text-sm text-fg-secondary">{t('intro')}</p>
         </div>
-        {message && (
+        {(message || loadError) && (
           <div className="rounded-brand bg-primary-soft px-4 py-3 text-sm text-primary-text">
-            {message}
+            {message || loadError}
             <button className="float-right" onClick={() => setMessage('')} aria-label={tCommon('dismiss')}>
               ×
             </button>
@@ -305,10 +209,10 @@ export function AdminDashboard() {
           <Field label={t('filters.provider')}>
             <Select
               value={filters.provider}
-              onChange={(event) => applyFilters({ ...filters, provider: event.target.value })}
+              onChange={(event) => applyFilters({ ...filters, provider: event.target.value as Filters['provider'] })}
             >
               <option value="">{t('filters.allProviders')}</option>
-              {['MOCK', 'OLLAMA', 'OPENAI', 'ANTHROPIC', 'GEMINI'].map((provider) => (
+              {providers.map((provider) => (
                 <option key={provider}>{provider}</option>
               ))}
             </Select>
@@ -543,16 +447,16 @@ export function AdminDashboard() {
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex gap-3">
-                        {['USER', 'ADMIN'].map((role) => (
+                        {roles.map((role) => (
                           <label key={role} className="flex items-center gap-1 text-xs">
                             <input
                               type="checkbox"
                               checked={model.allowedRoles.includes(role)}
                               onChange={(event) =>
                                 updateModel(model, {
-                                  allowedRoles: event.target.checked
+                                  allowedRoles: (event.target.checked
                                     ? [...model.allowedRoles, role]
-                                    : model.allowedRoles.filter((item) => item !== role),
+                                    : model.allowedRoles.filter((item) => item !== role)) as Role[],
                                 })
                               }
                             />
@@ -651,7 +555,7 @@ export function AdminDashboard() {
                 <Select
                   className="w-full"
                   value={form.strategy}
-                  onChange={(event) => setForm({ ...form, strategy: event.target.value as Strategy })}
+                  onChange={(event) => setForm({ ...form, strategy: event.target.value as PricingStrategy })}
                 >
                   {['PASS_THROUGH', 'PERCENTAGE_MARKUP', 'FIXED_RATE', 'SIMULATION'].map((value) => (
                     <option key={value} value={value}>
@@ -809,7 +713,9 @@ export function AdminDashboard() {
                       <td className="py-3 pr-4">
                         {version.simulationInputRate} / {version.simulationOutputRate}
                       </td>
-                      <td className="py-3 pr-4">{version.createdBy || tCommon('system')}</td>
+                      <td className="py-3 pr-4">
+                        {(typeof version.createdBy === 'string' && version.createdBy) || tCommon('system')}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
