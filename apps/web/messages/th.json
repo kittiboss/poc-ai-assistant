@@ -13,8 +13,9 @@
   },
   "common": {
     "loading": "กำลังโหลด",
-    "dismiss": "ปิด",
-    "system": "ระบบ"
+    "system": "ระบบ",
+    "save": "บันทึก",
+    "cancel": "ยกเลิก"
   },
   "errors": {
     "requestFailed": "ส่งคำขอไม่สำเร็จ ({status})"
@@ -46,7 +47,7 @@
     "rename": "เปลี่ยนชื่อ",
     "delete": "ลบ",
     "renamePrompt": "ชื่อแชท",
-    "deleteConfirm": "ลบ “{title}” ใช่ไหม? การลบนี้ย้อนกลับไม่ได้",
+    "deleteConfirm": "“{title}” จะถูกลบ และย้อนกลับไม่ได้",
     "newConversation": "แชทใหม่",
     "private": "เป็นส่วนตัวสำหรับบัญชีองค์กรของคุณ",
     "model": "โมเดล",
@@ -67,7 +68,13 @@
     "copy": "คัดลอกคำตอบ",
     "notFound": "ไม่พบแชทนี้",
     "notFoundBody": "แชทนี้อาจถูกลบไปแล้ว หรือเป็นของบัญชีอื่น",
-    "startNew": "เริ่มแชทใหม่"
+    "startNew": "เริ่มแชทใหม่",
+    "renameTitle": "เปลี่ยนชื่อแชท",
+    "renamed": "เปลี่ยนชื่อแชทแล้ว",
+    "titleRequired": "กรุณาใส่ชื่อแชท",
+    "deleteTitle": "ลบแชทนี้ไหม?",
+    "deleted": "ลบแชทแล้ว",
+    "scrollToBottom": "เลื่อนไปที่ข้อความล่าสุด"
   },
   "usage": {
     "eyebrow": "บัญชีของคุณ",
@@ -231,7 +238,9 @@
         "markup": "ส่วนเพิ่ม",
         "simulationRates": "จำลอง เข้า/ออก",
         "createdBy": "สร้างโดย"
-      }
+      },
+      "required": "จำเป็นต้องกรอก",
+      "currencyHint": "ใส่รหัสสกุลเงิน 3 ตัวอักษร เช่น USD"
     },
     "permissions": {
       "title": "สิทธิ์ใช้โมเดลของผู้ใช้",
@@ -252,7 +261,8 @@
       "pricingDetail": "v{version} · {strategy}",
       "modelDetail": "เปิดใช้: {enabled, select, true {ใช่} other {ไม่}} · บทบาท: {roles}",
       "permissionDetail": "{model}: {allowed, select, true {อนุญาต} other {ไม่อนุญาต}}"
-    }
+    },
+    "permissionUpdated": "อัปเดตสิทธิ์แล้ว"
   },
   "settings": {
     "eyebrow": "ตั้งค่า",

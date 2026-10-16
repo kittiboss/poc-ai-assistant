@@ -13,8 +13,9 @@
   },
   "common": {
     "loading": "Loading",
-    "dismiss": "Dismiss",
-    "system": "system"
+    "system": "system",
+    "save": "Save",
+    "cancel": "Cancel"
   },
   "errors": {
     "requestFailed": "Request failed ({status})"
@@ -46,7 +47,7 @@
     "rename": "Rename",
     "delete": "Delete",
     "renamePrompt": "Conversation name",
-    "deleteConfirm": "Delete “{title}”? This cannot be undone.",
+    "deleteConfirm": "“{title}” will be deleted. This cannot be undone.",
     "newConversation": "New conversation",
     "private": "Private to your company account",
     "model": "Model",
@@ -67,7 +68,13 @@
     "copy": "Copy response",
     "notFound": "Conversation not found",
     "notFoundBody": "It may have been deleted, or it belongs to another account.",
-    "startNew": "Start a new chat"
+    "startNew": "Start a new chat",
+    "renameTitle": "Rename conversation",
+    "renamed": "Conversation renamed",
+    "titleRequired": "Enter a name for the conversation.",
+    "deleteTitle": "Delete this conversation?",
+    "deleted": "Conversation deleted",
+    "scrollToBottom": "Scroll to the latest message"
   },
   "usage": {
     "eyebrow": "YOUR ACCOUNT",
@@ -231,7 +238,9 @@
         "markup": "Markup",
         "simulationRates": "Simulation in/out",
         "createdBy": "Created by"
-      }
+      },
+      "required": "Required",
+      "currencyHint": "Use a 3-letter currency code, e.g. USD."
     },
     "permissions": {
       "title": "User model permissions",
@@ -252,7 +261,8 @@
       "pricingDetail": "v{version} · {strategy}",
       "modelDetail": "enabled={enabled} · roles={roles}",
       "permissionDetail": "{model}: {allowed, select, true {allowed} other {denied}}"
-    }
+    },
+    "permissionUpdated": "Permission updated."
   },
   "settings": {
     "eyebrow": "SETTINGS",

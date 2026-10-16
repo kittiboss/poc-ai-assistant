@@ -1,10 +1,10 @@
 'use client';
+import { Button, Card } from 'antd';
 import { LoaderCircle, LockKeyhole } from 'lucide-react';
 import { useLocale, useTranslations } from 'next-intl';
 import { useAuth } from 'react-oidc-context';
 import { useBrand } from '@/components/brand/brand-provider';
 import { LanguageSwitcher } from '@/components/layout/language-switcher';
-import { Button, Card } from '@/components/ui/primitives';
 import { useUIStore } from '@/stores/ui-store-provider';
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
@@ -34,10 +34,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   if (auth.error && !sessionExpired && !['renewSilent', 'signinSilent'].includes(auth.error.source))
     return (
       <main className="grid min-h-dvh place-items-center p-6">
-        <Card className="max-w-md p-8">
+        <Card className="max-w-md shadow-sm" styles={{ body: { padding: 32 } }}>
           <h1 className="text-xl font-semibold">{t('signInFailed')}</h1>
           <p className="mt-2 text-sm text-error">{auth.error.message}</p>
-          <Button className="mt-5" onClick={signIn}>
+          <Button type="primary" size="large" className="mt-5" onClick={signIn}>
             {t('tryAgain')}
           </Button>
         </Card>
@@ -49,7 +49,10 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       <div className="absolute top-[calc(1rem+env(safe-area-inset-top))] right-[calc(1rem+env(safe-area-inset-right))]">
         <LanguageSwitcher compact />
       </div>
-      <Card className="relative w-full max-w-md bg-surface/70 p-9 backdrop-blur-xl">
+      <Card
+        className="relative w-full max-w-md bg-surface/70 shadow-sm backdrop-blur-xl"
+        styles={{ body: { padding: 36 } }}
+      >
         <div className="mb-6 inline-flex rounded-brand-lg bg-primary p-3 text-on-primary">
           <LockKeyhole />
         </div>
@@ -60,7 +63,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           </p>
         )}
         <p className="mt-3 text-sm leading-6 text-fg-secondary">{t('intro')}</p>
-        <Button className="mt-7 w-full" onClick={signIn}>
+        <Button type="primary" size="large" block className="mt-7" onClick={signIn}>
           {t('continue')}
         </Button>
         <p className="mt-4 text-center text-xs text-fg-tertiary">{t('noPaidProvider')}</p>

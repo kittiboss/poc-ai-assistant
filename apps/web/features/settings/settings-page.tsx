@@ -1,4 +1,5 @@
 'use client';
+import { Card } from 'antd';
 import { KeyRound, Languages, Server, ShieldCheck, SlidersHorizontal, SunMoon, User } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useAuth } from 'react-oidc-context';
@@ -6,8 +7,11 @@ import { API_URL } from '@/lib/api/client';
 import { useRoles } from '@/lib/auth/use-roles';
 import { LanguageSwitcher } from '@/components/layout/language-switcher';
 import { Shell } from '@/components/layout/shell';
+import { StatusTag } from '@/components/ui/status-tag';
 import { ThemeSwitcher } from '@/components/layout/theme-switcher';
-import { Badge, Card } from '@/components/ui/primitives';
+
+// Matches the padding of the original cards; AntD's default body padding is smaller.
+const cardStyles = { body: { padding: 24 } };
 
 export function SettingsPage() {
   const auth = useAuth();
@@ -23,7 +27,7 @@ export function SettingsPage() {
           <p className="text-sm font-medium text-primary">{t('eyebrow')}</p>
           <h1 className="mt-1 text-3xl font-semibold">{t('title')}</h1>
         </div>
-        <Card className="p-6">
+        <Card className="shadow-sm" styles={cardStyles}>
           <div className="flex gap-3">
             <SlidersHorizontal className="shrink-0 text-primary" />
             <div className="min-w-0 flex-1">
@@ -41,7 +45,7 @@ export function SettingsPage() {
           </div>
         </Card>
         <div className="grid gap-5 md:grid-cols-2">
-          <Card className="p-6">
+          <Card className="shadow-sm" styles={cardStyles}>
             <User className="text-primary" />
             <h2 className="mt-4 font-semibold">{t('identity')}</h2>
             <dl className="mt-4 space-y-3 text-sm">
@@ -50,12 +54,12 @@ export function SettingsPage() {
               <Row label={t('roles')} value={roles.filter((role) => ['ADMIN', 'USER'].includes(role)).join(', ')} />
             </dl>
           </Card>
-          <Card className="p-6">
+          <Card className="shadow-sm" styles={cardStyles}>
             <Server className="text-primary" />
             <h2 className="mt-4 font-semibold">{t('deployment')}</h2>
             <div className="mt-4 space-y-3 text-sm">
               <p>
-                <Badge tone="success">{t('localByDefault')}</Badge>
+                <StatusTag tone="success">{t('localByDefault')}</StatusTag>
               </p>
               <p className="text-fg-secondary">{t('routing')}</p>
               <p className="text-fg-secondary">{t('resources')}</p>
@@ -72,7 +76,7 @@ export function SettingsPage() {
             </div>
           </Card>
         </div>
-        <Card className="p-6">
+        <Card className="shadow-sm" styles={cardStyles}>
           <div className="flex gap-3">
             <ShieldCheck className="shrink-0 text-primary" />
             <div>

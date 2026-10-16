@@ -1,12 +1,29 @@
 import type { Locale as XLocale } from '@ant-design/x/es/locale';
 import xEnUS from '@ant-design/x/locale/en_US';
+import thDatePicker from 'antd/es/date-picker/locale/th_TH';
 import enUS from 'antd/locale/en_US';
 import thTH from 'antd/locale/th_TH';
 import type { Locale } from './config';
 
+// Thai dates elsewhere show the Buddhist Era year, so the DatePicker does too. BBBB comes from
+// ./dayjs, which also parses it when a date is typed.
+const thBuddhistDatePicker: typeof thDatePicker = {
+  ...thDatePicker,
+  lang: {
+    ...thDatePicker.lang,
+    fieldDateFormat: 'DD/MM/BBBB',
+    fieldDateTimeFormat: 'DD/MM/BBBB HH:mm:ss',
+    fieldMonthFormat: 'MM/BBBB',
+    fieldYearFormat: 'BBBB',
+    yearFormat: 'BBBB',
+    cellYearFormat: 'BBBB',
+  },
+};
+
 // Ant Design X ships no Thai locale, so its strings are translated here.
 const xThTH: XLocale = {
   ...thTH,
+  DatePicker: thBuddhistDatePicker,
   locale: 'th',
   Conversations: { create: 'แชทใหม่' },
   Sender: { stopLoading: 'หยุดสร้างคำตอบ', speechRecording: 'กำลังบันทึกเสียง' },

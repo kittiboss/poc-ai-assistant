@@ -1,15 +1,20 @@
 'use client';
+import { useQuery } from '@tanstack/react-query';
+import { Alert, Table, type TableColumnsType } from 'antd';
 import { Activity, ArrowDownToLine, ArrowUpFromLine, Coins, Database, Hash, Timer } from 'lucide-react';
 import { useFormatter, useTranslations } from 'next-intl';
-import { useQuery } from '@tanstack/react-query';
 import { useApi } from '@/components/api/api-provider';
+import { Shell } from '@/components/layout/shell';
+import { SimpleBarChart } from '@/components/ui/charts';
+import { MetricCard } from '@/components/ui/metric-card';
+import { SectionCard } from '@/components/ui/section-card';
+import { StatusTag, usageKindTone } from '@/components/ui/status-tag';
 import { costFormat, dateTimeFormat } from '@/i18n/formats';
 import { useEnumLabel } from '@/i18n/use-enum-label';
 import { queryKeys } from '@/lib/api/query-keys';
 import type { MyUsage } from '@/lib/api/types';
-import { SimpleBarChart } from '@/components/ui/charts';
-import { Shell } from '@/components/layout/shell';
-import { Badge, Card } from '@/components/ui/primitives';
+
+type UsageRecord = MyUsage['records'][number];
 
 export function UsageDashboard() {
   const { client, unwrap } = useApi();
@@ -18,11 +23,71 @@ export function UsageDashboard() {
   const format = useFormatter();
   const money = (value: unknown, currency = 'USD') => format.number(Number(value || 0), costFormat(currency, 4, 8));
   const number = (value: unknown) => format.number(Number(value || 0));
-  const { data, error } = useQuery<MyUsage>({
+  const { data, error, isPending } = useQuery<MyUsage>({
     queryKey: queryKeys.myUsage,
     queryFn: async ({ signal }) => unwrap(await client.GET('/api/usage/me', { signal })),
   });
   const totals: Partial<MyUsage['totals']['_sum']> = data?.totals._sum ?? {};
+
+  const columns: TableColumnsType<UsageRecord> = [
+    {
+      key: 'time',
+      title: t('columns.time'),
+      render: (_, record) => format.dateTime(new Date(record.createdAt), dateTimeFormat),
+      className: 'whitespace-nowrap',
+    },
+    {
+      key: 'model',
+      title: t('columns.model'),
+      render: (_, record) => <span className="font-medium">{record.model.displayName}</span>,
+    },
+    { key: 'provider', title: t('columns.provider'), dataIndex: 'provider' },
+    {
+      key: 'tokens',
+      title: t('columns.tokens'),
+      className: 'whitespace-nowrap',
+      render: (_, record) => (
+        <>
+          {number(record.totalTokens)}{' '}
+          <span className="text-xs text-fg-tertiary">
+            {t('tokenSplit', { input: number(record.inputTokens), output: number(record.outputTokens) })}
+          </span>
+        </>
+      ),
+    },
+    {
+      key: 'duration',
+      title: t('columns.duration'),
+      className: 'whitespace-nowrap',
+      render: (_, record) => (
+        <>
+          <Timer className="mr-1 inline" size={13} />
+          {format.number(record.durationMs, { style: 'unit', unit: 'millisecond' })}
+        </>
+      ),
+    },
+    {
+      key: 'usage',
+      title: t('columns.usage'),
+      render: (_, record) => (
+        <StatusTag tone={usageKindTone(record.usageKind)}>{enums.label('usageKind', record.usageKind)}</StatusTag>
+      ),
+    },
+    { key: 'status', title: t('columns.status'), render: (_, record) => enums.label('requestStatus', record.status) },
+    {
+      key: 'actualCost',
+      title: t('columns.actualCost'),
+      className: 'whitespace-nowrap',
+      render: (_, record) => money(record.actualProviderCost, record.currency),
+    },
+    {
+      key: 'simulatedCost',
+      title: t('columns.simulatedCost'),
+      className: 'whitespace-nowrap',
+      render: (_, record) => money(record.simulatedProviderCost, record.currency),
+    },
+  ];
+
   return (
     <Shell active="usage">
       <div className="mx-auto max-w-7xl space-y-6 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:p-8">
@@ -31,19 +96,17 @@ export function UsageDashboard() {
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">{t('title')}</h1>
           <p className="mt-2 text-sm text-fg-secondary">{t('intro')}</p>
         </div>
-        {error && <Card className="border-error-border p-4 text-error">{error.message}</Card>}
+        {error && <Alert type="error" showIcon title={error.message} />}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Metric icon={<Activity />} label={t('requests')} value={number(data?.totals._count)} />
-          <Metric icon={<ArrowDownToLine />} label={t('inputTokens')} value={number(totals.inputTokens)} />
-          <Metric icon={<ArrowUpFromLine />} label={t('outputTokens')} value={number(totals.outputTokens)} />
-          <Metric icon={<Hash />} label={t('totalTokens')} value={number(totals.totalTokens)} />
-          <Metric icon={<Database />} label={t('actualCost')} value={money(totals.actualProviderCost)} />
-          <Metric icon={<Coins />} label={t('simulatedCost')} value={money(totals.simulatedProviderCost)} />
+          <MetricCard icon={<Activity />} label={t('requests')} value={number(data?.totals._count)} />
+          <MetricCard icon={<ArrowDownToLine />} label={t('inputTokens')} value={number(totals.inputTokens)} />
+          <MetricCard icon={<ArrowUpFromLine />} label={t('outputTokens')} value={number(totals.outputTokens)} />
+          <MetricCard icon={<Hash />} label={t('totalTokens')} value={number(totals.totalTokens)} />
+          <MetricCard icon={<Database />} label={t('actualCost')} value={money(totals.actualProviderCost)} />
+          <MetricCard icon={<Coins />} label={t('simulatedCost')} value={money(totals.simulatedProviderCost)} />
         </div>
         <div className="grid gap-6 lg:grid-cols-3">
-          <Card className="p-5 lg:col-span-2">
-            <h2 className="font-semibold">{t('tokensByModel')}</h2>
-            <p className="mb-5 text-xs text-fg-secondary">{t('tokensByModelNote')}</p>
+          <SectionCard className="lg:col-span-2" title={t('tokensByModel')} description={t('tokensByModelNote')}>
             <SimpleBarChart
               data={data?.byModel || []}
               x="modelId"
@@ -51,10 +114,9 @@ export function UsageDashboard() {
               label={t('tokens')}
               height={256}
             />
-          </Card>
-          <Card className="p-5">
-            <h2 className="font-semibold">{t('costClassification')}</h2>
-            <div className="mt-5 space-y-4">
+          </SectionCard>
+          <SectionCard title={t('costClassification')}>
+            <div className="space-y-4">
               <Cost
                 label={t('actualProviderCost')}
                 value={money(totals.actualProviderCost)}
@@ -72,87 +134,20 @@ export function UsageDashboard() {
                 note={t('simulatedCustomerChargeNote')}
               />
             </div>
-          </Card>
+          </SectionCard>
         </div>
-        <Card className="overflow-hidden">
-          <div className="border-b border-line-secondary p-5">
-            <h2 className="font-semibold">{t('history')}</h2>
-            <p className="text-xs text-fg-secondary">{t('historyNote')}</p>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-fill-quaternary text-xs text-fg-secondary uppercase">
-                <tr>
-                  {(
-                    [
-                      'time',
-                      'model',
-                      'provider',
-                      'tokens',
-                      'duration',
-                      'usage',
-                      'status',
-                      'actualCost',
-                      'simulatedCost',
-                    ] as const
-                  ).map((column) => (
-                    <th key={column} className="px-4 py-3 font-medium">
-                      {t(`columns.${column}`)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line-secondary">
-                {data?.records.map((record) => (
-                  <tr key={record.id}>
-                    <td className="px-4 py-3 whitespace-nowrap">
-                      {format.dateTime(new Date(record.createdAt), dateTimeFormat)}
-                    </td>
-                    <td className="px-4 py-3 font-medium">{record.model.displayName}</td>
-                    <td className="px-4 py-3">{record.provider}</td>
-                    <td className="px-4 py-3">
-                      {number(record.totalTokens)}{' '}
-                      <span className="text-xs text-fg-tertiary">
-                        {t('tokenSplit', { input: number(record.inputTokens), output: number(record.outputTokens) })}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <Timer className="mr-1 inline" size={13} />
-                      {format.number(record.durationMs, { style: 'unit', unit: 'millisecond' })}
-                    </td>
-                    <td className="px-4 py-3">
-                      <Badge
-                        tone={
-                          record.usageKind === 'ACTUAL'
-                            ? 'success'
-                            : record.usageKind === 'SYNTHETIC'
-                              ? 'primary'
-                              : 'warning'
-                        }
-                      >
-                        {enums.label('usageKind', record.usageKind)}
-                      </Badge>
-                    </td>
-                    <td className="px-4 py-3">{enums.label('requestStatus', record.status)}</td>
-                    <td className="px-4 py-3">{money(record.actualProviderCost, record.currency)}</td>
-                    <td className="px-4 py-3">{money(record.simulatedProviderCost, record.currency)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+        <SectionCard flush title={t('history')} description={t('historyNote')}>
+          <Table<UsageRecord>
+            rowKey="id"
+            columns={columns}
+            dataSource={data?.records}
+            loading={isPending}
+            pagination={{ pageSize: 10, hideOnSinglePage: true, showSizeChanger: false }}
+            scroll={{ x: 'max-content' }}
+          />
+        </SectionCard>
       </div>
     </Shell>
-  );
-}
-function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <Card className="p-5">
-      <div className="mb-4 inline-flex rounded-brand bg-primary-soft p-2 text-primary">{icon}</div>
-      <div className="text-2xl font-semibold">{value}</div>
-      <div className="mt-1 text-xs text-fg-secondary">{label}</div>
-    </Card>
   );
 }
 function Cost({ label, value, note }: { label: string; value: string; note: string }) {
