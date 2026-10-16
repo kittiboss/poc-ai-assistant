@@ -35,7 +35,8 @@
     "admin": "Admin console",
     "settings": "Settings",
     "logout": "Logout",
-    "signedInAs": "Signed in as {username}"
+    "signedInAs": "Signed in as {username}",
+    "liveUsage": "Live tokens"
   },
   "charts": {
     "empty": "No usage in this range"
@@ -65,6 +66,33 @@
     "emptyTitle": "How can I help?",
     "emptyBody": "Choose an available model and start a private conversation. {count} model(s) available.",
     "copy": "Copy response",
+    "searchContent": "Search titles & messages",
+    "showArchived": "Show archived",
+    "pin": "Pin",
+    "unpin": "Unpin",
+    "archive": "Archive",
+    "restore": "Restore",
+    "exportMarkdown": "Export Markdown",
+    "exportJson": "Export JSON",
+    "copyText": "Copy",
+    "branch": "Branch",
+    "editResend": "Edit & resend",
+    "editPrompt": "Edit and resend in a new branch",
+    "regenerate": "Regenerate",
+    "helpful": "Helpful response",
+    "unhelpful": "Unhelpful response",
+    "feedbackPrompt": "Optional feedback shared with administrators (chat text is not shared)",
+    "sensitiveConfirm": "{message}\n\nSend this context to the external model anyway?",
+    "connectionEnded": "Connection ended before completion. Your saved response can be reopened.",
+    "disclaimerSources": "AI responses may be inaccurate. Verify answers and source excerpts.",
+    "localTool": "Local tool: {tool} · no model call",
+    "sources": "Retrieved sources · verify against these excerpts",
+    "sourcePage": "page {page}",
+    "usageLine": "{input} in / {output} out · {duration} ms · {kind} · provider {currency} {cost} · charge {charge}",
+    "downloadFile": "Download {filename}",
+    "messageLabel": "Message",
+    "chatModel": "Chat model",
+    "searchLabel": "Search conversation content",
     "notFound": "Conversation not found",
     "notFoundBody": "It may have been deleted, or it belongs to another account.",
     "startNew": "Start a new chat"
@@ -104,7 +132,8 @@
       "actualCost": "Actual cost",
       "simulatedCost": "Simulated cost"
     },
-    "tokenSplit": "({input} in / {output} out)"
+    "tokenSplit": "({input} in / {output} out)",
+    "exportCsv": "Export usage CSV"
   },
   "admin": {
     "eyebrow": "ADMIN CONSOLE",

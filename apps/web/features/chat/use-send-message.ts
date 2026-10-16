@@ -58,6 +58,10 @@ export function useSendMessage() {
         status,
         modelId: role === 'ASSISTANT' ? modelId : null,
         requestId: null,
+        citations: [],
+        metadata: {},
+        feedback: null,
+        feedbackComment: null,
         createdAt: now,
         updatedAt: now,
       });
@@ -68,15 +72,30 @@ export function useSendMessage() {
           messages.map((item) => (item.id === assistant.id ? { ...item, ...change } : item)),
         );
 
-      const body: SendMessage = { content: prompt, modelId, requestId: crypto.randomUUID() };
-      const response = await fetch(
-        new Request(`${API_URL}/conversations/${id}/messages`, {
-          method: 'POST',
-          signal: abort.signal,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        }),
-      );
+      const requestId = crypto.randomUUID();
+      const post = (acknowledgeSensitive: boolean) => {
+        const body: SendMessage = { content: prompt, modelId, requestId, acknowledgeSensitive };
+        return fetch(
+          new Request(`${API_URL}/conversations/${id}/messages`, {
+            method: 'POST',
+            signal: abort.signal,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          }),
+        );
+      };
+      let response = await post(false);
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { code?: string; canAcknowledge?: boolean };
+        // The workspace's sensitive-data policy can ask the user to confirm before context leaves the company.
+        if (
+          payload.code === 'SENSITIVE_CONTEXT' &&
+          payload.canAcknowledge &&
+          window.confirm(t('sensitiveConfirm', { message: errorMessage(payload) ?? '' }))
+        )
+          response = await post(true);
+        else throw new Error(errorMessage(payload) || t('failedStatus', { status: response.status }));
+      }
       if (!response.ok || !response.body) {
         const payload = await response.json().catch(() => ({}));
         throw new Error(errorMessage(payload) || t('failedStatus', { status: response.status }));
@@ -85,6 +104,7 @@ export function useSendMessage() {
       const decoder = new TextDecoder();
       let buffer = '';
       let content = '';
+      let completed = false;
       while (true) {
         const { value, done } = await reader.read();
         buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
@@ -99,14 +119,13 @@ export function useSendMessage() {
             content += data.text;
             setAssistant({ content });
           }
+          if (event === 'done') completed = true;
           if (event === 'error') throw new Error(data.message || t('failed'));
         }
         if (done) break;
       }
+      if (!completed) throw new Error(t('connectionEnded'));
       setAssistant({ status: 'COMPLETED' });
-      // The server may have retitled the chat; the cached messages are refreshed on the next visit.
-      await queryClient.invalidateQueries({ queryKey: queryKeys.conversations, exact: true });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.conversation(id), refetchType: 'none' });
     } catch (cause) {
       const aborted = (cause as Error).name === 'AbortError';
       setChatError(aborted ? t('stopped') : (cause as Error).message);
@@ -117,6 +136,13 @@ export function useSendMessage() {
           ),
         );
     } finally {
+      if (id) {
+        // The saved chat has the server's message ids (needed to branch or rate a reply), the usage and
+        // the citations; the server may also have retitled it.
+        const saved = await client.GET('/api/conversations/{id}', { params: { path: { id } } }).catch(() => null);
+        if (saved?.data) queryClient.setQueryData(queryKeys.conversation(id), saved.data);
+        await queryClient.invalidateQueries({ queryKey: queryKeys.conversationLists });
+      }
       setStream(null);
     }
   };

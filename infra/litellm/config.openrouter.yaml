@@ -1,0 +1,29 @@
+model_list:
+  - model_name: local-mock
+    litellm_params:
+      model: openai/mock-enterprise
+      api_base: os.environ/MOCK_PROVIDER_URL
+      api_key: local-mock-no-secret
+  - model_name: qwen-local
+    litellm_params:
+      model: os.environ/OLLAMA_LITELLM_MODEL
+      api_base: os.environ/OLLAMA_URL
+  - model_name: openrouter-free
+    litellm_params:
+      model: os.environ/OPENROUTER_LITELLM_MODEL
+      api_base: os.environ/OPENROUTER_PROXY_URL
+      api_key: local-openrouter-proxy
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  disable_spend_logs: true
+  allow_requests_on_db_unavailable: false
+
+litellm_settings:
+  drop_params: true
+  request_timeout: 120
+  set_verbose: false
+  json_logs: true
+  turn_off_message_logging: true
+  redact_user_api_key_info: true
+  redact_messages_in_exceptions: true

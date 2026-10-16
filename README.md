@@ -17,6 +17,7 @@ Requirements:
 
 - Docker Desktop / Docker Engine with Compose v2
 - Approximately 3–4 GB free RAM for the application infrastructure
+- At least 6 GB of memory assigned to Docker Desktop when building the images; with less, `next build` in the web image can be killed (exit code 137) while the rest of the stack is running
 - Ports `3000`, `3001`, and `8080` available
 
 Start the default mock-only stack:
@@ -37,11 +38,11 @@ Open:
 
 Demo accounts:
 
-| Username | Password | Roles |
-|---|---|---|
-| `admin` | `Admin123!` | `ADMIN`, `USER` |
-| `employee1` | `Employee123!` | `USER` |
-| `employee2` | `Employee123!` | `USER` |
+| Username    | Password       | Roles           |
+| ----------- | -------------- | --------------- |
+| `admin`     | `Admin123!`    | `ADMIN`, `USER` |
+| `employee1` | `Employee123!` | `USER`          |
+| `employee2` | `Employee123!` | `USER`          |
 
 These credentials are intentionally local and must never be reused outside this POC.
 
@@ -56,6 +57,33 @@ Delete local volumes and all POC data only when explicitly desired:
 ```bash
 docker compose down --volumes
 ```
+
+### Which Compose files to use
+
+| Stack                            | Command                                                                               |
+| -------------------------------- | ------------------------------------------------------------------------------------- |
+| Default, mock only               | `docker compose up --build -d`                                                        |
+| With Gemini                      | `docker compose -f docker-compose.yml -f docker-compose.gemini.yml up --build -d`     |
+| With Groq                        | `docker compose -f docker-compose.yml -f docker-compose.groq.yml up --build -d`       |
+| With OpenRouter                  | `docker compose -f docker-compose.yml -f docker-compose.openrouter.yml up --build -d` |
+| With Gemini, Groq and OpenRouter | `docker compose -f docker-compose.yml -f docker-compose.external.yml up --build -d`   |
+
+An overlay only adds the gateway routes and credential proxies. Each provider still needs its `.env` settings and an administrator enabling the model; see the provider sections below.
+
+Pass the same `-f` files to every later command (`ps`, `logs`, `down`). Otherwise the proxy containers are left out, or reported as orphans:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.external.yml down
+```
+
+### After pulling or merging changes
+
+```bash
+npm install                    # for tests and tools run on the host
+docker compose up --build -d   # with the same -f files as above, if you use an overlay
+```
+
+`--build` picks up new dependencies and services. The backend applies new Prisma migrations and the seed every time it starts, so there is no separate database step; check `docker compose logs backend` if it does not become healthy.
 
 ## What works
 
@@ -72,10 +100,15 @@ docker compose down --volumes
 - Pass-through, percentage markup, fixed-rate, and simulation strategies
 - Immutable pricing versions, usage price snapshots, and pricing/model audit logs
 - User usage and aggregate admin dashboards; admin APIs never return chat content
+- Animated live token meter with automatic refresh, completed input/output totals, recent request activity, and separately labelled in-flight quota reservations
 - OpenAI/Anthropic registry placeholders and an opt-in Gemini route, all disabled by default
 - Layered external-cost guardrails: credential proxy allowlist, output-token cap, daily request/token ceiling (see [Cost safety](#cost-safety))
 - Admin console filters (date range, provider, model), per-day/provider/model charts, cost breakdown, model availability, pricing overview, and audit log
 - Database-enforced immutability of pricing versions; abandoned streams are marked `INTERRUPTED` after an API restart
+- Conversation search, pin/archive, branch, edit-and-resend, regenerate, feedback, and Markdown/JSON export
+- Admin quotas by user, role, model, and department; simulated budget limits, usage CSV, feedback aggregates, retention preview/policy, external-provider kill switch, and best-effort sensitive-data warnings/blocking
+
+The user-facing Projects & tools, prompt-persona, local-tool, CSV-analysis, and response-comparison controls have been removed from the POC. Their server APIs and existing stored data remain intact for backward compatibility and data preservation, but the chat UI no longer requests or links to them. Quotas and budgets are admission controls based on conservative token estimates; simulated costs do not charge money.
 
 The mock provider supports deterministic test controls:
 
@@ -129,13 +162,17 @@ With the Compose stack running, exercise real PKCE login, all three demo users, 
 
 ```bash
 npm run test:e2e
+npm run test:workspace
+npm run test:browser   # optional: requires local Chrome
 ```
 
 The default suite never needs external credentials and has no active paid-provider route. The API test setup also replaces `fetch` with a guard that fails any non-loopback request, so a test cannot reach a paid provider even by mistake. The Ollama integration test remains skipped unless an operator explicitly supplies `OLLAMA_TEST_URL`. `npm run test:e2e` additionally checks the admin console APIs and the pricing example below (3,000 in / 700 out → `$0` actual, `$0.01` simulated provider cost, `$0.015` simulated charge).
+`npm run test:workspace` is a backward-compatibility API smoke: it signs in with all three demo accounts and exercises ownership, retained workspace APIs, branches, feedback, quotas, and CSV export against the running stack. It sends chat only to `local-mock`.
+The optional browser smoke checks the simplified mock chat, absence of the removed controls, live-token dashboard, and admin controls through the real UI; set `CHROME_PATH` if Chrome is installed elsewhere.
 
 ## Using Google Gemini on the free tier
 
-Gemini is the only external provider with a ready route. It stays off until you take every one of these steps; adding a key alone changes nothing.
+Gemini has a ready, opt-in external route. It stays off until you take every one of these steps; adding a key alone changes nothing.
 
 1. **Use a key from a free-tier project.** In [Google AI Studio](https://aistudio.google.com/apikey), the project behind the key must be on the **Free** plan with **no billing account linked**. Google cannot charge a project that has no billing account; over-limit requests fail with HTTP 429 instead. If the project shows a paid tier, every request is billed: do not use that key here.
 2. Put the credential and the switch in the ignored `.env` file (never in Git):
@@ -156,12 +193,76 @@ Gemini is the only external provider with a ready route. It stays off until you 
 
 Free-tier prompts and responses may be used by Google to improve its products, and the chat UI shows a notice whenever an external model is selected. Do not send confidential data. Free-tier rate limits are per project and are shown in AI Studio; when they are hit, the chat shows a rate-limit message and local models keep working.
 
-Usage is recorded as `ACTUAL` (Google's token counts). The seeded Gemini pricing records actual provider cost as `$0` (free tier) and sets the simulation rates to Google's published paid-tier list price for `gemini-3.5-flash-lite` ($0.30 input / $2.50 output per 1M tokens, checked 2026-10-14). Dashboards therefore show what the same usage *would* cost on a paid tier, clearly labelled as simulated. If the project's tier changes, create a new pricing version in the admin console.
+Usage is recorded as `ACTUAL` (Google's token counts). The seeded Gemini pricing records actual provider cost as `$0` (free tier) and sets the simulation rates to Google's published paid-tier list price for `gemini-3.5-flash-lite` ($0.30 input / $2.50 output per 1M tokens, checked 2026-10-14). Dashboards therefore show what the same usage _would_ cost on a paid tier, clearly labelled as simulated. If the project's tier changes, create a new pricing version in the admin console.
 
 Optional connectivity check: it validates the key with Google's model-list endpoint, briefly enables Gemini through the audited admin API, sends one streamed `Reply with exactly: GEMINI_OK` request, checks the persisted usage, and restores the registry state:
 
 ```bash
 npm run test:gemini
+```
+
+## Using Groq on the free tier
+
+The Groq route uses the production model `openai/gpt-oss-20b`, starts disabled, and is limited to `ADMIN` until an administrator changes its role policy.
+
+1. Verify that the Groq organization associated with the key is on the intended free plan and review its current limits. The app cannot inspect billing-plan state.
+2. Keep the credential only in the ignored `.env` file:
+
+   ```dotenv
+   GROQ_API_KEY=your-key
+   GROQ_MODEL=openai/gpt-oss-20b
+   GROQ_FREE_TIER_CONFIRMED=true
+   ENABLE_EXTERNAL_PROVIDERS=true
+   ```
+
+   Leave `GROQ_FREE_TIER_CONFIRMED=false` until **Groq Console → Settings → Billing** shows the organization is on Free tier. A key alone cannot bypass this application guard.
+
+3. Start Groq alone, or use the combined overlay to retain both Gemini and Groq:
+
+   ```bash
+   # Groq only
+   docker compose -f docker-compose.yml -f docker-compose.groq.yml up --build -d
+
+   # Gemini + Groq
+   docker compose -f docker-compose.yml -f docker-compose.external.yml up --build -d
+   ```
+
+4. In **Admin console** → **Model registry**, enable **GPT-OSS 20B (Groq)**. Leave the `USER` role unchecked unless employee access is intentional.
+
+Groq token counts are stored as `ACTUAL`. The seeded pricing is `$0` pass-through for a free-plan POC; if the organization becomes billable, set `GROQ_FREE_TIER_CONFIRMED=false` immediately and create an accurate pricing version before any future use. Both the API and credential proxy reject Groq generation while the confirmation is false. The optional smoke test validates the key/model, performs one short generation, verifies persisted usage, and normally restores the previous enabled state. Set `GROQ_KEEP_ENABLED=true` to leave it enabled after a successful test:
+
+```bash
+GROQ_KEEP_ENABLED=true npm run test:groq
+```
+
+## Using OpenRouter free models
+
+OpenRouter is integrated only through [`openrouter/free`](https://openrouter.ai/openrouter/free), a zero-price router that selects from the free variants currently available. The underlying model can change between requests, so use this route for POC workloads rather than model-specific evaluation.
+
+1. Put the key in the ignored `.env` and keep the model fixed:
+
+   ```dotenv
+   OPENROUTER_API_KEY=your-key
+   OPENROUTER_MODEL=openrouter/free
+   ENABLE_EXTERNAL_PROVIDERS=true
+   ```
+
+2. Start OpenRouter alone, or retain all configured providers with the combined overlay:
+
+   ```bash
+   # OpenRouter only
+   docker compose -f docker-compose.yml -f docker-compose.openrouter.yml up --build -d
+
+   # Gemini + Groq + OpenRouter
+   docker compose -f docker-compose.yml -f docker-compose.external.yml up --build -d
+   ```
+
+3. Enable **OpenRouter Free Models** in **Admin console** → **Model registry**. It is restricted to `ADMIN` by default.
+
+The proxy accepts only `model=openrouter/free`; paid model IDs, alternate model lists, provider overrides, plugins, web search, tools, response formats and other endpoint families are rejected before egress. The smoke test first confirms that the live catalog still reports zero prompt/completion/request pricing, then sends one short request:
+
+```bash
+OPENROUTER_KEEP_ENABLED=true npm run test:openrouter
 ```
 
 Return to the default mock-only stack at any time:
@@ -172,19 +273,20 @@ docker compose up -d --force-recreate --remove-orphans litellm backend
 
 ## Cost safety
 
-Everything in the default stack is local: the mock provider, Ollama, PostgreSQL, Keycloak, Valkey, and LiteLLM are open-source containers and make no paid calls. OpenAI and Anthropic have no gateway route and no credential. The only path that can reach a paid service is the opt-in Gemini overlay, and it is constrained in layers:
+Everything in the default stack is local: the mock provider, Ollama, PostgreSQL, Keycloak, Valkey, and LiteLLM are open-source containers and make no paid calls. OpenAI and Anthropic have no gateway route and no credential. Gemini, Groq and OpenRouter can reach external services only through explicit opt-in overlays, constrained in layers:
 
-| Layer | What it prevents |
-|---|---|
-| Base `docker-compose.yml` has no external route; LiteLLM sits on an internal-only network | Any provider call in the default stack, including during startup, migrations, health checks, and model discovery |
-| `ENABLE_EXTERNAL_PROVIDERS=true` **and** a server-side credential **and** an admin enabling the model **and** per-user permission | Accidental activation by just adding a key |
-| `gemini-proxy` is the only container with internet egress for a provider and holds the key | LiteLLM or the browser ever seeing the credential |
-| `gemini-proxy` allowlist: only `generateContent` / `streamGenerateContent` / `countTokens` for `GEMINI_MODEL`; rejects `tools`, `toolConfig`, `cachedContent` | Other (possibly paid-only) models, search grounding, context-cache storage, batch jobs |
-| Output tokens capped by `AI_MAX_OUTPUT_TOKENS` in the API **and** again in the proxy; `candidateCount` forced to 1 | Long or multi-candidate generations |
-| `EXTERNAL_DAILY_REQUEST_LIMIT` (default 100) and `EXTERNAL_DAILY_TOKEN_LIMIT` (default 100,000) per UTC day across all external providers; `0` blocks external use | Runaway usage; the admin console shows today's consumption |
-| Default test suite blocks non-loopback network access | Tests calling a provider |
+| Layer                                                                                                                                                              | What it prevents                                                                                                 |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| Base `docker-compose.yml` has no external route; LiteLLM sits on an internal-only network                                                                          | Any provider call in the default stack, including during startup, migrations, health checks, and model discovery |
+| `ENABLE_EXTERNAL_PROVIDERS=true` **and** a server-side credential **and** an admin enabling the model **and** per-user permission                                  | Accidental activation by just adding a key                                                                       |
+| Groq additionally requires `GROQ_FREE_TIER_CONFIRMED=true` in both the API and credential proxy                                                                    | Any Groq generation before an operator verifies Free tier in Groq Console                                        |
+| Provider credential proxies are the only containers with provider internet egress and hold the keys                                                                | LiteLLM or the browser ever seeing a provider credential                                                         |
+| Provider allowlists restrict Gemini/Groq to configured models; OpenRouter accepts only the zero-price `openrouter/free` router; all reject tools/side features     | Paid model fallback, search grounding, function calls, context-cache storage, batch/audio jobs                   |
+| Output tokens capped by `AI_MAX_OUTPUT_TOKENS` in the API **and** again in each proxy; response count forced to 1                                                  | Long or multi-candidate generations                                                                              |
+| `EXTERNAL_DAILY_REQUEST_LIMIT` (default 100) and `EXTERNAL_DAILY_TOKEN_LIMIT` (default 100,000) per UTC day across all external providers; `0` blocks external use | Runaway usage; the admin console shows today's consumption                                                       |
+| Default test suite blocks non-loopback network access                                                                                                              | Tests calling a provider                                                                                         |
 
-The POC cannot read a Google project's billing status. The guarantee of **$0** comes from step 1 above: a key from a project without a billing account. The daily ceiling only bounds the worst case if a billed key is used by mistake (at the list price above, 100,000 tokens/day is at most about $0.25/day).
+The POC cannot read provider billing-plan state. A `$0` result depends on using a genuinely free provider project/organization; application limits reduce exposure but are not a billing guarantee. Configure provider-side budgets/limits before using any billed key.
 
 ## API documentation (Swagger)
 
@@ -219,7 +321,12 @@ GET    /api/conversations/:id
 PATCH  /api/conversations/:id
 DELETE /api/conversations/:id
 POST   /api/conversations/:id/messages  (SSE response)
+POST   /api/conversations/:id/tools     (retained compatibility API; not exposed in the UI)
+POST   /api/conversations/:id/branch
+POST   /api/conversations/:id/messages/:messageId/feedback
 GET    /api/usage/me
+GET    /api/usage/me/live      (auto-refresh token snapshot and in-flight reservations)
+GET/POST/PATCH/DELETE /api/workspace/... (retained compatibility APIs; not exposed in the UI)
 ```
 
 Admin endpoints under `/api/admin` (every route guarded with `ADMIN` on the backend):
@@ -234,6 +341,7 @@ GET    /api/admin/pricing?modelId=                        all pricing versions
 POST   /api/admin/pricing/:modelId                        create a new immutable version (audited)
 POST   /api/admin/pricing/preview/calculate               preview without saving
 GET    /api/admin/audit?entityType=                       latest 100 audit entries
+GET/PATCH/POST /api/admin/workspace/...                    governance, quotas, departments, templates, usage CSV, retention preview
 ```
 
 ## Optional Ollama — not needed for this machine
@@ -253,13 +361,17 @@ A small 1.5B quantized model commonly needs roughly 2–4 GB free memory plus ap
 
 ## External providers
 
-OpenAI, Anthropic, and Gemini are inert by default. Gemini has a separately activated overlay (see above); the base Compose file contains no external-provider route:
+OpenAI, Anthropic, Gemini, Groq, and OpenRouter are inert by default. Gemini, Groq and OpenRouter have separately activated overlays (see above); the base Compose file contains no external-provider route:
 
 ```dotenv
 ENABLE_EXTERNAL_PROVIDERS=false
 OPENAI_API_KEY=
 ANTHROPIC_API_KEY=
 GEMINI_API_KEY=
+GROQ_API_KEY=
+GROQ_FREE_TIER_CONFIRMED=false
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=openrouter/free
 ```
 
 Adding a key alone does not enable anything. A future administrator must perform all of these deliberate actions:
@@ -270,7 +382,7 @@ Adding a key alone does not enable anything. A future administrator must perform
 4. Configure/version provider and customer pricing.
 5. Enable the model in the admin registry.
 
-The backend rejects external enablement unless both the global switch and matching credential exist, and refuses external requests once the daily ceiling is reached. Default startup, migrations, tests, health checks, and model discovery never call a paid provider. OpenAI and Anthropic would need a credential proxy and allowlist like Gemini's before use.
+The backend rejects external enablement unless both the global switch and matching credential proxy exist, and refuses external requests once the daily ceiling is reached. Default startup, migrations, tests, health checks, and model discovery never call a provider. OpenAI and Anthropic still need credential proxies and allowlists like the Gemini/Groq/OpenRouter integrations before use.
 
 ## Documentation
 
@@ -279,4 +391,3 @@ The backend rejects external enablement unless both the global switch and matchi
 - [Prisma schema](apps/api/prisma/schema.prisma)
 - [Keycloak realm](infra/keycloak/enterprise-ai-realm.json)
 - [LiteLLM configuration](infra/litellm/config.yaml)
-

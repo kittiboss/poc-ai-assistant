@@ -1,4 +1,5 @@
 'use client';
+import { WorkspaceControls } from './workspace-controls';
 import { ArrowDownToLine, ArrowUpFromLine, BarChart3, Coins, Save, ShieldAlert, Users, Zap } from 'lucide-react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { useMemo, useState } from 'react';
@@ -613,7 +614,12 @@ export function AdminDashboard() {
                 <Input
                   maxLength={3}
                   value={form.currency}
-                  onChange={(event) => setForm({ ...form, currency: event.target.value.toUpperCase() })}
+                  onChange={(event) =>
+                    setForm({
+                      ...form,
+                      currency: event.target.value.toUpperCase(),
+                    })
+                  }
                 />
               </Field>
               <Field label={t('pricing.effectiveAt')}>
@@ -639,7 +645,10 @@ export function AdminDashboard() {
                     step="1"
                     value={form.inputTokens}
                     onChange={(event) =>
-                      setForm({ ...form, inputTokens: Math.max(0, Math.trunc(Number(event.target.value) || 0)) })
+                      setForm({
+                        ...form,
+                        inputTokens: Math.max(0, Math.trunc(Number(event.target.value) || 0)),
+                      })
                     }
                   />
                 </Field>
@@ -650,7 +659,10 @@ export function AdminDashboard() {
                     step="1"
                     value={form.outputTokens}
                     onChange={(event) =>
-                      setForm({ ...form, outputTokens: Math.max(0, Math.trunc(Number(event.target.value) || 0)) })
+                      setForm({
+                        ...form,
+                        outputTokens: Math.max(0, Math.trunc(Number(event.target.value) || 0)),
+                      })
                     }
                   />
                 </Field>
@@ -809,6 +821,7 @@ export function AdminDashboard() {
             {!audit.length && <p className="p-5 text-xs text-fg-secondary">{t('audit.empty')}</p>}
           </div>
         </Card>
+        <WorkspaceControls />
       </div>
     </Shell>
   );

@@ -13,6 +13,8 @@ enum Provider {
   OPENAI
   ANTHROPIC
   GEMINI
+  GROQ
+  OPENROUTER
 }
 
 enum MessageRole {
@@ -62,6 +64,11 @@ model User {
   usageRecords UsageRecord[]
   modelPermissions UserModelPermission[]
   auditLogs    AuditLog[]
+  instructions String @default("") @db.Text
+  department String @default("")
+  projects Project[]
+  memories Memory[]
+  reservations UsageReservation[]
 }
 
 model Role {
@@ -128,6 +135,10 @@ model Conversation {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   deletedAt DateTime?
+  pinned Boolean @default(false)
+  archived Boolean @default(false)
+  projectId String? @db.Uuid
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages  Message[]
   usageRecords UsageRecord[]
@@ -142,6 +153,10 @@ model Message {
   status         MessageStatus @default(COMPLETED)
   modelId        String?
   requestId      String?       @unique
+  citations Json @default("[]")
+  feedback Int?
+  feedbackComment String? @db.VarChar(1000)
+  metadata Json @default("{}")
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -227,5 +242,86 @@ model ApplicationSetting {
   key       String   @id
   value     Json
   updatedAt DateTime @updatedAt
+}
+
+model Project {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  name String @db.VarChar(120)
+  instructions String @default("") @db.Text
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+  sources Source[]
+  @@index([userId])
+}
+
+model Source {
+  id String @id @default(uuid()) @db.Uuid
+  projectId String @db.Uuid
+  filename String @db.VarChar(200)
+  byteSize Int
+  createdAt DateTime @default(now())
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  chunks SourceChunk[]
+  @@index([projectId])
+}
+
+model SourceChunk {
+  id String @id @default(uuid()) @db.Uuid
+  sourceId String @db.Uuid
+  ordinal Int
+  page Int?
+  content String @db.Text
+  source Source @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  @@unique([sourceId, ordinal])
+}
+
+model Memory {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  content String @db.VarChar(500)
+  enabled Boolean @default(true)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId])
+}
+
+model PromptTemplate {
+  id String @id @default(uuid()) @db.Uuid
+  name String @db.VarChar(120)
+  description String @default("") @db.VarChar(500)
+  systemPrompt String @db.Text
+  allowedModels String[]
+  allowedRoles String[]
+  temperature Float @default(0.7)
+  maxOutputTokens Int @default(1024)
+  enabled Boolean @default(true)
+  updatedAt DateTime @updatedAt
+}
+
+model QuotaPolicy {
+  id String @id @default(uuid()) @db.Uuid
+  scope String
+  subject String
+  dailyRequests Int?
+  dailyTokens Int?
+  perRequestTokens Int?
+  dailySimulatedBudget Decimal? @db.Decimal(24, 12)
+  @@unique([scope, subject])
+}
+
+model UsageReservation {
+  id String @id
+  userId String @db.Uuid
+  modelId String
+  department String
+  roles String[]
+  external Boolean
+  tokens Int
+  simulatedCost Decimal @db.Decimal(24, 12)
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([expiresAt])
 }
 

@@ -15,4 +15,12 @@
 #     litellm_params:
 #       model: gemini/<administrator-selected-model>
 #       api_key: os.environ/GEMINI_API_KEY
+#   - model_name: groq-llama
+#     litellm_params:
+#       model: groq/<administrator-selected-model>
+#       api_key: os.environ/GROQ_API_KEY
+#   - model_name: openrouter-free
+#     litellm_params:
+#       model: openrouter/openrouter/free
+#       api_key: os.environ/OPENROUTER_API_KEY
 

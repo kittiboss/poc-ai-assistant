@@ -14,7 +14,7 @@ import type {
   UpdatePricing,
 } from '@/lib/api/types';
 
-export const providers = ['MOCK', 'OLLAMA', 'OPENAI', 'ANTHROPIC', 'GEMINI'] as const;
+export const providers = ['MOCK', 'OLLAMA', 'OPENAI', 'ANTHROPIC', 'GEMINI', 'GROQ', 'OPENROUTER'] as const;
 export type Provider = (typeof providers)[number];
 
 /** Dates are `<input type="date">` values in the user's time zone; empty means no filter. */

@@ -2,6 +2,7 @@
 import { Activity, ArrowDownToLine, ArrowUpFromLine, Coins, Database, Hash, Timer } from 'lucide-react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import { useApi } from '@/components/api/api-provider';
 import { costFormat, dateTimeFormat } from '@/i18n/formats';
 import { useEnumLabel } from '@/i18n/use-enum-label';
@@ -9,11 +10,13 @@ import { queryKeys } from '@/lib/api/query-keys';
 import type { MyUsage } from '@/lib/api/types';
 import { SimpleBarChart } from '@/components/ui/charts';
 import { Shell } from '@/components/layout/shell';
-import { Badge, Card } from '@/components/ui/primitives';
+import { Badge, Button, Card } from '@/components/ui/primitives';
+import { download } from '@/lib/download';
 
 export function UsageDashboard() {
-  const { client, unwrap } = useApi();
+  const { client, unwrap, request } = useApi();
   const t = useTranslations('usage');
+  const [exportError, setExportError] = useState('');
   const enums = useEnumLabel();
   const format = useFormatter();
   const money = (value: unknown, currency = 'USD') => format.number(Number(value || 0), costFormat(currency, 4, 8));
@@ -31,7 +34,23 @@ export function UsageDashboard() {
           <h1 className="mt-1 text-3xl font-semibold tracking-tight">{t('title')}</h1>
           <p className="mt-2 text-sm text-fg-secondary">{t('intro')}</p>
         </div>
-        {error && <Card className="border-error-border p-4 text-error">{error.message}</Card>}
+        {(error || exportError) && (
+          <Card className="border-error-border p-4 text-error">{error?.message || exportError}</Card>
+        )}
+        <Button
+          variant="secondary"
+          onClick={async () => {
+            try {
+              setExportError('');
+              const file = await request<{ filename: string; content: string }>('/workspace/usage.csv');
+              download(file.filename, file.content, 'text/csv');
+            } catch (cause) {
+              setExportError((cause as Error).message);
+            }
+          }}
+        >
+          {t('exportCsv')}
+        </Button>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Metric icon={<Activity />} label={t('requests')} value={number(data?.totals._count)} />
           <Metric icon={<ArrowDownToLine />} label={t('inputTokens')} value={number(totals.inputTokens)} />
