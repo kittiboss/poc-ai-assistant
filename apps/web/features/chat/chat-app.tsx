@@ -1,9 +1,11 @@
 'use client';
-import { FileDown, FileJson } from 'lucide-react';
+import { FileDown, FileJson, Plus } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import remarkGfm from 'remark-gfm';
+import { useEnumLabel } from '@/i18n/use-enum-label';
 import { useApi } from '@/lib/api';
 import { download } from '@/lib/download';
 import type { Conversation, Message, Model } from '@/lib/types';
@@ -14,6 +16,8 @@ import { useUIStore } from '@/stores/ui-store-provider';
 
 export function ChatApp() {
   const api = useApi();
+  const t = useTranslations('chat');
+  const enums = useEnumLabel();
   const setMobileNavOpen = useUIStore((state) => state.setMobileNavOpen);
   const sending = useRef(false);
   const [conversations, setConversations] = useState<Conversation[]>([]),
@@ -144,19 +148,19 @@ export function ChatApp() {
         if (
           payload.code === 'SENSITIVE_CONTEXT' &&
           payload.canAcknowledge &&
-          window.confirm(`${payload.message}\n\nSend this context to the external model anyway?`)
+          window.confirm(t('sensitiveConfirm', { message: payload.message }))
         )
           response = await request(true);
         else
           throw new Error(
             Array.isArray(payload.message)
               ? payload.message.join(', ')
-              : payload.message || `Generation failed (${response.status})`,
+              : payload.message || t('failedStatus', { status: response.status }),
           );
       }
       if (!response.ok || !response.body) {
         const payload = await response.json().catch(() => ({}));
-        throw new Error(payload.message || `Generation failed (${response.status})`);
+        throw new Error(payload.message || t('failedStatus', { status: response.status }));
       }
       const reader = response.body.getReader(),
         decoder = new TextDecoder();
@@ -173,7 +177,7 @@ export function ChatApp() {
             raw = frame.match(/^data:\s*(.+)$/m)?.[1];
           if (!raw) continue;
           const data = JSON.parse(raw);
-          if (event === 'error') throw new Error(data.message || 'Generation failed');
+          if (event === 'error') throw new Error(data.message || t('failed'));
           if (event === 'done') completed = true;
           if (event === 'token' && data.text) {
             text += data.text;
@@ -189,7 +193,7 @@ export function ChatApp() {
         }
         if (done) break;
       }
-      if (!completed) throw new Error('Connection ended before completion. Your saved response can be reopened.');
+      if (!completed) throw new Error(t('connectionEnded'));
     } finally {
       aborters.current = aborters.current.filter((a) => a !== aborter);
       const saved = await api.request<Conversation>(`/conversations/${chat.id}`).catch(() => null);
@@ -209,7 +213,7 @@ export function ChatApp() {
       await refreshChats();
     } catch (e) {
       const cause = e as Error;
-      setError(cause.name === 'AbortError' ? 'Generation stopped. Partial text is saved.' : cause.message);
+      setError(cause.name === 'AbortError' ? t('stopped') : cause.message);
       setInput(prompt);
     } finally {
       sending.current = false;
@@ -217,7 +221,7 @@ export function ChatApp() {
     }
   }
   async function edit(conversation: Conversation, message: Message) {
-    const content = window.prompt('Edit and resend in a new branch', message.content)?.trim();
+    const content = window.prompt(t('editPrompt'), message.content)?.trim();
     if (!content) return;
     const chat = await branch(conversation, message, true);
     setActive(chat);
@@ -250,7 +254,7 @@ export function ChatApp() {
         className="rounded-brand-sm px-2 py-1 hover:bg-fill-tertiary"
         onClick={() => guarded(() => navigator.clipboard.writeText(message.content))}
       >
-        Copy
+        {t('copyText')}
       </button>
       <button
         disabled={generating}
@@ -263,7 +267,7 @@ export function ChatApp() {
           })
         }
       >
-        Branch
+        {t('branch')}
       </button>
       {message.role === 'USER' && !message.metadata?.tool ? (
         <button
@@ -271,7 +275,7 @@ export function ChatApp() {
           className="rounded-brand-sm px-2 py-1 hover:bg-fill-tertiary"
           onClick={() => guarded(() => edit(chat, message))}
         >
-          Edit & resend
+          {t('editResend')}
         </button>
       ) : message.role === 'ASSISTANT' ? (
         <>
@@ -281,24 +285,21 @@ export function ChatApp() {
               className="rounded-brand-sm px-2 py-1 hover:bg-fill-tertiary"
               onClick={() => guarded(() => regenerate(chat, message))}
             >
-              Regenerate
+              {t('regenerate')}
             </button>
           )}
           {[1, -1].map((rating) => (
             <button
               key={rating}
               disabled={generating}
-              aria-label={rating === 1 ? 'Helpful response' : 'Unhelpful response'}
+              aria-label={rating === 1 ? t('helpful') : t('unhelpful')}
               className={cn(
                 'rounded-brand-sm px-2 py-1',
                 message.feedback === rating ? 'bg-primary-soft text-primary' : 'hover:bg-fill-tertiary',
               )}
               onClick={() =>
                 guarded(async () => {
-                  const comment = window.prompt(
-                    'Optional feedback shared with administrators (chat text is not shared)',
-                    message.feedbackComment || '',
-                  );
+                  const comment = window.prompt(t('feedbackPrompt'), message.feedbackComment || '');
                   if (comment === null) return;
                   await api.request(`/conversations/${chat.id}/messages/${message.id}/feedback`, {
                     method: 'POST',
@@ -328,17 +329,18 @@ export function ChatApp() {
             setError('');
           }}
         >
-          + New chat
+          <Plus size={17} /> {t('newChat')}
         </Button>
         <input
-          aria-label="Search conversation content"
+          aria-label={t('searchLabel')}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search titles & messages"
+          placeholder={t('searchContent')}
           className="h-10 w-full rounded-brand bg-fill-tertiary px-3 text-sm outline-none focus:ring-2 focus:ring-primary/30"
         />
         <label className="flex gap-2 text-xs">
-          <input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} /> Show archived
+          <input type="checkbox" checked={archived} onChange={(e) => setArchived(e.target.checked)} />{' '}
+          {t('showArchived')}
         </label>
       </div>
       <div className="flex-1 space-y-2 overflow-auto p-2">
@@ -357,24 +359,24 @@ export function ChatApp() {
             </button>
             <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-fg-secondary">
               <button disabled={generating} onClick={() => guarded(() => update(c, { pinned: !c.pinned }))}>
-                {c.pinned ? 'Unpin' : 'Pin'}
+                {c.pinned ? t('unpin') : t('pin')}
               </button>
               <button disabled={generating} onClick={() => guarded(() => update(c, { archived: !c.archived }))}>
-                {c.archived ? 'Restore' : 'Archive'}
+                {c.archived ? t('restore') : t('archive')}
               </button>
               <button
                 disabled={generating}
                 onClick={() => {
-                  const title = window.prompt('Conversation name', c.title);
+                  const title = window.prompt(t('renamePrompt'), c.title);
                   if (title?.trim()) void guarded(() => update(c, { title }));
                 }}
               >
-                Rename
+                {t('rename')}
               </button>
               <button
                 disabled={generating}
                 onClick={() => {
-                  if (window.confirm(`Delete “${c.title}”?`))
+                  if (window.confirm(t('deleteConfirm', { title: c.title })))
                     void guarded(async () => {
                       await api.request(`/conversations/${c.id}`, {
                         method: 'DELETE',
@@ -384,7 +386,7 @@ export function ChatApp() {
                     });
                 }}
               >
-                Delete
+                {t('delete')}
               </button>
             </div>
           </div>
@@ -394,12 +396,12 @@ export function ChatApp() {
   );
   const header = (
     <>
-      <h1 className="min-w-0 flex-1 truncate font-semibold">{active?.title || 'New conversation'}</h1>
+      <h1 className="min-w-0 flex-1 truncate font-semibold">{active?.title || t('newConversation')}</h1>
       <div className="flex shrink-0 items-center gap-2">
         {active && (
           <>
             <button
-              title="Export Markdown"
+              title={t('exportMarkdown')}
               onClick={() => exportChat('md')}
               className="flex h-9 items-center gap-1 rounded-brand px-2 text-xs text-fg-secondary hover:bg-fill-tertiary"
             >
@@ -407,7 +409,7 @@ export function ChatApp() {
               <span className="hidden sm:inline">Markdown</span>
             </button>
             <button
-              title="Export JSON"
+              title={t('exportJson')}
               onClick={() => exportChat('json')}
               className="flex h-9 items-center gap-1 rounded-brand px-2 text-xs text-fg-secondary hover:bg-fill-tertiary"
             >
@@ -417,7 +419,7 @@ export function ChatApp() {
           </>
         )}
         <Select
-          aria-label="Chat model"
+          aria-label={t('chatModel')}
           className="w-36 sm:w-64 lg:w-auto"
           disabled={generating}
           value={modelId}
@@ -425,7 +427,7 @@ export function ChatApp() {
         >
           {models.map((m) => (
             <option key={m.id} value={m.id} disabled={!m.available}>
-              {m.displayName} · {m.status}
+              {m.displayName} · {enums.modelStatus(m.status)}
             </option>
           ))}
         </Select>
@@ -438,8 +440,10 @@ export function ChatApp() {
         <section className="flex-1 overflow-auto px-4 py-6 md:p-5">
           {!active?.messages?.length && (
             <div className="py-16 text-center">
-              <h2 className="text-2xl font-semibold">How can I help?</h2>
-              <p className="mt-3 text-sm text-fg-secondary">Select a model and start a conversation.</p>
+              <h2 className="text-2xl font-semibold">{t('emptyTitle')}</h2>
+              <p className="mt-3 text-sm text-fg-secondary">
+                {t('emptyBody', { count: models.filter((m) => m.available).length })}
+              </p>
             </div>
           )}
           <div className="mx-auto max-w-3xl">
@@ -461,8 +465,7 @@ export function ChatApp() {
           <div className="mx-auto max-w-3xl">
             {selectedModel && !selectedModel.local && (
               <p className="mb-2 rounded-brand bg-warning-soft p-3 text-xs text-warning-text">
-                External model: conversation context and server-configured context are sent to the selected provider.
-                Use non-confidential demo data.
+                {t('externalNotice', { provider: selectedModel.provider })}
               </p>
             )}
             {error && (
@@ -472,7 +475,7 @@ export function ChatApp() {
             )}
             <Card className="flex items-end gap-2 p-2 shadow-lg">
               <Textarea
-                aria-label="Message"
+                aria-label={t('messageLabel')}
                 rows={3}
                 maxLength={20000}
                 disabled={generating}
@@ -484,22 +487,20 @@ export function ChatApp() {
                     void send();
                   }
                 }}
-                placeholder="Message your assistant…"
+                placeholder={t('placeholder')}
                 className="border-0"
               />
               {generating ? (
                 <Button variant="secondary" onClick={() => aborters.current.forEach((a) => a.abort())}>
-                  Stop
+                  {t('stop')}
                 </Button>
               ) : (
                 <Button onClick={() => send()} disabled={!input.trim() || !selectedModel?.available}>
-                  Send
+                  {t('send')}
                 </Button>
               )}
             </Card>
-            <p className="mt-2 text-center text-[11px] text-fg-secondary">
-              AI responses may be inaccurate. Verify answers and source excerpts.
-            </p>
+            <p className="mt-2 text-center text-[11px] text-fg-secondary">{t('disclaimerSources')}</p>
           </div>
         </footer>
       </div>
@@ -508,6 +509,8 @@ export function ChatApp() {
 }
 
 function MessageBubble({ message, actions }: { message: Message; actions?: React.ReactNode }) {
+  const t = useTranslations('chat');
+  const enums = useEnumLabel();
   const mine = message.role === 'USER';
   return (
     <div className={cn('flex', mine ? 'justify-end' : 'justify-start')}>
@@ -522,8 +525,8 @@ function MessageBubble({ message, actions }: { message: Message; actions?: React
         ) : (
           <>
             <div className="mb-2 flex gap-2 text-xs text-fg-secondary">
-              {message.metadata?.tool ? `Local tool: ${message.metadata.tool} · no model call` : message.modelId}
-              <Badge>{message.status.toLowerCase()}</Badge>
+              {message.metadata?.tool ? t('localTool', { tool: message.metadata.tool }) : message.modelId}
+              <Badge>{enums.label('messageStatus', message.status)}</Badge>
             </div>
             <div className="prose max-w-none overflow-auto">
               <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
@@ -532,14 +535,12 @@ function MessageBubble({ message, actions }: { message: Message; actions?: React
             </div>
             {Boolean(message.citations?.length) && (
               <details className="mt-4 rounded-brand bg-fill-quaternary p-3">
-                <summary className="cursor-pointer text-xs font-semibold">
-                  Retrieved sources · verify against these excerpts
-                </summary>
+                <summary className="cursor-pointer text-xs font-semibold">{t('sources')}</summary>
                 {message.citations?.map((s) => (
                   <details key={s.id} className="mt-3">
                     <summary className="cursor-pointer text-xs">
                       [{s.label}] {s.filename}
-                      {s.page ? ` · page ${s.page}` : ''}
+                      {s.page ? ` · ${t('sourcePage', { page: s.page })}` : ''}
                     </summary>
                     <p className="mt-2 text-xs whitespace-pre-wrap text-fg-secondary">{s.content}</p>
                   </details>
@@ -548,10 +549,15 @@ function MessageBubble({ message, actions }: { message: Message; actions?: React
             )}
             {message.usage && (
               <p className="mt-3 text-[11px] text-fg-secondary">
-                {message.usage.inputTokens} in / {message.usage.outputTokens} out · {message.usage.durationMs} ms ·{' '}
-                {message.usage.usageKind} · provider {message.usage.currency}{' '}
-                {Number(message.usage.actualProviderCost).toFixed(6)} · charge{' '}
-                {Number(message.usage.customerCharge).toFixed(6)}
+                {t('usageLine', {
+                  input: message.usage.inputTokens,
+                  output: message.usage.outputTokens,
+                  duration: message.usage.durationMs,
+                  kind: enums.label('usageKind', message.usage.usageKind),
+                  currency: message.usage.currency,
+                  cost: Number(message.usage.actualProviderCost).toFixed(6),
+                  charge: Number(message.usage.customerCharge).toFixed(6),
+                })}
               </p>
             )}
             {message.metadata?.filename && (
@@ -562,7 +568,7 @@ function MessageBubble({ message, actions }: { message: Message; actions?: React
                   download(message.metadata!.filename!, message.metadata!.content || '', message.metadata!.mime)
                 }
               >
-                Download {message.metadata.filename}
+                {t('downloadFile', { filename: message.metadata.filename })}
               </Button>
             )}
           </>

@@ -1,4 +1,5 @@
 'use client';
+import { useFormatter, useTranslations } from 'next-intl';
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 /** Single-series bar chart: the card title names the series, so there is no legend. Colors come from the --chart-* variables in globals.css, which follow the theme tokens. */
@@ -8,17 +9,22 @@ export function SimpleBarChart({
   y,
   label,
   height = 224,
+  formatX,
 }: {
   data: object[];
   x: string;
   y: string;
   label: string;
   height?: number;
+  /** Formats x values, e.g. dates, for the axis and the tooltip title */
+  formatX?: (value: string) => string;
 }) {
+  const t = useTranslations('charts');
+  const format = useFormatter();
   if (!data.length)
     return (
       <div className="grid place-items-center text-xs text-fg-secondary" style={{ height }}>
-        No usage in this range
+        {t('empty')}
       </div>
     );
   return (
@@ -29,18 +35,21 @@ export function SimpleBarChart({
           <XAxis
             dataKey={x}
             tick={{ fontSize: 11, fill: 'var(--chart-ink)' }}
+            tickFormatter={formatX}
             tickLine={false}
             axisLine={{ stroke: 'var(--chart-grid)' }}
           />
           <YAxis
             allowDecimals={false}
             tick={{ fontSize: 11, fill: 'var(--chart-ink)' }}
+            tickFormatter={(value: number) => format.number(value)}
             tickLine={false}
             axisLine={false}
           />
           <Tooltip
             cursor={{ fill: 'var(--chart-cursor)' }}
-            formatter={(value) => [Number(value).toLocaleString(), label]}
+            formatter={(value) => [format.number(Number(value)), label]}
+            labelFormatter={formatX ? (value) => formatX(String(value)) : undefined}
             contentStyle={{
               background: 'var(--chart-tooltip-bg)',
               border: '1px solid var(--chart-grid)',

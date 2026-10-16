@@ -1,14 +1,20 @@
 'use client';
-import { KeyRound, Server, ShieldCheck, User } from 'lucide-react';
+import { KeyRound, Languages, Server, ShieldCheck, SlidersHorizontal, SunMoon, User } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useAuth } from 'react-oidc-context';
 import { userRoles } from '@/lib/auth-roles';
 import { useApi } from '@/lib/api';
+import { LanguageSwitcher } from '@/components/layout/language-switcher';
 import { Shell } from '@/components/layout/shell';
+import { ThemeSwitcher } from '@/components/layout/theme-switcher';
 import { Badge, Card } from '@/components/ui/primitives';
 
 export function SettingsPage() {
   const auth = useAuth();
   const api = useApi();
+  const t = useTranslations('settings');
+  const tTheme = useTranslations('theme');
+  const tLanguage = useTranslations('language');
   const profile = auth.user?.profile as {
     preferred_username?: string;
     email?: string;
@@ -18,18 +24,35 @@ export function SettingsPage() {
     <Shell active="settings">
       <div className="mx-auto max-w-4xl space-y-6 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:p-8">
         <div>
-          <p className="text-sm font-medium text-primary">SETTINGS</p>
-          <h1 className="mt-1 text-3xl font-semibold">Account & deployment</h1>
+          <p className="text-sm font-medium text-primary">{t('eyebrow')}</p>
+          <h1 className="mt-1 text-3xl font-semibold">{t('title')}</h1>
         </div>
+        <Card className="p-6">
+          <div className="flex gap-3">
+            <SlidersHorizontal className="shrink-0 text-primary" />
+            <div className="min-w-0 flex-1">
+              <h2 className="font-semibold">{t('preferences')}</h2>
+              <p className="mt-1 text-sm text-fg-secondary">{t('preferencesNote')}</p>
+              <div className="mt-4 divide-y divide-line-secondary">
+                <Preference icon={<SunMoon size={17} />} label={tTheme('label')} note={t('themeNote')}>
+                  <ThemeSwitcher />
+                </Preference>
+                <Preference icon={<Languages size={17} />} label={tLanguage('label')} note={t('languageNote')}>
+                  <LanguageSwitcher />
+                </Preference>
+              </div>
+            </div>
+          </div>
+        </Card>
         <div className="grid gap-5 md:grid-cols-2">
           <Card className="p-6">
             <User className="text-primary" />
-            <h2 className="mt-4 font-semibold">Company identity</h2>
+            <h2 className="mt-4 font-semibold">{t('identity')}</h2>
             <dl className="mt-4 space-y-3 text-sm">
-              <Row label="Username" value={profile.preferred_username || '—'} />
-              <Row label="Email" value={profile.email || '—'} />
+              <Row label={t('username')} value={profile.preferred_username || '—'} />
+              <Row label={t('email')} value={profile.email || '—'} />
               <Row
-                label="Roles"
+                label={t('roles')}
                 value={userRoles(auth.user)
                   .filter((role) => ['ADMIN', 'USER'].includes(role))
                   .join(', ')}
@@ -38,16 +61,13 @@ export function SettingsPage() {
           </Card>
           <Card className="p-6">
             <Server className="text-primary" />
-            <h2 className="mt-4 font-semibold">Local deployment</h2>
+            <h2 className="mt-4 font-semibold">{t('deployment')}</h2>
             <div className="mt-4 space-y-3 text-sm">
               <p>
-                <Badge tone="success">LOCAL BY DEFAULT</Badge>
+                <Badge tone="success">{t('localByDefault')}</Badge>
               </p>
-              <p className="text-fg-secondary">
-                Every request routes through NestJS and LiteLLM. The default model is the local deterministic mock;
-                Ollama and external providers stay disabled until an administrator explicitly enables them.
-              </p>
-              <p className="text-fg-secondary">Local services still consume CPU, memory, disk, and electricity.</p>
+              <p className="text-fg-secondary">{t('routing')}</p>
+              <p className="text-fg-secondary">{t('resources')}</p>
               <p>
                 <a
                   className="font-medium text-primary underline"
@@ -55,7 +75,7 @@ export function SettingsPage() {
                   target="_blank"
                   rel="noreferrer"
                 >
-                  API documentation (Swagger)
+                  {t('apiDocs')}
                 </a>
               </p>
             </div>
@@ -63,29 +83,46 @@ export function SettingsPage() {
         </div>
         <Card className="p-6">
           <div className="flex gap-3">
-            <ShieldCheck className="text-primary" />
+            <ShieldCheck className="shrink-0 text-primary" />
             <div>
-              <h2 className="font-semibold">Privacy controls</h2>
-              <p className="mt-2 text-sm text-fg-secondary">
-                Conversation ownership is enforced by the backend from the validated token subject. Administrators
-                receive aggregate usage data, not private chat content. Full prompts and responses are not logged by
-                default.
-              </p>
+              <h2 className="font-semibold">{t('privacy')}</h2>
+              <p className="mt-2 text-sm text-fg-secondary">{t('privacyBody')}</p>
             </div>
           </div>
           <div className="mt-5 flex gap-3">
-            <KeyRound className="text-primary" />
+            <KeyRound className="shrink-0 text-primary" />
             <div>
-              <h2 className="font-semibold">Session</h2>
-              <p className="mt-2 text-sm text-fg-secondary">
-                Authentication uses Keycloak Authorization Code Flow with PKCE. Use Logout in the sidebar to end the
-                identity-provider session.
-              </p>
+              <h2 className="font-semibold">{t('session')}</h2>
+              <p className="mt-2 text-sm text-fg-secondary">{t('sessionBody')}</p>
             </div>
           </div>
         </Card>
       </div>
     </Shell>
+  );
+}
+function Preference({
+  icon,
+  label,
+  note,
+  children,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  note: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-3 py-4 last:pb-0 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex gap-3">
+        <span className="mt-0.5 text-fg-secondary">{icon}</span>
+        <div>
+          <div className="text-sm font-medium">{label}</div>
+          <div className="text-xs text-fg-secondary">{note}</div>
+        </div>
+      </div>
+      <div className="shrink-0 pl-8 sm:pl-0">{children}</div>
+    </div>
   );
 }
 function Row({ label, value }: { label: string; value: string }) {

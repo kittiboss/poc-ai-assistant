@@ -25,7 +25,8 @@ const brand: BrandConfig = brands[requested];
 /**
  * The brand of this installation, chosen at build time with NEXT_PUBLIC_BRAND.
  * The only way to read it: the root layout calls this and hands the result to <BrandProvider>,
- * client components use useBrand(). Loading it at runtime later only changes this function.
+ * client components use useBrand(); i18n/request.ts and the /favicon.ico route read it on the server.
+ * Loading it at runtime later only changes this function.
  */
 export function getBrand(): BrandConfig {
   return brand;

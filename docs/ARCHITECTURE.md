@@ -110,6 +110,9 @@ apps/
     components/           shared: auth (OIDC provider, gate), brand (provider, logo), layout (shell, theme switcher), ui (primitives, charts)
     config/brands/        one file per customer brand, selected with NEXT_PUBLIC_BRAND at build time
     theme/                AntD theme from the brand, --app-* CSS variables, light/dark/system mode, bundled fonts
+    i18n/                 next-intl setup (locale cookie, AntD locales, formats, browser time zone)
+    messages/             UI texts per language (en, th)
+    stores/               Zustand UI state (mobile navigation drawer)
     lib/                  API client, shared types, small helpers
   mock-provider/          offline OpenAI-compatible deterministic provider
   gemini-proxy/           opt-in credential proxy and cost allowlist for Gemini

@@ -1,6 +1,8 @@
 import { AntdRegistry } from '@ant-design/nextjs-registry';
 import type { Metadata, Viewport } from 'next';
 import { cookies } from 'next/headers';
+import { NextIntlClientProvider } from 'next-intl';
+import { getLocale, getTranslations } from 'next-intl/server';
 import { getBrand } from '@/config/brands';
 import { cn } from '@/lib/cn';
 import { brandFontClassNames } from '@/theme/fonts';
@@ -10,11 +12,12 @@ import { AppProviders } from './providers';
 import 'highlight.js/styles/github-dark.css';
 import './globals.css';
 
-export function generateMetadata(): Metadata {
+export async function generateMetadata(): Promise<Metadata> {
   const brand = getBrand();
+  const t = await getTranslations('meta');
   return {
     title: brand.name,
-    description: 'Self-hosted enterprise AI assistant POC',
+    description: t('description'),
     applicationName: brand.name,
     authors: [{ name: brand.organization }],
     icons: { icon: brand.favicon },
@@ -32,6 +35,7 @@ export const viewport: Viewport = {
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const brand = getBrand();
+  const locale = await getLocale();
   // Rendering with the saved theme avoids a light-to-dark flash, which makes every page dynamic.
   const cookieStore = await cookies();
   const storedMode = cookieStore.get(THEME_COOKIE)?.value;
@@ -41,17 +45,19 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const dark = resolveTheme(initialMode, initialSystemTheme) === 'dark';
 
   return (
-    // The inline script may change the class before React hydrates; the UI text is English only.
-    <html lang="en" className={cn(brandFontClassNames[brand.theme.font], dark && 'dark')} suppressHydrationWarning>
+    // The inline script may change the class before React hydrates.
+    <html lang={locale} className={cn(brandFontClassNames[brand.theme.font], dark && 'dark')} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript(brand.theme.defaultMode) }} />
       </head>
       <body>
         {/* `layer` puts AntD styles in @layer antd, ordered in globals.css */}
         <AntdRegistry layer>
-          <AppProviders brand={brand} initialMode={initialMode} initialSystemTheme={initialSystemTheme}>
-            {children}
-          </AppProviders>
+          <NextIntlClientProvider>
+            <AppProviders brand={brand} initialMode={initialMode} initialSystemTheme={initialSystemTheme}>
+              {children}
+            </AppProviders>
+          </NextIntlClientProvider>
         </AntdRegistry>
       </body>
     </html>
