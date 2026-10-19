@@ -18,6 +18,7 @@ import { PricingSection } from './pricing-section';
 import { useAdminFormat } from './use-admin-format';
 import { UserPermissions } from './user-permissions';
 import { ValueTile } from './value-tile';
+import { WorkspaceControls } from './workspace-controls';
 
 type ModelBreakdown = AdminSummary['byModel'][number];
 
@@ -216,6 +217,7 @@ export function AdminDashboard() {
         <PricingSection models={models} pricing={data.pricing.data ?? []} loading={data.pricing.isPending} />
         <UserPermissions users={data.users.data ?? []} models={models} loading={data.users.isPending} />
         <AuditLog entries={data.audit.data ?? []} loading={data.audit.isPending} />
+        <WorkspaceControls models={models} />
       </div>
     </Shell>
   );

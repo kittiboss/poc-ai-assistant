@@ -56,7 +56,7 @@ Conversation deletion is a soft delete so usage and immutable pricing references
 
 The active LiteLLM file contains only `local-mock` and optional local Ollama. External registry rows start disabled. External use needs the global switch, a matching credential, an active gateway route, an enabled registry row, and user permission. The default network and test path therefore cannot accidentally spend paid API credits.
 
-The opt-in Gemini overlay adds one route through a credential proxy:
+The opt-in Gemini, Groq and OpenRouter overlays add routes through credential proxies:
 
 ```text
 NestJS ──► LiteLLM (internal network only) ──► gemini-proxy ──► generativelanguage.googleapis.com
@@ -64,6 +64,19 @@ NestJS ──► LiteLLM (internal network only) ──► gemini-proxy ──�
                                                allows only text generation for GEMINI_MODEL
                                                rejects tools / grounding / cached content
                                                clamps output tokens, forces one candidate
+
+                                         └──► groq-proxy ──► api.groq.com
+                                               holds the key, replaces the dummy authorization header
+                                               fails closed until Free tier is explicitly confirmed
+                                               allows only chat completions for GROQ_MODEL
+                                               rejects tools / functions / other endpoint families
+                                               clamps output tokens, forces one response
+
+                                         └──► openrouter-proxy ──► openrouter.ai
+                                               holds the key, allows only openrouter/free
+                                               rejects paid model/fallback/provider overrides
+                                               rejects tools / plugins / web search / other endpoints
+                                               clamps output tokens, forces one response
 ```
 
 The API also enforces an installation-wide daily request and token ceiling across all external providers, computed from usage records, before a request is persisted or streamed. Model availability checks read LiteLLM's configured routes and Ollama's local tag list; they never call a provider.
@@ -92,7 +105,7 @@ apps/
       testing/            unit-test fixtures (excluded from the build)
     test/                 vitest setup (offline network guard)
   web/                    Next.js app
-    app/                  routes (/ and /c/[id] for chat, /usage, /admin, /settings), root layout and providers
+    app/                  routes (/ and /c/[id] for chat, /usage, /usage/live, /admin, /settings), root layout and providers
     features/             one folder per screen: chat, usage, admin, settings
     components/           shared: auth (OIDC provider, gate), brand (provider, logo), layout (shell, theme and language switchers), ui (charts, section and metric cards, status tags), api (typed client provider)
     config/brands/        one file per customer brand, selected with NEXT_PUBLIC_BRAND at build time
@@ -103,10 +116,12 @@ apps/
     lib/                  API client and types generated from the OpenAPI document, auth helpers, small helpers
   mock-provider/          offline OpenAI-compatible deterministic provider
   gemini-proxy/           opt-in credential proxy and cost allowlist for Gemini
+  groq-proxy/             opt-in credential proxy and cost allowlist for Groq
+  openrouter-proxy/       zero-price router enforcement and credential proxy
 packages/shared/          pricing and token logic shared by API and web
 infra/keycloak/           importable development realm
 infra/litellm/            active local routes and disabled external examples
-scripts/                  e2e/Gemini smoke tests, Keycloak client sync
+scripts/                  e2e/provider smoke tests, Keycloak client sync
 docs/                     architecture and production gap analysis
 ```
 

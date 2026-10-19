@@ -4,6 +4,8 @@ import { Sender } from '@ant-design/x';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
+const MAX_LENGTH = 20000;
+
 interface ChatComposerProps {
   /** A reply is streaming: the send button becomes a stop button */
   generating: boolean;
@@ -21,8 +23,10 @@ export function ChatComposer({ generating, canSend, disabled = false, onSend, on
 
   return (
     <Sender
+      aria-label={t('messageLabel')}
       value={draft}
-      onChange={(value) => setDraft(value)}
+      // The API takes up to 20,000 characters.
+      onChange={(value) => setDraft(value.slice(0, MAX_LENGTH))}
       onSubmit={(value) => {
         const prompt = value.trim();
         if (!prompt || generating || !canSend) return;

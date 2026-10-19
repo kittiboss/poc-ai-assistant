@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl';
 import { createContext, use, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useAuth } from 'react-oidc-context';
 import { createAuthFetch } from '@/lib/api/auth-fetch';
-import { ApiError, createApiClient, errorMessage, type ApiClient } from '@/lib/api/client';
+import { API_URL, ApiError, createApiClient, errorMessage, type ApiClient } from '@/lib/api/client';
 import { useUIStore } from '@/stores/ui-store-provider';
 
 interface ApiContextValue {
@@ -68,7 +68,10 @@ function QueryProvider({ children }: { children: ReactNode }) {
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
 }
 
-/** The typed API client plus `unwrap`, which turns an error response into an ApiError. */
+/**
+ * The typed API client plus `unwrap`, which turns an error response into an ApiError, and
+ * `request` for the workspace endpoints whose responses the OpenAPI document does not describe yet.
+ */
 export function useApi() {
   const context = use(ApiContext);
   if (!context) throw new Error('useApi must be used inside <ApiProvider>');
@@ -83,5 +86,19 @@ export function useApi() {
     },
     [t],
   );
-  return { ...context, unwrap };
+  const { fetch } = context;
+  const request = useCallback(
+    async <Data,>(path: string, init: RequestInit = {}): Promise<Data> => {
+      const headers = new Headers(init.headers);
+      if (init.body && !(init.body instanceof FormData)) headers.set('Content-Type', 'application/json');
+      const response = await fetch(new Request(`${API_URL}${path}`, { ...init, headers }));
+      if (!response.ok) {
+        const body: unknown = await response.json().catch(() => null);
+        throw new ApiError(errorMessage(body) ?? t('requestFailed', { status: response.status }), response.status);
+      }
+      return (response.status === 204 ? undefined : await response.json()) as Data;
+    },
+    [fetch, t],
+  );
+  return { ...context, unwrap, request };
 }

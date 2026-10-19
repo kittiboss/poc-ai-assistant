@@ -1,8 +1,9 @@
 'use client';
 import { useQuery } from '@tanstack/react-query';
-import { Alert, Table, type TableColumnsType } from 'antd';
-import { Activity, ArrowDownToLine, ArrowUpFromLine, Coins, Database, Hash, Timer } from 'lucide-react';
+import { Alert, App, Button, Table, type TableColumnsType } from 'antd';
+import { Activity, ArrowDownToLine, ArrowUpFromLine, Coins, Database, FileDown, Hash, Timer } from 'lucide-react';
 import { useFormatter, useTranslations } from 'next-intl';
+import { useState } from 'react';
 import { useApi } from '@/components/api/api-provider';
 import { Shell } from '@/components/layout/shell';
 import { SimpleBarChart } from '@/components/ui/charts';
@@ -13,11 +14,13 @@ import { costFormat, dateTimeFormat } from '@/i18n/formats';
 import { useEnumLabel } from '@/i18n/use-enum-label';
 import { queryKeys } from '@/lib/api/query-keys';
 import type { MyUsage } from '@/lib/api/types';
+import { download } from '@/lib/download';
 
 type UsageRecord = MyUsage['records'][number];
 
 export function UsageDashboard() {
-  const { client, unwrap } = useApi();
+  const { client, unwrap, request } = useApi();
+  const { message: toast } = App.useApp();
   const t = useTranslations('usage');
   const enums = useEnumLabel();
   const format = useFormatter();
@@ -28,6 +31,19 @@ export function UsageDashboard() {
     queryFn: async ({ signal }) => unwrap(await client.GET('/api/usage/me', { signal })),
   });
   const totals: Partial<MyUsage['totals']['_sum']> = data?.totals._sum ?? {};
+  const [exporting, setExporting] = useState(false);
+  const exportCsv = async () => {
+    setExporting(true);
+    try {
+      // The CSV endpoint is not in the OpenAPI document yet, so it goes through `request`.
+      const file = await request<{ filename: string; content: string }>('/workspace/usage.csv');
+      download(file.filename, file.content, 'text/csv');
+    } catch (cause) {
+      toast.error((cause as Error).message);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const columns: TableColumnsType<UsageRecord> = [
     {
@@ -91,10 +107,15 @@ export function UsageDashboard() {
   return (
     <Shell active="usage">
       <div className="mx-auto max-w-7xl space-y-6 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:p-8">
-        <div>
-          <p className="text-sm font-medium text-primary">{t('eyebrow')}</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">{t('title')}</h1>
-          <p className="mt-2 text-sm text-fg-secondary">{t('intro')}</p>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-primary">{t('eyebrow')}</p>
+            <h1 className="mt-1 text-3xl font-semibold tracking-tight">{t('title')}</h1>
+            <p className="mt-2 text-sm text-fg-secondary">{t('intro')}</p>
+          </div>
+          <Button icon={<FileDown size={16} />} loading={exporting} onClick={exportCsv}>
+            {t('exportCsv')}
+          </Button>
         </div>
         {error && <Alert type="error" showIcon title={error.message} />}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

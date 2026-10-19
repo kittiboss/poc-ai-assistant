@@ -18,7 +18,7 @@ export class GatewayService {
   private readonly url = process.env.LITELLM_URL || 'http://localhost:4000';
   private readonly key = process.env.LITELLM_MASTER_KEY || 'local-litellm-key-change-me';
 
-  private maxOutputTokens() {
+  maxOutputTokens() {
     const configured = Number(process.env.AI_MAX_OUTPUT_TOKENS || 1024);
     return Number.isFinite(configured) ? Math.min(4096, Math.max(1, Math.trunc(configured))) : 1024;
   }
@@ -41,6 +41,7 @@ export class GatewayService {
     messages: GatewayMessage[],
     signal: AbortSignal,
     onText: (text: string) => void,
+    options: { temperature?: number; maxOutputTokens?: number } = {},
   ): Promise<GatewayUsage | undefined> {
     let response: Response;
     try {
@@ -50,7 +51,8 @@ export class GatewayService {
         body: JSON.stringify({
           model,
           messages,
-          max_tokens: this.maxOutputTokens(),
+          max_tokens: Math.min(options.maxOutputTokens ?? this.maxOutputTokens(), this.maxOutputTokens()),
+          ...(options.temperature !== undefined ? { temperature: options.temperature } : {}),
           stream: true,
           stream_options: { include_usage: true },
         }),

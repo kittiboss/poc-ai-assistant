@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { PricingStrategy } from '@prisma/client';
-import { DATE, DECIMAL, NULLABLE_DECIMAL } from '../common/swagger/schema-types';
+import { DATE, DECIMAL, NULLABLE_DECIMAL, NULLABLE_STRING } from '../common/swagger/schema-types';
 import { AIModelView } from '../models/models.schemas';
 
 export class PricingVersionView {
@@ -19,7 +19,7 @@ export class PricingVersionView {
   @ApiProperty(DECIMAL) simulationOutputRate!: string;
   @ApiProperty({ example: 'USD' }) currency!: string;
   @ApiProperty(DATE) effectiveAt!: string;
-  @ApiProperty({ nullable: true, description: 'Keycloak subject of the admin, or system-seed.' }) createdBy!: string | null;
+  @ApiProperty({ ...NULLABLE_STRING, description: 'Keycloak subject of the admin, or system-seed.' }) createdBy!: string | null;
   @ApiProperty(DATE) createdAt!: string;
 }
 

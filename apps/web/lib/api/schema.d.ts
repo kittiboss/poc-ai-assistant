@@ -44,6 +44,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/usage/me/live': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Live token-usage snapshot for the caller
+     * @description A lightweight polling response. Completed token counts and conservative in-flight reservations are reported separately; prompt and response content is never included.
+     */
+    get: operations['UsageController_live'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/usage/me': {
     parameters: {
       query?: never;
@@ -58,6 +78,23 @@ export interface paths {
     get: operations['UsageController_own'];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/conversations/{id}/tools': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Run a selected local tool and save its result in this chat; no inference cost */
+    post: operations['ConversationsController_tool'];
     delete?: never;
     options?: never;
     head?: never;
@@ -103,8 +140,42 @@ export interface paths {
     delete: operations['ConversationsController_remove'];
     options?: never;
     head?: never;
-    /** Rename a conversation */
+    /** Rename, pin, archive or move a conversation to a private project */
     patch: operations['ConversationsController_rename'];
+    trace?: never;
+  };
+  '/api/conversations/{id}/branch': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Branch before or after a message without duplicating usage */
+    post: operations['ConversationsController_branch'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/conversations/{id}/messages/{messageId}/feedback': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Rate an assistant response and optionally leave feedback for admins */
+    post: operations['ConversationsController_feedback'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
     trace?: never;
   };
   '/api/conversations/{id}/messages': {
@@ -127,6 +198,335 @@ export interface paths {
      *     Closing the connection cancels generation; the partial reply is kept as INTERRUPTED. Swagger UI shows the raw stream once it completes.
      */
     post: operations['ConversationsController_stream'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/workspace/projects': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List private projects and sources */
+    get: operations['WorkspaceController_projects'];
+    put?: never;
+    /** Create a private project */
+    post: operations['WorkspaceController_create'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/workspace/projects/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Delete project and sources; keep chats ungrouped */
+    delete: operations['WorkspaceController_deleteProject'];
+    options?: never;
+    head?: never;
+    /** Update project instructions */
+    patch: operations['WorkspaceController_project'];
+    trace?: never;
+  };
+  '/api/workspace/projects/{id}/sources': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Extract and index a document locally (5 MB, 100 PDF pages) */
+    post: operations['WorkspaceController_upload'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/workspace/sources/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** View extracted source text belonging to the caller */
+    get: operations['WorkspaceController_source'];
+    put?: never;
+    post?: never;
+    /** Remove source from future retrieval */
+    delete: operations['WorkspaceController_removeSource'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/workspace/preferences': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get custom instructions and explicit memories */
+    get: operations['WorkspaceController_preferences'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** Save personal instructions */
+    patch: operations['WorkspaceController_instructions'];
+    trace?: never;
+  };
+  '/api/workspace/memories': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create explicit user-approved memory */
+    post: operations['WorkspaceController_addMemory'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/workspace/memories/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Delete memory */
+    delete: operations['WorkspaceController_deleteMemory'];
+    options?: never;
+    head?: never;
+    /** Edit or disable memory */
+    patch: operations['WorkspaceController_memory'];
+    trace?: never;
+  };
+  '/api/workspace/templates': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List permitted prompt templates */
+    get: operations['WorkspaceController_templates'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/workspace/tools': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Run an explicitly selected allowlisted local tool; no model call */
+    post: operations['WorkspaceController_tool'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/workspace/usage.csv': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Export own latest 10,000 usage records as CSV */
+    get: operations['WorkspaceController_export'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/admin/workspace': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Get quotas, departments and feedback analytics; no chat content */
+    get: operations['WorkspaceAdminController_dashboard'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/admin/workspace/settings': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** Set external kill switch, sensitive-data policy and chat retention */
+    patch: operations['WorkspaceAdminController_settings'];
+    trace?: never;
+  };
+  '/api/admin/workspace/quotas': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Set quota for a user, role, model or department */
+    post: operations['WorkspaceAdminController_quota'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/admin/workspace/quotas/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Remove quota policy */
+    delete: operations['WorkspaceAdminController_deleteQuota'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/admin/workspace/users/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** Assign department for usage budgets */
+    patch: operations['WorkspaceAdminController_department'];
+    trace?: never;
+  };
+  '/api/admin/workspace/templates': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Manage all prompt templates */
+    get: operations['WorkspaceAdminController_templates'];
+    put?: never;
+    /** Create an audited prompt template */
+    post: operations['WorkspaceAdminController_template'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/admin/workspace/templates/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** Edit or disable an audited template */
+    patch: operations['WorkspaceAdminController_editTemplate'];
+    trace?: never;
+  };
+  '/api/admin/workspace/usage.csv': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Export latest 10,000 installation usage records */
+    get: operations['WorkspaceAdminController_export'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/admin/workspace/retention': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Preview chat-content retention counts */
+    get: operations['WorkspaceAdminController_retention'];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -327,7 +727,7 @@ export interface components {
       /** @example Local Mock */
       displayName: string;
       /** @enum {string} */
-      provider: 'MOCK' | 'OLLAMA' | 'OPENAI' | 'ANTHROPIC' | 'GEMINI';
+      provider: 'MOCK' | 'OLLAMA' | 'OPENAI' | 'ANTHROPIC' | 'GEMINI' | 'GROQ' | 'OPENROUTER';
       /** @example mock-enterprise */
       providerModelId: string;
       enabled: boolean;
@@ -349,10 +749,55 @@ export interface components {
       /** @enum {string} */
       status: 'Disabled' | 'Not permitted' | 'Not configured' | 'Daily limit reached' | 'Available' | 'Unavailable';
     };
+    LiveTokenTotals: {
+      requests: number;
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+    };
+    LiveReservations: {
+      /** @description Requests currently admitted but not settled. */
+      requests: number;
+      /** @description Conservative upper-bound reservation, not consumed usage. */
+      reservedTokens: number;
+    };
+    ModelName: {
+      /** @example Local Mock */
+      displayName: string;
+    };
+    LiveUsageRecord: {
+      /** Format: uuid */
+      id: string;
+      requestId: string;
+      modelId: string;
+      /** @enum {string} */
+      provider: 'MOCK' | 'OLLAMA' | 'OPENAI' | 'ANTHROPIC' | 'GEMINI' | 'GROQ' | 'OPENROUTER';
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+      durationMs: number;
+      /** @enum {string} */
+      status: 'PENDING' | 'STREAMING' | 'COMPLETED' | 'CANCELLED' | 'ERROR';
+      /** @enum {string} */
+      usageKind: 'ACTUAL' | 'ESTIMATED' | 'SYNTHETIC';
+      /** Format: date-time */
+      createdAt: string;
+      model: components['schemas']['ModelName'];
+    };
+    LiveUsageResponse: {
+      /** Format: date-time */
+      updatedAt: string;
+      /** @example 1500 */
+      pollAfterMs: number;
+      totals: components['schemas']['LiveTokenTotals'];
+      today: components['schemas']['LiveTokenTotals'];
+      active: components['schemas']['LiveReservations'];
+      recent: components['schemas']['LiveUsageRecord'][];
+    };
     UsageTotalsSum: {
-      inputTokens: Record<string, never> | null;
-      outputTokens: Record<string, never> | null;
-      totalTokens: Record<string, never> | null;
+      inputTokens: number | null;
+      outputTokens: number | null;
+      totalTokens: number | null;
       /**
        * Format: decimal
        * @description Externally payable amount.
@@ -384,17 +829,13 @@ export interface components {
     };
     TokenSum: {
       /** @example 437 */
-      totalTokens: Record<string, never> | null;
+      totalTokens: number | null;
     };
     UsageByModel: {
       /** @example local-mock */
       modelId: string;
       _count: number;
       _sum: components['schemas']['TokenSum'];
-    };
-    ModelName: {
-      /** @example Local Mock */
-      displayName: string;
     };
     UsageRecordView: {
       /** Format: uuid */
@@ -410,9 +851,9 @@ export interface components {
        * Format: uuid
        * @description Pricing version used for the snapshot below.
        */
-      pricingVersionId: Record<string, never> | null;
+      pricingVersionId: string | null;
       /** @enum {string} */
-      provider: 'MOCK' | 'OLLAMA' | 'OPENAI' | 'ANTHROPIC' | 'GEMINI';
+      provider: 'MOCK' | 'OLLAMA' | 'OPENAI' | 'ANTHROPIC' | 'GEMINI' | 'GROQ' | 'OPENROUTER';
       inputTokens: number;
       outputTokens: number;
       totalTokens: number;
@@ -460,12 +901,19 @@ export interface components {
       /** @description Latest 100 requests; prompt and response content are never included. */
       records: components['schemas']['UsageRecordView'][];
     };
+    ToolDto: {
+      /** @enum {string} */
+      tool: 'calculator' | 'time' | 'search' | 'faq' | 'usage' | 'prices' | 'csv' | 'markdown';
+      input?: string;
+      projectId?: string;
+    };
     CreateConversationDto: {
       /**
        * @description Defaults to "New conversation"; the first message renames an untitled conversation.
        * @example Quarterly planning notes
        */
       title?: string;
+      projectId?: string;
     };
     ConversationView: {
       /** Format: uuid */
@@ -480,6 +928,21 @@ export interface components {
       updatedAt: string;
       /** Format: date-time */
       deletedAt?: string | null;
+      /**
+       * @description Pinned chats are listed first.
+       * @example false
+       */
+      pinned: boolean;
+      /**
+       * @description Archived chats are listed only with archived=true.
+       * @example false
+       */
+      archived: boolean;
+      /**
+       * Format: uuid
+       * @description Private project whose sources and instructions the chat uses.
+       */
+      projectId: string | null;
     };
     MessageCount: {
       /** @example 4 */
@@ -494,7 +957,62 @@ export interface components {
       createdAt: string;
       /** Format: date-time */
       updatedAt: string;
+      /** @example false */
+      pinned: boolean;
+      /** @example false */
+      archived: boolean;
+      /** Format: uuid */
+      projectId: string | null;
       _count: components['schemas']['MessageCount'];
+    };
+    CitationView: {
+      /**
+       * Format: uuid
+       * @description Source chunk ID.
+       */
+      id: string;
+      /** Format: uuid */
+      sourceId: string;
+      /** @example leave-policy.pdf */
+      filename: string;
+      /** @description PDF page, when known. */
+      page: number | null;
+      /** @description The retrieved excerpt. */
+      content: string;
+      /**
+       * @description The label the reply cites, e.g. [S1].
+       * @example S1
+       */
+      label: string;
+    };
+    MessageMetadata: {
+      /** @description Local tool that produced this message; no model was called. */
+      tool?: string;
+      /** @description File offered for download with this message. */
+      filename?: string;
+      /** @description Content of that file. */
+      content?: string;
+      /** @example text/csv */
+      mime?: string;
+    };
+    MessageUsage: {
+      inputTokens: number;
+      outputTokens: number;
+      durationMs: number;
+      /** @enum {string} */
+      usageKind: 'ACTUAL' | 'ESTIMATED' | 'SYNTHETIC';
+      /** @example USD */
+      currency: string;
+      /**
+       * Format: decimal
+       * @example 0.000000000000
+       */
+      actualProviderCost: string;
+      /**
+       * Format: decimal
+       * @example 0.000000000000
+       */
+      customerCharge: string;
     };
     MessageView: {
       /** Format: uuid */
@@ -511,9 +1029,20 @@ export interface components {
        */
       status: 'PENDING' | 'STREAMING' | 'COMPLETED' | 'INTERRUPTED' | 'ERROR';
       /** @example local-mock */
-      modelId: Record<string, never> | null;
+      modelId: string | null;
       /** @description Set on assistant messages; matches the usage record. */
-      requestId: Record<string, never> | null;
+      requestId: string | null;
+      /** @description Project sources retrieved for this reply. */
+      citations: components['schemas']['CitationView'][];
+      metadata: components['schemas']['MessageMetadata'];
+      /**
+       * @description The owner's rating of an assistant reply.
+       * @enum {integer|null}
+       */
+      feedback: -1 | 1 | null;
+      feedbackComment: string | null;
+      /** @description Usage and cost of the request that produced this reply. */
+      usage?: components['schemas']['MessageUsage'];
       /** Format: date-time */
       createdAt: string;
       /** Format: date-time */
@@ -532,11 +1061,40 @@ export interface components {
       updatedAt: string;
       /** Format: date-time */
       deletedAt?: string | null;
+      /**
+       * @description Pinned chats are listed first.
+       * @example false
+       */
+      pinned: boolean;
+      /**
+       * @description Archived chats are listed only with archived=true.
+       * @example false
+       */
+      archived: boolean;
+      /**
+       * Format: uuid
+       * @description Private project whose sources and instructions the chat uses.
+       */
+      projectId: string | null;
       messages: components['schemas']['MessageView'][];
     };
     UpdateConversationDto: {
       /** @example Renamed conversation */
-      title: string;
+      title?: string;
+      pinned?: boolean;
+      archived?: boolean;
+      /** Format: uuid */
+      projectId?: string | null;
+    };
+    BranchDto: {
+      messageId: string;
+      /** @description Exclude the selected message, for edit/resend or regeneration. */
+      before?: boolean;
+    };
+    FeedbackDto: {
+      /** @enum {number} */
+      rating: -1 | 1;
+      comment?: string;
     };
     SendMessageDto: {
       /** @example Explain Docker Compose */
@@ -551,15 +1109,58 @@ export interface components {
        * @example 0b5c2a8e-4b0f-4d0e-9a51-7a3f3f1c2d10
        */
       requestId?: string;
+      templateId?: string;
+      /** @description Acknowledge regex warnings for the complete outgoing context. */
+      acknowledgeSensitive?: boolean;
+    };
+    ProjectDto: {
+      name: string;
+      instructions: string;
+    };
+    InstructionsDto: {
+      instructions: string;
+    };
+    MemoryDto: {
+      content: string;
+      enabled: boolean;
+    };
+    GovernanceDto: {
+      externalBlocked: boolean;
+      /** @description 0 disables automatic chat-content retention. Usage records remain. */
+      retentionDays: number;
+      sensitiveMode: string;
+    };
+    QuotaDto: {
+      /** @enum {string} */
+      scope: 'USER' | 'ROLE' | 'MODEL' | 'DEPARTMENT';
+      subject: string;
+      dailyRequests?: number | null;
+      dailyTokens?: number | null;
+      perRequestTokens?: number | null;
+      /** @description Daily simulated provider cost limit in USD. */
+      dailySimulatedBudget?: number | null;
+    };
+    DepartmentDto: {
+      department: string;
+    };
+    TemplateDto: {
+      name: string;
+      description: string;
+      systemPrompt: string;
+      allowedModels: string[];
+      allowedRoles: string[];
+      temperature: number;
+      maxOutputTokens: number;
+      enabled: boolean;
     };
     TokenTotals: {
-      inputTokens: Record<string, never> | null;
-      outputTokens: Record<string, never> | null;
-      totalTokens: Record<string, never> | null;
+      inputTokens: number | null;
+      outputTokens: number | null;
+      totalTokens: number | null;
     };
     CostSum: {
       /** @example 437 */
-      totalTokens: Record<string, never> | null;
+      totalTokens: number | null;
       /**
        * Format: decimal
        * @example 0.000000000000
@@ -583,7 +1184,7 @@ export interface components {
     };
     ProviderBreakdown: {
       /** @enum {string} */
-      provider: 'MOCK' | 'OLLAMA' | 'OPENAI' | 'ANTHROPIC' | 'GEMINI';
+      provider: 'MOCK' | 'OLLAMA' | 'OPENAI' | 'ANTHROPIC' | 'GEMINI' | 'GROQ' | 'OPENROUTER';
       _count: number;
       _sum: components['schemas']['CostSum'];
     };
@@ -644,7 +1245,7 @@ export interface components {
       /** Format: uuid */
       id: string;
       /** Format: uuid */
-      actorId: Record<string, never> | null;
+      actorId: string | null;
       /** @example PRICING_VERSION_CREATE */
       action: string;
       /** @example PricingConfiguration */
@@ -720,7 +1321,7 @@ export interface components {
       /** Format: date-time */
       effectiveAt: string;
       /** @description Keycloak subject of the admin, or system-seed. */
-      createdBy: Record<string, never> | null;
+      createdBy: string | null;
       /** Format: date-time */
       createdAt: string;
     };
@@ -739,7 +1340,7 @@ export interface components {
       /** @example Gemini 3.5 Flash-Lite */
       displayName: string;
       /** @enum {string} */
-      provider: 'MOCK' | 'OLLAMA' | 'OPENAI' | 'ANTHROPIC' | 'GEMINI';
+      provider: 'MOCK' | 'OLLAMA' | 'OPENAI' | 'ANTHROPIC' | 'GEMINI' | 'GROQ' | 'OPENROUTER';
       /** @example gemini-3.5-flash-lite */
       providerModelId: string;
       enabled: boolean;
@@ -785,7 +1386,7 @@ export interface components {
       /** @example Gemini 3.5 Flash-Lite */
       displayName: string;
       /** @enum {string} */
-      provider: 'MOCK' | 'OLLAMA' | 'OPENAI' | 'ANTHROPIC' | 'GEMINI';
+      provider: 'MOCK' | 'OLLAMA' | 'OPENAI' | 'ANTHROPIC' | 'GEMINI' | 'GROQ' | 'OPENROUTER';
       /** @example gemini-3.5-flash-lite */
       providerModelId: string;
       enabled: boolean;
@@ -827,7 +1428,7 @@ export interface components {
       /** @example employee1 */
       username: string;
       /** @example employee1@enterprise.local */
-      email: Record<string, never> | null;
+      email: string | null;
       /** Format: date-time */
       createdAt: string;
       roles: components['schemas']['UserRoleView'][];
@@ -1067,6 +1668,43 @@ export interface operations {
       };
     };
   };
+  UsageController_live: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['LiveUsageResponse'];
+        };
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
   UsageController_own: {
     parameters: {
       query?: never;
@@ -1104,11 +1742,64 @@ export interface operations {
       };
     };
   };
+  ConversationsController_tool: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Conversation ID owned by the caller. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ToolDto'];
+      };
+    };
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Malformed ID: IDs must be UUIDs. Or validation failed; unknown properties are rejected. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
   ConversationsController_list: {
     parameters: {
       query?: {
-        /** @description Case-insensitive title filter. */
+        /** @description Search titles and message content (FTS with substring fallback). */
         search?: string;
+        projectId?: string;
+        archived?: 'true' | 'false';
       };
       header?: never;
       path?: never;
@@ -1122,6 +1813,15 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['ConversationSummary'][];
+        };
+      };
+      /** @description Malformed ID: IDs must be UUIDs. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
         };
       };
       /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
@@ -1214,6 +1914,15 @@ export interface operations {
           'application/json': components['schemas']['ConversationDetail'];
         };
       };
+      /** @description Malformed ID: IDs must be UUIDs. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
       /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
       401: {
         headers: {
@@ -1261,6 +1970,15 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      /** @description Malformed ID: IDs must be UUIDs. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
       };
       /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
       401: {
@@ -1315,7 +2033,7 @@ export interface operations {
           'application/json': components['schemas']['ConversationView'];
         };
       };
-      /** @description Validation failed; unknown properties are rejected. */
+      /** @description Malformed ID: IDs must be UUIDs. Or validation failed; unknown properties are rejected. */
       400: {
         headers: {
           [name: string]: unknown;
@@ -1335,6 +2053,111 @@ export interface operations {
       };
       /** @description Conversation does not exist or is not visible to the caller. */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  ConversationsController_branch: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Conversation ID owned by the caller. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['BranchDto'];
+      };
+    };
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ConversationView'];
+        };
+      };
+      /** @description Malformed ID: IDs must be UUIDs. Or validation failed; unknown properties are rejected. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  ConversationsController_feedback: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Conversation ID owned by the caller. */
+        id: string;
+        messageId: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['FeedbackDto'];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Malformed ID: IDs must be UUIDs. Or validation failed; unknown properties are rejected. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
         headers: {
           [name: string]: unknown;
         };
@@ -1388,7 +2211,7 @@ export interface operations {
           'text/event-stream': string;
         };
       };
-      /** @description Validation failed, model disabled or unknown, or request ID already processed. */
+      /** @description Malformed conversation ID, validation failed, model disabled or unknown, or request ID already processed. */
       400: {
         headers: {
           [name: string]: unknown;
@@ -1435,6 +2258,1052 @@ export interface operations {
       };
     };
   };
+  WorkspaceController_projects: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  WorkspaceController_create: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ProjectDto'];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  WorkspaceController_deleteProject: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Project ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Malformed ID: IDs must be UUIDs. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  WorkspaceController_project: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Project ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ProjectDto'];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Malformed ID: IDs must be UUIDs. Or validation failed; unknown properties are rejected. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  WorkspaceController_upload: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Project ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'multipart/form-data': {
+          /** Format: binary */
+          file: string;
+        };
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Malformed ID: IDs must be UUIDs. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  WorkspaceController_source: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Source ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Malformed ID: IDs must be UUIDs. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  WorkspaceController_removeSource: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Source ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Malformed ID: IDs must be UUIDs. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  WorkspaceController_preferences: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  WorkspaceController_instructions: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['InstructionsDto'];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  WorkspaceController_addMemory: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['MemoryDto'];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  WorkspaceController_deleteMemory: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Memory ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Malformed ID: IDs must be UUIDs. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  WorkspaceController_memory: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Memory ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['MemoryDto'];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Malformed ID: IDs must be UUIDs. Or validation failed; unknown properties are rejected. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  WorkspaceController_templates: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  WorkspaceController_tool: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['ToolDto'];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  WorkspaceController_export: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  WorkspaceAdminController_dashboard: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  WorkspaceAdminController_settings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['GovernanceDto'];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  WorkspaceAdminController_quota: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['QuotaDto'];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  WorkspaceAdminController_deleteQuota: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Quota policy ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Malformed ID: IDs must be UUIDs. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  WorkspaceAdminController_department: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description User ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['DepartmentDto'];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Malformed ID: IDs must be UUIDs. Or validation failed; unknown properties are rejected. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  WorkspaceAdminController_templates: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  WorkspaceAdminController_template: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['TemplateDto'];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  WorkspaceAdminController_editTemplate: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Template ID */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['TemplateDto'];
+      };
+    };
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Malformed ID: IDs must be UUIDs. Or validation failed; unknown properties are rejected. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  WorkspaceAdminController_export: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  WorkspaceAdminController_retention: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
   AdminController_summary: {
     parameters: {
       query?: {
@@ -1442,7 +3311,7 @@ export interface operations {
         from?: string;
         /** @description Inclusive upper bound on usage createdAt. */
         to?: string;
-        provider?: 'MOCK' | 'OLLAMA' | 'OPENAI' | 'ANTHROPIC' | 'GEMINI';
+        provider?: 'MOCK' | 'OLLAMA' | 'OPENAI' | 'ANTHROPIC' | 'GEMINI' | 'GROQ' | 'OPENROUTER';
         modelId?: string;
       };
       header?: never;
@@ -1740,7 +3609,7 @@ export interface operations {
           'application/json': components['schemas']['UserModelPermissionView'];
         };
       };
-      /** @description Validation failed; unknown properties are rejected. */
+      /** @description Malformed ID: IDs must be UUIDs. Or validation failed; unknown properties are rejected. */
       400: {
         headers: {
           [name: string]: unknown;

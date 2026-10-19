@@ -1,7 +1,7 @@
 'use client';
 import { Drawer, Grid } from 'antd';
 import Link from 'next/link';
-import { BarChart3, Bot, LogOut, Menu, Settings, ShieldCheck } from 'lucide-react';
+import { BarChart3, Bot, Gauge, LogOut, Menu, Settings, ShieldCheck } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useAuth } from 'react-oidc-context';
 import { BrandLogo } from '@/components/brand/brand-logo';
@@ -10,7 +10,7 @@ import { useRoles } from '@/lib/auth/use-roles';
 import { cn } from '@/lib/cn';
 import { useUIStore } from '@/stores/ui-store-provider';
 
-type Section = 'chat' | 'usage' | 'admin' | 'settings';
+type Section = 'chat' | 'usage' | 'live-usage' | 'admin' | 'settings';
 
 /** Same width as the desktop sidebar (w-72). */
 const DRAWER_WIDTH = 288;
@@ -114,6 +114,9 @@ function Navigation({
         </Nav>
         <Nav href="/usage" icon={<BarChart3 size={17} />} selected={active === 'usage'} onNavigate={onNavigate}>
           {t('usage')}
+        </Nav>
+        <Nav href="/usage/live" icon={<Gauge size={17} />} selected={active === 'live-usage'} onNavigate={onNavigate}>
+          {t('liveUsage')}
         </Nav>
         {roles.includes('ADMIN') && (
           <Nav href="/admin" icon={<ShieldCheck size={17} />} selected={active === 'admin'} onNavigate={onNavigate}>

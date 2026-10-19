@@ -1,6 +1,7 @@
 'use client';
 
 import { useQueryClient } from '@tanstack/react-query';
+import { App } from 'antd';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useApi } from '@/components/api/api-provider';
@@ -19,6 +20,8 @@ export function useSendMessage() {
   const queryClient = useQueryClient();
   const router = useRouter();
   const t = useTranslations('chat');
+  const tCommon = useTranslations('common');
+  const { modal } = App.useApp();
   const setStream = useUIStore((state) => state.setStream);
   const setChatError = useUIStore((state) => state.setChatError);
 
@@ -26,6 +29,32 @@ export function useSendMessage() {
     queryClient.setQueryData<ConversationDetail>(queryKeys.conversation(id), (current) =>
       current ? { ...current, messages: update(current.messages) } : current,
     );
+
+  /**
+   * Replaces the streamed chat with the saved one, which has the server's message ids (needed to
+   * branch or rate a reply), the usage and the citations; the server may also have retitled it.
+   * A stopped or failed reply is saved by the server on its own time, so a copy that is still behind
+   * the screen is not used and is fetched again a little later.
+   */
+  const syncSaved = async (id: string) => {
+    const key = queryKeys.conversation(id);
+    const shown = queryClient.getQueryData<ConversationDetail>(key);
+    const behind = (saved: ConversationDetail) =>
+      saved.messages.length < (shown?.messages.length ?? 0) ||
+      saved.messages.some((item) => item.status === 'STREAMING' || item.status === 'PENDING');
+    for (const delay of [0, 500, 1000, 2000, 4000, 8000]) {
+      if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+      // Anything that changed the chat meanwhile (a new message, a refetch) is newer than this copy.
+      if (queryClient.getQueryData(key) !== shown) break;
+      const saved = await client.GET('/api/conversations/{id}', { params: { path: { id } } }).catch(() => null);
+      if (queryClient.getQueryData(key) !== shown) break;
+      if (saved?.data && !behind(saved.data)) {
+        queryClient.setQueryData(key, saved.data);
+        break;
+      }
+    }
+    await queryClient.invalidateQueries({ queryKey: queryKeys.conversationLists });
+  };
 
   return async function send({
     conversationId,
@@ -40,6 +69,7 @@ export function useSendMessage() {
     const abort = new AbortController();
     let id = conversationId;
     setStream({ conversationId: id ?? '', abort });
+    let completed = false;
     try {
       if (!id) {
         const created = unwrap(await client.POST('/api/conversations', { body: {} }));
@@ -58,6 +88,10 @@ export function useSendMessage() {
         status,
         modelId: role === 'ASSISTANT' ? modelId : null,
         requestId: null,
+        citations: [],
+        metadata: {},
+        feedback: null,
+        feedbackComment: null,
         createdAt: now,
         updatedAt: now,
       });
@@ -68,15 +102,35 @@ export function useSendMessage() {
           messages.map((item) => (item.id === assistant.id ? { ...item, ...change } : item)),
         );
 
-      const body: SendMessage = { content: prompt, modelId, requestId: crypto.randomUUID() };
-      const response = await fetch(
-        new Request(`${API_URL}/conversations/${id}/messages`, {
-          method: 'POST',
-          signal: abort.signal,
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        }),
-      );
+      const requestId = crypto.randomUUID();
+      const post = (acknowledgeSensitive: boolean) => {
+        const body: SendMessage = { content: prompt, modelId, requestId, acknowledgeSensitive };
+        return fetch(
+          new Request(`${API_URL}/conversations/${id}/messages`, {
+            method: 'POST',
+            signal: abort.signal,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          }),
+        );
+      };
+      let response = await post(false);
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { code?: string; canAcknowledge?: boolean };
+        // The workspace's sensitive-data policy can ask the user to confirm before context leaves the company.
+        if (
+          payload.code === 'SENSITIVE_CONTEXT' &&
+          payload.canAcknowledge &&
+          (await modal.confirm({
+            title: t('sensitiveConfirm'),
+            content: errorMessage(payload),
+            okText: t('sendAnyway'),
+            cancelText: tCommon('cancel'),
+          }))
+        )
+          response = await post(true);
+        else throw new Error(errorMessage(payload) || t('failedStatus', { status: response.status }));
+      }
       if (!response.ok || !response.body) {
         const payload = await response.json().catch(() => ({}));
         throw new Error(errorMessage(payload) || t('failedStatus', { status: response.status }));
@@ -99,14 +153,13 @@ export function useSendMessage() {
             content += data.text;
             setAssistant({ content });
           }
+          if (event === 'done') completed = true;
           if (event === 'error') throw new Error(data.message || t('failed'));
         }
         if (done) break;
       }
+      if (!completed) throw new Error(t('connectionEnded'));
       setAssistant({ status: 'COMPLETED' });
-      // The server may have retitled the chat; the cached messages are refreshed on the next visit.
-      await queryClient.invalidateQueries({ queryKey: queryKeys.conversations, exact: true });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.conversation(id), refetchType: 'none' });
     } catch (cause) {
       const aborted = (cause as Error).name === 'AbortError';
       setChatError(aborted ? t('stopped') : (cause as Error).message);
@@ -117,6 +170,12 @@ export function useSendMessage() {
           ),
         );
     } finally {
+      if (id) {
+        const sync = syncSaved(id);
+        // A finished reply is saved at once, so its buttons appear with the server's ids. A stopped or
+        // failed one can take the server a few seconds, which the user does not wait for.
+        if (completed) await sync;
+      }
       setStream(null);
     }
   };

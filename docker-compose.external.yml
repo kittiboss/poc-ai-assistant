@@ -1,0 +1,102 @@
+# Combined opt-in overlay for installations that use Gemini, Groq and OpenRouter.
+# Neither provider is enabled merely by starting this overlay: the global switch,
+# credentials, registry state, role policy, and daily limits are all still enforced.
+services:
+  gemini-proxy:
+    build:
+      context: .
+      dockerfile: apps/gemini-proxy/Dockerfile
+    environment:
+      PORT: 4020
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?Set GEMINI_API_KEY in the ignored .env file}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      GEMINI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-1024}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4020/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [backend, edge]
+    restart: unless-stopped
+
+  groq-proxy:
+    build:
+      context: .
+      dockerfile: apps/groq-proxy/Dockerfile
+    environment:
+      PORT: 4030
+      GROQ_API_KEY: ${GROQ_API_KEY:?Set GROQ_API_KEY in the ignored .env file}
+      GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-20b}
+      GROQ_FREE_TIER_CONFIRMED: ${GROQ_FREE_TIER_CONFIRMED:-false}
+      GROQ_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-1024}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4030/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [backend, edge]
+    restart: unless-stopped
+
+  openrouter-proxy:
+    build:
+      context: .
+      dockerfile: apps/openrouter-proxy/Dockerfile
+    environment:
+      PORT: 4040
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?Set OPENROUTER_API_KEY in the ignored .env file}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-openrouter/free}
+      OPENROUTER_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-1024}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4040/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [backend, edge]
+    restart: unless-stopped
+
+  litellm:
+    environment:
+      GEMINI_PROXY_URL: http://gemini-proxy:4020/v1beta/models/${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      GEMINI_LITELLM_MODEL: gemini/${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      GROQ_PROXY_URL: http://groq-proxy:4030/openai/v1
+      GROQ_LITELLM_MODEL: openai/${GROQ_MODEL:-openai/gpt-oss-20b}
+      OPENROUTER_PROXY_URL: http://openrouter-proxy:4040/api/v1
+      OPENROUTER_LITELLM_MODEL: openai/${OPENROUTER_MODEL:-openrouter/free}
+    volumes:
+      - ./infra/litellm/config.external.yaml:/app/config.yaml:ro
+    depends_on:
+      gemini-proxy:
+        condition: service_healthy
+      groq-proxy:
+        condition: service_healthy
+      openrouter-proxy:
+        condition: service_healthy
+
+  backend:
+    environment:
+      ENABLE_EXTERNAL_PROVIDERS: ${ENABLE_EXTERNAL_PROVIDERS:-false}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?Set GEMINI_API_KEY in the ignored .env file}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      GROQ_CREDENTIAL_CONFIGURED: "true"
+      GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-20b}
+      GROQ_FREE_TIER_CONFIRMED: ${GROQ_FREE_TIER_CONFIRMED:-false}
+      OPENROUTER_CREDENTIAL_CONFIGURED: "true"
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-openrouter/free}

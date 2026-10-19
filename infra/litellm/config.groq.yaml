@@ -1,0 +1,31 @@
+model_list:
+  - model_name: local-mock
+    litellm_params:
+      model: openai/mock-enterprise
+      api_base: os.environ/MOCK_PROVIDER_URL
+      api_key: local-mock-no-secret
+  - model_name: qwen-local
+    litellm_params:
+      model: os.environ/OLLAMA_LITELLM_MODEL
+      api_base: os.environ/OLLAMA_URL
+  - model_name: groq-llama
+    litellm_params:
+      model: os.environ/GROQ_LITELLM_MODEL
+      api_base: os.environ/GROQ_PROXY_URL
+      # The real credential is held only by groq-proxy. LiteLLM sends this
+      # non-secret placeholder and the proxy replaces it before egress.
+      api_key: local-groq-proxy
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  disable_spend_logs: true
+  allow_requests_on_db_unavailable: false
+
+litellm_settings:
+  drop_params: true
+  request_timeout: 120
+  set_verbose: false
+  json_logs: true
+  turn_off_message_logging: true
+  redact_user_api_key_info: true
+  redact_messages_in_exceptions: true

@@ -207,3 +207,113 @@
     color: var(--app-color-primary);
   }
 }
+
+/* Live usage page (features/usage/live-usage-page.tsx). */
+@keyframes live-rise {
+  from {
+    transform: scaleY(0.05);
+    opacity: 0.25;
+  }
+  to {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+@keyframes live-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--app-color-warning) 15%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 12px color-mix(in srgb, var(--app-color-warning) 0%, transparent);
+  }
+}
+@keyframes live-enter {
+  from {
+    transform: translateY(-8px);
+    background: color-mix(in srgb, var(--app-color-primary) 15%, transparent);
+    opacity: 0.35;
+  }
+  to {
+    transform: translateY(0);
+    background: transparent;
+    opacity: 1;
+  }
+}
+@keyframes live-pop {
+  0% {
+    transform: translateY(8px) scale(0.85);
+    opacity: 0;
+  }
+  25% {
+    transform: translateY(0) scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-8px) scale(1);
+    opacity: 0;
+  }
+}
+@keyframes live-fade {
+  0%,
+  60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes slow-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@layer components {
+  .live-token-bar {
+    transform-origin: bottom;
+    animation: live-rise 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .token-glow {
+    animation: live-glow 1.8s ease-in-out infinite;
+  }
+  .live-row {
+    animation: live-enter 0.55s ease-out;
+  }
+  /* The "+N tokens" badge disappears through this animation, so it is never switched off. */
+  .token-increase {
+    animation: live-pop 2.4s ease-out both;
+  }
+  .animate-spin-slow {
+    animation: slow-spin 3s linear infinite;
+  }
+  .live-hero,
+  .live-metric {
+    transition:
+      transform 0.25s ease,
+      box-shadow 0.25s ease;
+  }
+  .live-hero:hover,
+  .live-metric:hover {
+    transform: translateY(-2px);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .live-token-bar,
+    .token-glow,
+    .live-row,
+    .animate-spin-slow {
+      animation: none;
+    }
+    .token-increase {
+      animation-name: live-fade;
+    }
+    .live-hero,
+    .live-metric {
+      transition: none;
+    }
+    .live-hero:hover,
+    .live-metric:hover {
+      transform: none;
+    }
+  }
+}

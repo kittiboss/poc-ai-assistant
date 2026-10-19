@@ -1,29 +1,52 @@
 'use client';
-import { Alert, App, Button, Input, Select } from 'antd';
-import { LoaderCircle, MessageSquare, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { Alert, App, Button, Checkbox, Dropdown, Input, Select, type MenuProps } from 'antd';
+import {
+  Archive,
+  ArchiveRestore,
+  Download,
+  LoaderCircle,
+  MessageSquare,
+  MoreHorizontal,
+  Pencil,
+  Pin,
+  PinOff,
+  Plus,
+  Search,
+  Trash2,
+} from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Shell } from '@/components/layout/shell';
 import { StatusTag } from '@/components/ui/status-tag';
 import { useEnumLabel } from '@/i18n/use-enum-label';
 import { ApiError } from '@/lib/api/client';
-import type { Model } from '@/lib/api/types';
+import type { ConversationChange, ConversationSummary, Message, Model } from '@/lib/api/types';
 import { cn } from '@/lib/cn';
 import { useUIStore } from '@/stores/ui-store-provider';
 import { ChatComposer } from './chat-composer';
 import {
   isConversationId,
+  type Rating,
+  useBranchConversation,
   useConversation,
   useConversations,
   useDeleteConversation,
+  useFeedback,
   useModels,
-  useRenameConversation,
+  useUpdateConversation,
 } from './chat-queries';
+import { exportChat } from './export-chat';
+import type { MessageActions } from './message-bubble';
 import { MessageList } from './message-list';
-import { RenameDialog } from './rename-dialog';
+import { PromptDialog } from './prompt-dialog';
 import { useSendMessage } from './use-send-message';
+
+type Dialog =
+  | { kind: 'rename'; item: ConversationSummary }
+  | { kind: 'edit'; message: Message }
+  | { kind: 'feedback'; message: Message; rating: Rating };
 
 /** `/` is a new chat and `/c/<id>` an existing one; the id comes from the URL. */
 export function ChatApp() {
@@ -40,17 +63,27 @@ export function ChatApp() {
   const stream = useUIStore((state) => state.stream);
   const chatError = useUIStore((state) => state.chatError);
   const setChatError = useUIStore((state) => state.setChatError);
-  const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null);
+  const [archived, setArchived] = useState(false);
+  const [dialog, setDialog] = useState<Dialog | null>(null);
+  // Search runs on the server (titles and message content), so it waits for a pause in typing.
+  const [searchQuery, setSearchQuery] = useState(search.trim());
+  useEffect(() => {
+    const timer = setTimeout(() => setSearchQuery(search.trim()), 200);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const models = useModels();
-  const conversations = useConversations();
+  const conversations = useConversations({ search: searchQuery, archived });
   const conversation = useConversation(activeId, stream?.conversationId === activeId);
-  const renameConversation = useRenameConversation();
+  const updateConversation = useUpdateConversation();
   const deleteConversation = useDeleteConversation();
+  const branchConversation = useBranchConversation();
+  const feedback = useFeedback();
   const send = useSendMessage();
 
   const messages = conversation.data?.messages ?? [];
   const modelList = useMemo(() => models.data ?? [], [models.data]);
+  const modelNames = useMemo(() => new Map(modelList.map((model) => [model.id, model.displayName])), [modelList]);
   const modelId = selectedModelId || modelList.find((model) => model.available)?.id || modelList[0]?.id || '';
   const selectedModel = modelList.find((model) => model.id === modelId);
   const generating = stream !== null;
@@ -61,6 +94,7 @@ export function ChatApp() {
   const error = chatError || loadError?.message;
   const title =
     conversation.data?.title ?? conversations.data?.find((item) => item.id === activeId)?.title ?? t('newConversation');
+  const reportError = (cause: unknown) => toast.error((cause as Error).message);
 
   const leaveSidebar = () => {
     setMobileNavOpen(false);
@@ -71,34 +105,114 @@ export function ChatApp() {
     leaveSidebar();
     router.push('/');
   };
-  const rename = async (newTitle: string) => {
-    if (!renaming) return;
+  const update = async (item: ConversationSummary, change: ConversationChange, done?: string) => {
     try {
-      await renameConversation.mutateAsync({ id: renaming.id, title: newTitle });
-      setRenaming(null);
-      toast.success(t('renamed'));
+      await updateConversation.mutateAsync({ id: item.id, change });
+      if (done) toast.success(done);
+      return true;
     } catch (cause) {
-      toast.error((cause as Error).message);
+      reportError(cause);
+      return false;
     }
   };
-  const confirmDelete = (id: string, current: string) =>
+  const confirmDelete = (item: ConversationSummary) =>
     modal.confirm({
       title: t('deleteTitle'),
-      content: t('deleteConfirm', { title: current }),
+      content: t('deleteConfirm', { title: item.title }),
       okText: t('delete'),
       okButtonProps: { danger: true },
       onOk: async () => {
         try {
-          await deleteConversation.mutateAsync(id);
+          await deleteConversation.mutateAsync(item.id);
           toast.success(t('deleted'));
-          if (id === activeId) router.push('/');
+          if (item.id === activeId) router.push('/');
         } catch (cause) {
-          toast.error((cause as Error).message);
+          reportError(cause);
         }
       },
     });
 
-  const filtered = (conversations.data ?? []).filter((item) => item.title.toLowerCase().includes(search.toLowerCase()));
+  // Branch, edit and regenerate copy the chat into a new one, so the original stays as it was.
+  const branch = async (message: Message, before = false) => {
+    if (!activeId) return undefined;
+    setChatError('');
+    const copy = await branchConversation.mutateAsync({ id: activeId, messageId: message.id, before });
+    router.push(`/c/${copy.id}`);
+    return copy;
+  };
+  const resend = async (userMessage: Message, prompt: string) => {
+    const copy = await branch(userMessage, true);
+    if (copy) await send({ conversationId: copy.id, prompt, modelId });
+  };
+  const submitFeedback = async (message: Message, rating: Rating, comment: string) => {
+    if (!activeId) return;
+    try {
+      await feedback.mutateAsync({ conversationId: activeId, messageId: message.id, rating, comment });
+      setDialog(null);
+      toast.success(t('feedbackSaved'));
+    } catch (cause) {
+      reportError(cause);
+    }
+  };
+  const handlers: MessageActions = {
+    branch: (message) =>
+      branch(message)
+        .then(() => toast.success(t('branched')))
+        .catch(reportError),
+    edit: (message) => setDialog({ kind: 'edit', message }),
+    regenerate: (message) => {
+      const index = messages.findIndex((item) => item.id === message.id);
+      const userMessage = messages.slice(0, index).findLast((item) => item.role === 'USER');
+      if (userMessage) resend(userMessage, userMessage.content).catch(reportError);
+    },
+    rate: (message, rating) => setDialog({ kind: 'feedback', message, rating }),
+  };
+  // The bubbles get one object for the life of the page, which calls the latest handlers; a new
+  // object each render would re-render every memoized bubble on each streamed chunk.
+  const handlersRef = useRef(handlers);
+  useLayoutEffect(() => {
+    handlersRef.current = handlers;
+  });
+  const messageActions = useMemo<MessageActions>(
+    () => ({
+      branch: (message) => handlersRef.current.branch(message),
+      edit: (message) => handlersRef.current.edit(message),
+      regenerate: (message) => handlersRef.current.regenerate(message),
+      rate: (message, rating) => handlersRef.current.rate(message, rating),
+    }),
+    [],
+  );
+
+  const rowMenu = (item: ConversationSummary): MenuProps['items'] => [
+    {
+      key: 'pin',
+      icon: item.pinned ? <PinOff size={14} /> : <Pin size={14} />,
+      label: item.pinned ? t('unpin') : t('pin'),
+      onClick: () => void update(item, { pinned: !item.pinned }),
+    },
+    {
+      key: 'rename',
+      icon: <Pencil size={14} />,
+      label: t('rename'),
+      onClick: () => setDialog({ kind: 'rename', item }),
+    },
+    {
+      key: 'archive',
+      icon: item.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />,
+      label: item.archived ? t('restore') : t('archive'),
+      onClick: () =>
+        void update(item, { archived: !item.archived }, item.archived ? t('restoredToast') : t('archivedToast')),
+    },
+    { type: 'divider' },
+    {
+      key: 'delete',
+      icon: <Trash2 size={14} />,
+      label: t('delete'),
+      danger: true,
+      onClick: () => confirmDelete(item),
+    },
+  ];
+
   const sidebar = (
     <>
       <div className="space-y-3 p-3">
@@ -109,14 +223,18 @@ export function ChatApp() {
           size="large"
           variant="filled"
           allowClear
+          aria-label={t('searchLabel')}
           value={search}
           onChange={(event) => setSearch(event.target.value)}
-          placeholder={t('search')}
+          placeholder={t('searchContent')}
           prefix={<Search size={16} className="text-fg-tertiary" />}
         />
+        <Checkbox checked={archived} onChange={(event) => setArchived(event.target.checked)} className="text-xs">
+          {t('showArchived')}
+        </Checkbox>
       </div>
       <div className="flex-1 space-y-1 overflow-auto px-2 pb-3">
-        {filtered.map((item) => (
+        {conversations.data?.map((item) => (
           <div
             key={item.id}
             className={cn(
@@ -129,44 +247,60 @@ export function ChatApp() {
               onClick={leaveSidebar}
               className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left text-sm text-fg"
             >
-              <MessageSquare size={15} className="shrink-0 text-fg-tertiary" />
+              {item.pinned ? (
+                <Pin size={15} className="shrink-0 text-primary" aria-label={t('pinned')} />
+              ) : (
+                <MessageSquare size={15} className="shrink-0 text-fg-tertiary" />
+              )}
               <span className="truncate">{item.title}</span>
             </Link>
-            <Button
-              type="text"
-              size="small"
-              title={t('rename')}
-              aria-label={t('rename')}
-              icon={<Pencil size={14} />}
-              onClick={() => setRenaming({ id: item.id, title: item.title })}
-              className="hidden text-fg-tertiary group-focus-within:inline-flex group-hover:inline-flex pointer-coarse:inline-flex"
-            />
-            <Button
-              type="text"
-              size="small"
-              title={t('delete')}
-              aria-label={t('delete')}
-              icon={<Trash2 size={14} />}
-              onClick={() => confirmDelete(item.id, item.title)}
-              className="hidden text-fg-tertiary group-focus-within:inline-flex group-hover:inline-flex pointer-coarse:inline-flex"
-            />
+            <Dropdown menu={{ items: rowMenu(item) }} trigger={['click']} placement="bottomRight">
+              <Button
+                type="text"
+                size="small"
+                title={t('chatActions')}
+                aria-label={t('chatActions')}
+                icon={<MoreHorizontal size={15} />}
+                // Stays visible while its menu is open.
+                className="hidden text-fg-tertiary group-focus-within:inline-flex group-hover:inline-flex pointer-coarse:inline-flex [&.ant-dropdown-open]:inline-flex"
+              />
+            </Dropdown>
           </div>
         ))}
+        {conversations.data?.length === 0 && (searchQuery || archived) && (
+          <p className="px-3 py-2 text-xs text-fg-tertiary">{searchQuery ? t('noMatches') : t('noArchived')}</p>
+        )}
       </div>
     </>
   );
 
+  const detail = conversation.data;
   const header = (
     <>
       <div className="min-w-0 flex-1">
         <h1 className="truncate font-semibold">{title}</h1>
         <p className="hidden truncate text-xs text-fg-secondary sm:block">{t('private')}</p>
       </div>
-      <div className="flex shrink-0 items-center gap-3">
+      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+        {detail && (
+          <Dropdown
+            trigger={['click']}
+            placement="bottomRight"
+            menu={{
+              items: [
+                { key: 'md', label: t('exportMarkdown'), onClick: () => exportChat(detail, 'md') },
+                { key: 'json', label: t('exportJson'), onClick: () => exportChat(detail, 'json') },
+              ],
+            }}
+          >
+            <Button type="text" icon={<Download size={16} />} title={t('export')} aria-label={t('export')} />
+          </Dropdown>
+        )}
         <Select
-          aria-label={t('model')}
-          className="w-40 sm:w-64 lg:w-96"
+          aria-label={t('chatModel')}
+          className="w-36 sm:w-64 lg:w-96"
           value={modelId || undefined}
+          disabled={generating}
           onChange={setSelectedModelId}
           popupMatchSelectWidth={false}
           options={modelList.map((model) => ({
@@ -195,7 +329,12 @@ export function ChatApp() {
   return (
     <Shell active="chat" sidebar={sidebar} header={header}>
       <div className="flex h-full flex-col">
-        <MessageList messages={notFound ? [] : messages}>
+        <MessageList
+          messages={notFound ? [] : messages}
+          actions={messageActions}
+          canChange={!generating}
+          modelNames={modelNames}
+        >
           {notFound ? (
             <NotFound />
           ) : activeId && conversation.isPending ? (
@@ -221,17 +360,54 @@ export function ChatApp() {
               onSend={(prompt) => void send({ conversationId: activeId, prompt, modelId })}
               onStop={() => stream?.abort.abort()}
             />
-            <p className="text-center text-[11px] text-fg-secondary">{t('disclaimer')}</p>
+            <p className="text-center text-[11px] text-fg-secondary">{t('disclaimerSources')}</p>
           </div>
         </footer>
       </div>
-      {renaming && (
-        <RenameDialog
-          key={renaming.id}
-          initialTitle={renaming.title}
-          saving={renameConversation.isPending}
-          onSave={rename}
-          onClose={() => setRenaming(null)}
+      {dialog?.kind === 'rename' && (
+        <PromptDialog
+          key={dialog.item.id}
+          title={t('renameTitle')}
+          label={t('renamePrompt')}
+          initialValue={dialog.item.title}
+          requiredMessage={t('titleRequired')}
+          maxLength={120}
+          saving={updateConversation.isPending}
+          onSubmit={async (value) => {
+            if (await update(dialog.item, { title: value }, t('renamed'))) setDialog(null);
+          }}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.kind === 'edit' && (
+        <PromptDialog
+          key={dialog.message.id}
+          title={t('editResend')}
+          label={t('editPrompt')}
+          initialValue={dialog.message.content}
+          multiline
+          requiredMessage={t('messageRequired')}
+          maxLength={20000}
+          okText={t('send')}
+          onSubmit={(value) => {
+            setDialog(null);
+            resend(dialog.message, value).catch(reportError);
+          }}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.kind === 'feedback' && (
+        <PromptDialog
+          key={`${dialog.message.id}:${dialog.rating}`}
+          title={dialog.rating === 1 ? t('helpful') : t('unhelpful')}
+          label={t('feedbackPrompt')}
+          initialValue={dialog.message.feedbackComment ?? ''}
+          multiline
+          maxLength={1000}
+          okText={t('sendFeedback')}
+          saving={feedback.isPending}
+          onSubmit={(value) => void submitFeedback(dialog.message, dialog.rating, value)}
+          onClose={() => setDialog(null)}
         />
       )}
     </Shell>

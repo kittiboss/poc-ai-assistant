@@ -1,22 +1,17 @@
 import type { components } from './schema';
 
-// Generated from the API's OpenAPI document (npm run api:types). A few nullable fields in that
-// document have no declared type and come out as Record<string, never>; they are treated as unknown.
-type Untyped = Record<string, never>;
-type Loosen<T> = T extends Untyped
-  ? unknown
-  : T extends (infer Item)[]
-    ? Loosen<Item>[]
-    : T extends object
-      ? { [Key in keyof T]: Loosen<T[Key]> }
-      : T;
-type Schema<Name extends keyof components['schemas']> = Loosen<components['schemas'][Name]>;
+// Generated from the API's OpenAPI document (npm run api:types).
+type Schema<Name extends keyof components['schemas']> = components['schemas'][Name];
 
 export type Model = Schema<'ModelView'>;
 export type ConversationSummary = Schema<'ConversationSummary'>;
 export type ConversationDetail = Schema<'ConversationDetail'>;
+export type Conversation = Schema<'ConversationView'>;
+export type ConversationChange = Schema<'UpdateConversationDto'>;
 export type Message = Schema<'MessageView'>;
+export type Citation = Message['citations'][number];
 export type MyUsage = Schema<'MyUsageResponse'>;
+export type LiveUsage = Schema<'LiveUsageResponse'>;
 export type AdminSummary = Schema<'AdminSummary'>;
 export type AdminModel = Schema<'AdminModelView'>;
 export type PricingConfiguration = Schema<'PricingConfigurationView'>;
