@@ -26,6 +26,11 @@ export default defineConfig([
     files: ['app/layout.tsx', 'app/favicon.ico/route.ts', 'i18n/request.ts'],
     rules: { 'no-restricted-imports': 'off' },
   },
+  {
+    // Playwright fixtures receive a `use` callback (not React's `use`) and take `{}` when they need nothing.
+    files: ['e2e/**'],
+    rules: { 'react-hooks/rules-of-hooks': 'off', 'no-empty-pattern': 'off' },
+  },
   // Must come last: turns off rules that conflict with Prettier formatting.
   prettier,
   // Replaces the default ignores of eslint-config-next, so they are repeated here.

@@ -41,14 +41,21 @@ try {
       `${label} was removed`,
     );
   }
-  await page.getByLabel("Chat model").selectOption("local-mock");
-  await page.getByLabel("Message").fill("Explain Docker Compose");
+  // The model picker is an Ant Design Select, not a native <select>.
+  await page.getByRole("combobox", { name: "Chat model" }).click();
+  await page
+    .locator(".ant-select-dropdown:visible .ant-select-item-option")
+    .filter({ hasText: "Local Mock" })
+    .click();
+  await page
+    .getByRole("textbox", { name: "Message" })
+    .fill("Explain Docker Compose");
   const chatCreated = page.waitForResponse(
     (response) =>
       response.url().endsWith("/conversations") &&
       response.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
   conversationId = (await (await chatCreated).json()).id;
   await page
     .getByText("This is a mock AI response for local POC testing.", {

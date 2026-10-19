@@ -170,6 +170,22 @@ The default suite never needs external credentials and has no active paid-provid
 `npm run test:workspace` is a backward-compatibility API smoke: it signs in with all three demo accounts and exercises ownership, retained workspace APIs, branches, feedback, quotas, and CSV export against the running stack. It sends chat only to `local-mock`.
 The optional browser smoke checks the simplified mock chat, absence of the removed controls, live-token dashboard, and admin controls through the real UI; set `CHROME_PATH` if Chrome is installed elsewhere.
 
+### Web end-to-end tests (Playwright)
+
+With the Compose stack running and the web on `http://localhost:3000`:
+
+```bash
+npm run test:e2e:install -w @enterprise/web   # once: downloads Playwright's Chromium
+npm run test:e2e:web
+```
+
+The tests sign in through the Keycloak development realm (`admin` and `employee1`), send a message to the mock model and stop one mid-reply, rename and delete chats, switch theme and language, and open every page at desktop (1440 px) and phone (390 px, touch) sizes, checking there is no sideways scrolling. Any console error or warning from the app fails a test. Chats the tests create are deleted afterwards. The files are in `apps/web/e2e`.
+
+- `npm run test:e2e:ui -w @enterprise/web` opens Playwright's UI mode to run and watch tests one at a time.
+- `npm run test:e2e:report -w @enterprise/web` opens the HTML report of the last run; a failed test keeps a screenshot, a retried one (on CI) a trace.
+- `E2E_BASE_URL` and `E2E_API_URL` point the tests at another web or API address. Keycloak's development client only redirects back to `http://localhost:3000`.
+- `E2E_BROWSER_CHANNEL=msedge` (or `chrome`) uses an installed browser instead of Playwright's Chromium.
+
 ## Using Google Gemini on the free tier
 
 Gemini has a ready, opt-in external route. It stays off until you take every one of these steps; adding a key alone changes nothing.
