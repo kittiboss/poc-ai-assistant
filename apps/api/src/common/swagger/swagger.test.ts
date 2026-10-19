@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { AdminController } from '../../admin/admin.controller';
 import { ConversationsController } from '../../conversations/conversations.controller';
 import { HealthController } from '../../health/health.controller';
+import { KnowledgeAdminController, KnowledgeController } from '../../knowledge/knowledge.controller';
 import { ModelsController } from '../../models/models.controller';
 import { UsageController } from '../../usage/usage.controller';
 import { WorkspaceAdminController, WorkspaceController } from '../../workspace/workspace.controller';
@@ -17,7 +18,7 @@ import { BEARER_SCHEME, OAUTH_SCHEME, SWAGGER_CLIENT_ID, swaggerConfig, swaggerE
 type Controller = Type<object>;
 // @nestjs/swagger metadata keys (its constants module is not exported).
 const DECORATORS = { API_OPERATION: 'swagger/apiOperation', API_RESPONSE: 'swagger/apiResponse', API_SECURITY: 'swagger/apiSecurity' };
-const controllers: Controller[] = [HealthController, ModelsController, ConversationsController, UsageController, AdminController, WorkspaceController, WorkspaceAdminController];
+const controllers: Controller[] = [HealthController, ModelsController, ConversationsController, UsageController, AdminController, WorkspaceController, WorkspaceAdminController, KnowledgeController, KnowledgeAdminController];
 const routes = (controller: Controller) => Object.getOwnPropertyNames(controller.prototype).filter((name) => name !== 'constructor')
   .map((name) => ({ name: `${controller.name}.${name}`, handler: (controller.prototype as Record<string, unknown>)[name] as object }))
   .filter(({ handler }) => typeof handler === 'function' && Reflect.hasMetadata(PATH_METADATA, handler));

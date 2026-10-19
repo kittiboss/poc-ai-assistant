@@ -4,10 +4,12 @@ const apiKey = process.env.GEMINI_API_KEY;
 if (!apiKey) throw new Error('GEMINI_API_KEY is required');
 const model = process.env.GEMINI_MODEL;
 if (!model) throw new Error('GEMINI_MODEL is required');
+// Optional: leave unset to keep every embedding method blocked.
+const embeddingModel = process.env.GEMINI_EMBEDDING_MODEL || undefined;
 const configuredMax = Number(process.env.GEMINI_MAX_OUTPUT_TOKENS || 1024);
 const maxOutputTokens = Number.isFinite(configuredMax) ? Math.min(4096, Math.max(1, Math.trunc(configuredMax))) : 1024;
 
 const port = Number(process.env.PORT || 4020);
-createGeminiProxy({ apiKey, model, maxOutputTokens }).listen(port, '0.0.0.0', () => {
-  process.stdout.write(`Gemini credential proxy listening on ${port} for ${model} (max ${maxOutputTokens} output tokens)\n`);
+createGeminiProxy({ apiKey, model, embeddingModel, maxOutputTokens }).listen(port, '0.0.0.0', () => {
+  process.stdout.write(`Gemini credential proxy listening on ${port} for ${model}${embeddingModel ? ` and ${embeddingModel} embeddings` : ''} (max ${maxOutputTokens} output tokens)\n`);
 });

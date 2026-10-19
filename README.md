@@ -105,6 +105,7 @@ docker compose up --build -d   # with the same -f files as above, if you use an 
 - Layered external-cost guardrails: credential proxy allowlist, output-token cap, daily request/token ceiling (see [Cost safety](#cost-safety))
 - Admin console filters (date range, provider, model), per-day/provider/model charts, cost breakdown, model availability, pricing overview, and audit log
 - Database-enforced immutability of pricing versions; abandoned streams are marked `INTERRUPTED` after an API restart
+- Product-catalog RAG: the supplied 200-product catalog in PostgreSQL, semantic search with pgvector using Gemini Embedding 2 (opt-in) or offline mock embeddings, cited answers in chat, admin CSV import and incremental indexing (see [Product catalog (RAG)](#product-catalog-rag))
 - Conversation search, pin/archive, branch, edit-and-resend, regenerate, feedback, and Markdown/JSON export
 - Admin quotas by user, role, model, and department; simulated budget limits, usage CSV, feedback aggregates, retention preview/policy, external-provider kill switch, and best-effort sensitive-data warnings/blocking
 
@@ -271,20 +272,52 @@ Return to the default mock-only stack at any time:
 docker compose up -d --force-recreate --remove-orphans litellm backend
 ```
 
+## Product catalog (RAG)
+
+Chat can answer product questions from the company catalog. The catalog is the `products` table defined by [`apps/api/prisma/data/schema.sql`](apps/api/prisma/data/schema.sql); the seed loads the bundled [`products.csv`](apps/api/prisma/data/products.csv) (200 products) into an empty table. Every product becomes one text passage (name, SKU, brand, category, price, cost price, stock, status, rating, attributes, description), which is embedded and stored in PostgreSQL with pgvector.
+
+```text
+Index:  products ─► passage ─► LiteLLM /v1/embeddings ─► KnowledgeChunk (vector(768), HNSW)
+Chat:   question ─► embed ─► top-5 cosine search ─► cited context [S1]… ─► chat model
+```
+
+How to use it:
+
+1. **Choose the embedding model.** The base stack uses `mock-embedding` (offline, word-overlap only, $0). The Gemini overlays default to `gemini-embedding` (Gemini Embedding 2, semantic). Override with `RAG_EMBEDDING_MODEL`.
+2. **Enable it.** For Gemini, sign in as `admin` → **Admin console → Model registry** → enable **Gemini Embedding 2**. It also needs `ENABLE_EXTERNAL_PROVIDERS=true` and the Gemini overlay, like Gemini chat.
+3. **Index.** **Admin console → Product catalog (RAG) → Index catalog.** Only new or changed products are embedded; re-running with no changes makes no provider call. Progress shows while it runs.
+4. **Chat.** Turn on **Product catalog** next to the model selector (on by default once the catalog is indexed). Answers cite products as `[S1]`, `[S2]`, and the retrieved passages with match scores appear under the answer.
+
+To update the catalog, use **Import CSV** in the same panel (same columns as `schema.sql`; rows are upserted by `product_id`; the whole file is rejected if any row is invalid), then **Index catalog** again.
+
+Cost and free-tier behaviour with Gemini:
+
+- Gemini Embedding 2 is free of charge on the free tier (paid list price $0.20 per 1M input tokens, used for the simulated cost). As with Gemini chat, free-tier content may be used by Google to improve its products.
+- The free tier counts **every text** as one request against a **100-per-minute** quota. Indexing therefore runs in the background in small paced batches (`RAG_EXTERNAL_BATCH_SIZE=25` every `RAG_EXTERNAL_BATCH_INTERVAL_MS=15500`); a provider rate limit waits a minute and retries. 200 products take about two minutes.
+- Every embedding call (indexing and each catalog-enabled question) goes through the same reservation, quotas, kill switch and daily external limits as chat, and is recorded as usage with operation `EMBEDDING`. Calls the provider refuses are recorded as 0 tokens.
+- With an external embedding model, the question text itself is sent to the provider for the search; the chat shows a notice and the sensitive-data check runs first.
+
+Changing `RAG_EMBEDDING_MODEL` requires indexing again (vectors from different models are not comparable; each model keeps its own index).
+
+Limits of this POC: retrieval returns the 5 most similar products (`RAG_TOP_K`), so questions that need the whole table ("how many products are out of stock?") get partial answers; that needs SQL-backed answers, see [production gaps](docs/PRODUCTION_GAPS.md). The catalog, including cost price, is visible to every signed-in user.
+
+Verification: `npm run test:rag` (offline mock; also part of `npm run test:e2e`) and `npm run test:rag:gemini` (calls Gemini: indexes changes, embeds one question, asks Gemini chat as `admin`).
+
 ## Cost safety
 
 Everything in the default stack is local: the mock provider, Ollama, PostgreSQL, Keycloak, Valkey, and LiteLLM are open-source containers and make no paid calls. OpenAI and Anthropic have no gateway route and no credential. Gemini, Groq and OpenRouter can reach external services only through explicit opt-in overlays, constrained in layers:
 
-| Layer                                                                                                                                                              | What it prevents                                                                                                 |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| Base `docker-compose.yml` has no external route; LiteLLM sits on an internal-only network                                                                          | Any provider call in the default stack, including during startup, migrations, health checks, and model discovery |
-| `ENABLE_EXTERNAL_PROVIDERS=true` **and** a server-side credential **and** an admin enabling the model **and** per-user permission                                  | Accidental activation by just adding a key                                                                       |
-| Groq additionally requires `GROQ_FREE_TIER_CONFIRMED=true` in both the API and credential proxy                                                                    | Any Groq generation before an operator verifies Free tier in Groq Console                                        |
-| Provider credential proxies are the only containers with provider internet egress and hold the keys                                                                | LiteLLM or the browser ever seeing a provider credential                                                         |
-| Provider allowlists restrict Gemini/Groq to configured models; OpenRouter accepts only the zero-price `openrouter/free` router; all reject tools/side features     | Paid model fallback, search grounding, function calls, context-cache storage, batch/audio jobs                   |
-| Output tokens capped by `AI_MAX_OUTPUT_TOKENS` in the API **and** again in each proxy; response count forced to 1                                                  | Long or multi-candidate generations                                                                              |
-| `EXTERNAL_DAILY_REQUEST_LIMIT` (default 100) and `EXTERNAL_DAILY_TOKEN_LIMIT` (default 100,000) per UTC day across all external providers; `0` blocks external use | Runaway usage; the admin console shows today's consumption                                                       |
-| Default test suite blocks non-loopback network access                                                                                                              | Tests calling a provider                                                                                         |
+| Layer                                                                                                                                                                                                                                                                                                                          | What it prevents                                                                                                 |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| Base `docker-compose.yml` has no external route; LiteLLM sits on an internal-only network                                                                                                                                                                                                                                      | Any provider call in the default stack, including during startup, migrations, health checks, and model discovery |
+| `ENABLE_EXTERNAL_PROVIDERS=true` **and** a server-side credential **and** an admin enabling the model **and** per-user permission                                                                                                                                                                                              | Accidental activation by just adding a key                                                                       |
+| Groq additionally requires `GROQ_FREE_TIER_CONFIRMED=true` in both the API and credential proxy                                                                                                                                                                                                                                | Any Groq generation before an operator verifies Free tier in Groq Console                                        |
+| Provider credential proxies are the only containers with provider internet egress and hold the keys                                                                                                                                                                                                                            | LiteLLM or the browser ever seeing a provider credential                                                         |
+| Provider allowlists restrict Gemini/Groq to configured models; OpenRouter accepts only the zero-price `openrouter/free` router; all reject tools/side features                                                                                                                                                                 | Paid model fallback, search grounding, function calls, context-cache storage, batch/audio jobs                   |
+| Output tokens capped by `AI_MAX_OUTPUT_TOKENS` in the API **and** again in each proxy; response count forced to 1                                                                                                                                                                                                              | Long or multi-candidate generations                                                                              |
+| `EXTERNAL_DAILY_REQUEST_LIMIT` (default 100) and `EXTERNAL_DAILY_TOKEN_LIMIT` (default 100,000) per UTC day across all external providers; `0` blocks external use                                                                                                                                                             | Runaway usage; the admin console shows today's consumption                                                       |
+| Product-catalog embeddings default to the offline `mock-embedding`; `gemini-embedding` needs the overlay **and** an admin enabling it; the Gemini proxy allows embedding only for `GEMINI_EMBEDDING_MODEL`; indexing is paced to the free-tier quota and every embedding call is reserved, metered and daily-limited like chat | Embedding calls without explicit opt-in, embedding other (paid) models, quota bursts                             |
+| Default test suite blocks non-loopback network access                                                                                                                                                                                                                                                                          | Tests calling a provider                                                                                         |
 
 The POC cannot read provider billing-plan state. A `$0` result depends on using a genuinely free provider project/organization; application limits reduce exposure but are not a billing guarantee. Configure provider-side budgets/limits before using any billed key.
 
@@ -320,12 +353,13 @@ GET    /api/conversations
 GET    /api/conversations/:id
 PATCH  /api/conversations/:id
 DELETE /api/conversations/:id
-POST   /api/conversations/:id/messages  (SSE response)
+POST   /api/conversations/:id/messages  (SSE response; useProductCatalog=true adds cited catalog context)
 POST   /api/conversations/:id/tools     (retained compatibility API; not exposed in the UI)
 POST   /api/conversations/:id/branch
 POST   /api/conversations/:id/messages/:messageId/feedback
 GET    /api/usage/me
 GET    /api/usage/me/live      (auto-refresh token snapshot and in-flight reservations)
+GET    /api/knowledge/status   (product catalog availability and index state)
 GET/POST/PATCH/DELETE /api/workspace/... (retained compatibility APIs; not exposed in the UI)
 ```
 
@@ -341,6 +375,8 @@ GET    /api/admin/pricing?modelId=                        all pricing versions
 POST   /api/admin/pricing/:modelId                        create a new immutable version (audited)
 POST   /api/admin/pricing/preview/calculate               preview without saving
 GET    /api/admin/audit?entityType=                       latest 100 audit entries
+POST   /api/admin/knowledge/products/import               upsert the product catalog from CSV (multipart, audited)
+POST   /api/admin/knowledge/reindex                       start incremental embedding in the background (audited)
 GET/PATCH/POST /api/admin/workspace/...                    governance, quotas, departments, templates, usage CSV, retention preview
 ```
 

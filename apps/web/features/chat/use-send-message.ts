@@ -60,10 +60,12 @@ export function useSendMessage() {
     conversationId,
     prompt,
     modelId,
+    useProductCatalog,
   }: {
     conversationId?: string;
     prompt: string;
     modelId: string;
+    useProductCatalog: boolean;
   }) {
     setChatError('');
     const abort = new AbortController();
@@ -104,7 +106,13 @@ export function useSendMessage() {
 
       const requestId = crypto.randomUUID();
       const post = (acknowledgeSensitive: boolean) => {
-        const body: SendMessage = { content: prompt, modelId, requestId, acknowledgeSensitive };
+        const body: SendMessage = {
+          content: prompt,
+          modelId,
+          requestId,
+          acknowledgeSensitive,
+          useProductCatalog,
+        };
         return fetch(
           new Request(`${API_URL}/conversations/${id}/messages`, {
             method: 'POST',

@@ -8,6 +8,7 @@ import type {
   ConversationChange,
   ConversationDetail,
   ConversationSummary,
+  KnowledgeStatus,
   Message,
   Model,
 } from '@/lib/api/types';
@@ -22,6 +23,16 @@ export function useModels() {
   return useQuery<Model[]>({
     queryKey: queryKeys.models,
     queryFn: async ({ signal }) => unwrap(await client.GET('/api/models', { signal })),
+  });
+}
+
+/** Catalog availability is optional; a failed status request must not block normal chat. */
+export function useKnowledgeStatus() {
+  const { request } = useApi();
+  return useQuery<KnowledgeStatus>({
+    queryKey: queryKeys.knowledge,
+    queryFn: () => request<KnowledgeStatus>('/knowledge/status'),
+    retry: false,
   });
 }
 

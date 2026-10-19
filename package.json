@@ -9,7 +9,9 @@
   "scripts": {
     "build": "npm run build -w @enterprise/shared && npm run build -w @enterprise/mock-provider && npm run build -w @enterprise/gemini-proxy && npm run build -w @enterprise/groq-proxy && npm run build -w @enterprise/openrouter-proxy && npm run build -w @enterprise/api && npm run build -w @enterprise/web",
     "test": "npm run test -w @enterprise/shared && npm run test -w @enterprise/mock-provider && npm run test -w @enterprise/gemini-proxy && npm run test -w @enterprise/groq-proxy && npm run test -w @enterprise/openrouter-proxy && npm run test -w @enterprise/api",
-    "test:e2e": "node scripts/e2e-smoke.mjs",
+    "test:e2e": "node scripts/e2e-smoke.mjs && node scripts/rag-smoke.mjs",
+    "test:rag": "node scripts/rag-smoke.mjs",
+    "test:rag:gemini": "ALLOW_EXTERNAL_EMBEDDINGS=1 RAG_CHAT_AS=admin RAG_CHAT_MODEL=${RAG_CHAT_MODEL:-google-gemini} node scripts/rag-smoke.mjs",
     "test:workspace": "node scripts/workspace-smoke.mjs",
     "test:browser": "node scripts/browser-smoke.mjs",
     "test:gemini": "node --env-file=.env scripts/gemini-smoke.mjs",

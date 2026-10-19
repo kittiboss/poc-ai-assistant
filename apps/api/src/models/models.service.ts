@@ -22,7 +22,9 @@ export class ModelsService {
 
   async forUser(auth: AuthUser) {
     const user = await this.users.syncUser(auth);
+    // Embedding-only models serve retrieval and never appear as chat choices.
     const models = await this.prisma.aIModel.findMany({
+      where: { capabilities: { has: 'chat' } },
       include: { permissions: { where: { userId: user.id } } },
       orderBy: [{ local: 'desc' }, { displayName: 'asc' }],
     });
@@ -48,6 +50,7 @@ export class ModelsService {
       where: { id: modelId }, include: { permissions: { where: { userId } } },
     });
     if (!model || !model.enabled) throw new BadRequestException('Model is disabled or unknown');
+    if (!model.capabilities.includes('chat')) throw new BadRequestException('This model cannot be used for chat');
     if (!modelAllowedForUser(model.allowedRoles, roles, model.permissions[0]?.allowed)) throw new ForbiddenException('Model is not allowed for this user');
     if (!externalProviderAllowed(model.provider, externalSwitch(), credentialFor(model.provider))) {
       throw new ForbiddenException('External provider is not explicitly enabled and configured');

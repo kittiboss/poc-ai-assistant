@@ -8,6 +8,14 @@ model_list:
     litellm_params:
       model: os.environ/OLLAMA_LITELLM_MODEL
       api_base: os.environ/OLLAMA_URL
+  # Offline, deterministic embeddings for the product catalog ($0, no network).
+  - model_name: mock-embedding
+    litellm_params:
+      model: openai/mock-embedding
+      api_base: os.environ/MOCK_PROVIDER_URL
+      api_key: local-mock-no-secret
+    model_info:
+      mode: embedding
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

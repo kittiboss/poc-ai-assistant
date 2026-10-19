@@ -32,6 +32,7 @@ API documentation is generated from the controllers and DTOs with `@nestjs/swagg
 ## Chat lifecycle
 
 1. The API checks conversation ownership, model state, role/user permission, and external-provider gates.
+   With **Product catalog** on, the question is then embedded and the most similar products are retrieved, before anything is persisted, so a failed search leaves no half-written turn.
 2. A unique request ID and `STREAMING` assistant message are persisted before inference.
 3. The last 50 messages go through the gateway abstraction to LiteLLM. Failed and empty turns stay in the user's history but are never replayed to a provider (some providers reject empty content).
 4. Tokens stream as SSE `token` events. Client disconnect aborts the gateway request.
@@ -51,6 +52,14 @@ PostgreSQL owns application state. LiteLLM has no application-table access and n
 Provider cost and customer charge are independent columns. Local models force actual external cost to zero. Simulation has separate provider/customer values and no invoice path.
 
 Conversation deletion is a soft delete so usage and immutable pricing references remain intact. User lists and ownership reads exclude deleted conversations.
+
+## Product catalog retrieval
+
+The `products` table follows the supplied `schema.sql` exactly. Each product is rendered to one passage (stock and status spelled out in words so natural questions match them) and stored in `KnowledgeChunk` with a `vector(768)` embedding and an HNSW cosine index (pgvector, built into the `postgres:17-alpine` image so existing volumes keep their collation behaviour). Rows are keyed by source, item and embedding model, with a hash of the exact embedded text, so indexing re-embeds only new or changed products and removes passages of deleted ones.
+
+Embeddings go through `GatewayService.embed` → LiteLLM `/v1/embeddings`, like chat. `mock-embedding` (signed feature hashing in the mock provider) keeps development and tests offline; `gemini-embedding` reaches Gemini Embedding 2 only through the credential proxy. Model capabilities in the registry drive provider differences: `embedding` keeps a model out of chat, `task-prefix` adds Gemini Embedding 2's query/document prefixes, `output-dimensions` requests 768-d vectors.
+
+Every embedding call takes a governance reservation, is metered as usage with operation `EMBEDDING` (conversation-less for indexing), and releases the reservation. External indexing runs in the background, paced to the provider's per-minute quota, and reports progress through `GET /knowledge/status`. Retrieved passages join workspace document citations as `[S#]` references marked as untrusted data.
 
 ## Provider safety
 
@@ -87,6 +96,7 @@ The API also enforces an installation-wide daily request and token ceiling acros
 apps/
   api/                    NestJS REST/SSE API
     prisma/               schema, migrations (incl. pricing immutability trigger), seed
+      data/               products.csv and schema.sql (product catalog source)
     src/
       main.ts, app.module.ts
       common/
@@ -100,6 +110,7 @@ apps/
       usage/              usage records, price snapshots, external daily limits
       models/             registry, provider/permission policy, availability
       conversations/      conversation CRUD and SSE chat (ChatService)
+      knowledge/          product catalog import, embedding index, retrieval (pgvector)
       admin/              aggregate dashboard, user permissions, admin routes
       health/             public liveness endpoint
       testing/            unit-test fixtures (excluded from the build)
@@ -119,6 +130,7 @@ apps/
   groq-proxy/             opt-in credential proxy and cost allowlist for Groq
   openrouter-proxy/       zero-price router enforcement and credential proxy
 packages/shared/          pricing and token logic shared by API and web
+infra/postgres/           postgres:17-alpine with pgvector compiled in
 infra/keycloak/           importable development realm
 infra/litellm/            active local routes and disabled external examples
 scripts/                  e2e/provider smoke tests, Keycloak client sync

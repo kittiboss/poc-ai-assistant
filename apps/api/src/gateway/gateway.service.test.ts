@@ -64,4 +64,23 @@ describe('gateway abstraction', () => {
     const response = await fetch(`${process.env.OLLAMA_TEST_URL}/api/tags`);
     expect(response.ok).toBe(true);
   });
+
+  it('embeds through LiteLLM, requesting a vector size only when asked, and keeps input order', async () => {
+    const vector = (first: number) => [first, ...Array(767).fill(0)];
+    // LiteLLM's Gemini adapter reports index 0 for every item, so response order is kept.
+    const fetchMock = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ data: [{ index: 0, embedding: vector(1) }, { index: 0, embedding: vector(2) }] }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { vectors } = await new GatewayService().embed('gemini-embedding', ['a', 'b'], 768, true);
+    expect(vectors.map((v) => v[0])).toEqual([1, 2]);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ model: 'gemini-embedding', input: ['a', 'b'], dimensions: 768 });
+    await new GatewayService().embed('mock-embedding', ['a', 'b'], 768, false);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).not.toHaveProperty('dimensions');
+  });
+
+  it('rejects embeddings of the wrong size or count instead of storing them', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: [{ index: 0, embedding: [1, 2, 3] }] }), { status: 200 })));
+    await expect(new GatewayService().embed('mock-embedding', ['a'], 768, false)).rejects.toMatchObject({ status: 502 });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"error":{"message":"quota"}}', { status: 429 })));
+    await expect(new GatewayService().embed('gemini-embedding', ['a'], 768, true)).rejects.toMatchObject({ status: 429 });
+  });
 });
