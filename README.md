@@ -146,7 +146,7 @@ npm run api:types -w @enterprise/web
 
 ## Languages (web)
 
-The web app is available in Thai and English. Texts live in `apps/web/messages/{en,th}.json`; TypeScript checks every key used in the code and fails if the two files do not have the same keys. Numbers, currency, and dates follow the selected language, and times are shown in each user's device time zone. The default language comes from the brand. Ant Design and Ant Design X use the matching locale (Thai strings for Ant Design X are in `apps/web/i18n/antd-locale.ts`). Sign-in passes the language to Keycloak as `ui_locales`, which takes effect only if the realm enables that language.
+The web app is available in Thai and English. Texts live in `apps/web/messages/{en,th}.json`; TypeScript checks every key used in the code and fails if the two files do not have the same keys. Numbers, currency, and dates follow the selected language, and times are shown in each user's device time zone. In Thai, dates show the Buddhist Era year (2569), date pickers included, where they are typed as `DD/MM/BBBB` (`apps/web/i18n/dayjs.ts`); the API still receives ordinary ISO dates. The default language comes from the brand. Ant Design and Ant Design X use the matching locale (Thai strings for Ant Design X are in `apps/web/i18n/antd-locale.ts`). Sign-in passes the language to Keycloak as `ui_locales`, which takes effect only if the realm enables that language.
 
 ## Tests and verification
 

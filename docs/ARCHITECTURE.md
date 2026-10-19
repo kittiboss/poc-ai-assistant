@@ -105,9 +105,9 @@ apps/
       testing/            unit-test fixtures (excluded from the build)
     test/                 vitest setup (offline network guard)
   web/                    Next.js app
-    app/                  routes (/ and /c/[id] for chat, /usage, /admin, /settings), root layout and providers
+    app/                  routes (/ and /c/[id] for chat, /usage, /usage/live, /admin, /settings), root layout and providers
     features/             one folder per screen: chat, usage, admin, settings
-    components/           shared: auth (OIDC provider, gate), brand (provider, logo), layout (shell, theme switcher), ui (primitives, charts)
+    components/           shared: auth (OIDC provider, gate), brand (provider, logo), layout (shell, theme and language switchers), ui (charts, section and metric cards, status tags), api (typed client provider)
     config/brands/        one file per customer brand, selected with NEXT_PUBLIC_BRAND at build time
     theme/                AntD theme from the brand, --app-* CSS variables, light/dark/system mode, bundled fonts
     i18n/                 next-intl setup (locale cookie, AntD locales, formats, browser time zone)

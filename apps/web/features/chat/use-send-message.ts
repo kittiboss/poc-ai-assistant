@@ -1,6 +1,7 @@
 'use client';
 
 import { useQueryClient } from '@tanstack/react-query';
+import { App } from 'antd';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useApi } from '@/components/api/api-provider';
@@ -19,6 +20,8 @@ export function useSendMessage() {
   const queryClient = useQueryClient();
   const router = useRouter();
   const t = useTranslations('chat');
+  const tCommon = useTranslations('common');
+  const { modal } = App.useApp();
   const setStream = useUIStore((state) => state.setStream);
   const setChatError = useUIStore((state) => state.setChatError);
 
@@ -26,6 +29,32 @@ export function useSendMessage() {
     queryClient.setQueryData<ConversationDetail>(queryKeys.conversation(id), (current) =>
       current ? { ...current, messages: update(current.messages) } : current,
     );
+
+  /**
+   * Replaces the streamed chat with the saved one, which has the server's message ids (needed to
+   * branch or rate a reply), the usage and the citations; the server may also have retitled it.
+   * A stopped or failed reply is saved by the server on its own time, so a copy that is still behind
+   * the screen is not used and is fetched again a little later.
+   */
+  const syncSaved = async (id: string) => {
+    const key = queryKeys.conversation(id);
+    const shown = queryClient.getQueryData<ConversationDetail>(key);
+    const behind = (saved: ConversationDetail) =>
+      saved.messages.length < (shown?.messages.length ?? 0) ||
+      saved.messages.some((item) => item.status === 'STREAMING' || item.status === 'PENDING');
+    for (const delay of [0, 500, 1000, 2000, 4000, 8000]) {
+      if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
+      // Anything that changed the chat meanwhile (a new message, a refetch) is newer than this copy.
+      if (queryClient.getQueryData(key) !== shown) break;
+      const saved = await client.GET('/api/conversations/{id}', { params: { path: { id } } }).catch(() => null);
+      if (queryClient.getQueryData(key) !== shown) break;
+      if (saved?.data && !behind(saved.data)) {
+        queryClient.setQueryData(key, saved.data);
+        break;
+      }
+    }
+    await queryClient.invalidateQueries({ queryKey: queryKeys.conversationLists });
+  };
 
   return async function send({
     conversationId,
@@ -40,6 +69,7 @@ export function useSendMessage() {
     const abort = new AbortController();
     let id = conversationId;
     setStream({ conversationId: id ?? '', abort });
+    let completed = false;
     try {
       if (!id) {
         const created = unwrap(await client.POST('/api/conversations', { body: {} }));
@@ -91,7 +121,12 @@ export function useSendMessage() {
         if (
           payload.code === 'SENSITIVE_CONTEXT' &&
           payload.canAcknowledge &&
-          window.confirm(t('sensitiveConfirm', { message: errorMessage(payload) ?? '' }))
+          (await modal.confirm({
+            title: t('sensitiveConfirm'),
+            content: errorMessage(payload),
+            okText: t('sendAnyway'),
+            cancelText: tCommon('cancel'),
+          }))
         )
           response = await post(true);
         else throw new Error(errorMessage(payload) || t('failedStatus', { status: response.status }));
@@ -104,7 +139,6 @@ export function useSendMessage() {
       const decoder = new TextDecoder();
       let buffer = '';
       let content = '';
-      let completed = false;
       while (true) {
         const { value, done } = await reader.read();
         buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
@@ -137,11 +171,10 @@ export function useSendMessage() {
         );
     } finally {
       if (id) {
-        // The saved chat has the server's message ids (needed to branch or rate a reply), the usage and
-        // the citations; the server may also have retitled it.
-        const saved = await client.GET('/api/conversations/{id}', { params: { path: { id } } }).catch(() => null);
-        if (saved?.data) queryClient.setQueryData(queryKeys.conversation(id), saved.data);
-        await queryClient.invalidateQueries({ queryKey: queryKeys.conversationLists });
+        const sync = syncSaved(id);
+        // A finished reply is saved at once, so its buttons appear with the server's ids. A stopped or
+        // failed one can take the server a few seconds, which the user does not wait for.
+        if (completed) await sync;
       }
       setStream(null);
     }

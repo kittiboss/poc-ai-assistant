@@ -9,7 +9,6 @@ import { brandFontClassNames } from '@/theme/fonts';
 import { isResolvedTheme, isThemeMode, resolveTheme, SYSTEM_THEME_COOKIE, THEME_COOKIE } from '@/theme/theme-mode';
 import { themeInitScript } from '@/theme/theme-script';
 import { AppProviders } from './providers';
-import 'highlight.js/styles/github-dark.css';
 import './globals.css';
 
 export async function generateMetadata(): Promise<Metadata> {

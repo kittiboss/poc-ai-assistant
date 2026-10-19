@@ -1,5 +1,5 @@
-import { AuthGate } from '../../../components/auth/auth-gate';
-import { LiveUsagePage } from '../../../features/usage/live-usage-page';
+import { AuthGate } from '@/components/auth/auth-gate';
+import { LiveUsagePage } from '@/features/usage/live-usage-page';
 
 export default function LiveTokensPage() {
   return (

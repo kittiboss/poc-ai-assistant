@@ -1,20 +1,31 @@
 'use client';
-import { FileDown, FileJson, LoaderCircle, MessageSquare, Plus, Search, Send, Square } from 'lucide-react';
+import { Alert, App, Button, Checkbox, Dropdown, Input, Select, type MenuProps } from 'antd';
+import {
+  Archive,
+  ArchiveRestore,
+  Download,
+  LoaderCircle,
+  MessageSquare,
+  MoreHorizontal,
+  Pencil,
+  Pin,
+  PinOff,
+  Plus,
+  Search,
+  Trash2,
+} from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import rehypeHighlight from 'rehype-highlight';
-import remarkGfm from 'remark-gfm';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Shell } from '@/components/layout/shell';
-import { Badge, Button, Card, Select, Textarea } from '@/components/ui/primitives';
+import { StatusTag } from '@/components/ui/status-tag';
 import { useEnumLabel } from '@/i18n/use-enum-label';
 import { ApiError } from '@/lib/api/client';
-import type { ConversationChange, ConversationDetail, ConversationSummary, Message, Model } from '@/lib/api/types';
+import type { ConversationChange, ConversationSummary, Message, Model } from '@/lib/api/types';
 import { cn } from '@/lib/cn';
-import { download } from '@/lib/download';
 import { useUIStore } from '@/stores/ui-store-provider';
+import { ChatComposer } from './chat-composer';
 import {
   isConversationId,
   type Rating,
@@ -26,7 +37,16 @@ import {
   useModels,
   useUpdateConversation,
 } from './chat-queries';
+import { exportChat } from './export-chat';
+import type { MessageActions } from './message-bubble';
+import { MessageList } from './message-list';
+import { PromptDialog } from './prompt-dialog';
 import { useSendMessage } from './use-send-message';
+
+type Dialog =
+  | { kind: 'rename'; item: ConversationSummary }
+  | { kind: 'edit'; message: Message }
+  | { kind: 'feedback'; message: Message; rating: Rating };
 
 /** `/` is a new chat and `/c/<id>` an existing one; the id comes from the URL. */
 export function ChatApp() {
@@ -34,6 +54,7 @@ export function ChatApp() {
   const router = useRouter();
   const t = useTranslations('chat');
   const enums = useEnumLabel();
+  const { message: toast, modal } = App.useApp();
   const setMobileNavOpen = useUIStore((state) => state.setMobileNavOpen);
   const selectedModelId = useUIStore((state) => state.selectedModelId);
   const setSelectedModelId = useUIStore((state) => state.setSelectedModelId);
@@ -42,15 +63,14 @@ export function ChatApp() {
   const stream = useUIStore((state) => state.stream);
   const chatError = useUIStore((state) => state.chatError);
   const setChatError = useUIStore((state) => state.setChatError);
-  const [input, setInput] = useState('');
   const [archived, setArchived] = useState(false);
+  const [dialog, setDialog] = useState<Dialog | null>(null);
   // Search runs on the server (titles and message content), so it waits for a pause in typing.
   const [searchQuery, setSearchQuery] = useState(search.trim());
   useEffect(() => {
     const timer = setTimeout(() => setSearchQuery(search.trim()), 200);
     return () => clearTimeout(timer);
   }, [search]);
-  const bottomRef = useRef<HTMLDivElement>(null);
 
   const models = useModels();
   const conversations = useConversations({ search: searchQuery, archived });
@@ -61,13 +81,9 @@ export function ChatApp() {
   const feedback = useFeedback();
   const send = useSendMessage();
 
-  const messages = conversation.data?.messages;
-  // Braces matter: scroll methods return a Promise in current browsers, and React would treat it as the effect cleanup.
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
+  const messages = conversation.data?.messages ?? [];
   const modelList = useMemo(() => models.data ?? [], [models.data]);
+  const modelNames = useMemo(() => new Map(modelList.map((model) => [model.id, model.displayName])), [modelList]);
   const modelId = selectedModelId || modelList.find((model) => model.available)?.id || modelList[0]?.id || '';
   const selectedModel = modelList.find((model) => model.id === modelId);
   const generating = stream !== null;
@@ -78,8 +94,8 @@ export function ChatApp() {
   const error = chatError || loadError?.message;
   const title =
     conversation.data?.title ?? conversations.data?.find((item) => item.id === activeId)?.title ?? t('newConversation');
+  const reportError = (cause: unknown) => toast.error((cause as Error).message);
 
-  const reportError = (cause: unknown) => setChatError((cause as Error).message);
   const leaveSidebar = () => {
     setMobileNavOpen(false);
     setChatError('');
@@ -89,27 +105,32 @@ export function ChatApp() {
     leaveSidebar();
     router.push('/');
   };
-  const update = (id: string, change: ConversationChange) =>
-    updateConversation.mutateAsync({ id, change }).catch(reportError);
-  const rename = (item: ConversationSummary) => {
-    const next = window.prompt(t('renamePrompt'), item.title)?.trim();
-    if (next) void update(item.id, { title: next });
-  };
-  const remove = async (item: ConversationSummary) => {
-    if (!window.confirm(t('deleteConfirm', { title: item.title }))) return;
+  const update = async (item: ConversationSummary, change: ConversationChange, done?: string) => {
     try {
-      await deleteConversation.mutateAsync(item.id);
-      if (item.id === activeId) router.push('/');
+      await updateConversation.mutateAsync({ id: item.id, change });
+      if (done) toast.success(done);
+      return true;
     } catch (cause) {
       reportError(cause);
+      return false;
     }
   };
-  const submit = () => {
-    const prompt = input.trim();
-    if (!prompt || generating || !modelId) return;
-    setInput('');
-    void send({ conversationId: activeId, prompt, modelId });
-  };
+  const confirmDelete = (item: ConversationSummary) =>
+    modal.confirm({
+      title: t('deleteTitle'),
+      content: t('deleteConfirm', { title: item.title }),
+      okText: t('delete'),
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await deleteConversation.mutateAsync(item.id);
+          toast.success(t('deleted'));
+          if (item.id === activeId) router.push('/');
+        } catch (cause) {
+          reportError(cause);
+        }
+      },
+    });
 
   // Branch, edit and regenerate copy the chat into a new one, so the original stays as it was.
   const branch = async (message: Message, before = false) => {
@@ -123,159 +144,183 @@ export function ChatApp() {
     const copy = await branch(userMessage, true);
     if (copy) await send({ conversationId: copy.id, prompt, modelId });
   };
-  const edit = (message: Message) => {
-    const content = window.prompt(t('editPrompt'), message.content)?.trim();
-    if (content) resend(message, content).catch(reportError);
-  };
-  const regenerate = (message: Message) => {
-    const index = messages?.findIndex((item) => item.id === message.id) ?? -1;
-    const userMessage = messages
-      ?.slice(0, index)
-      .reverse()
-      .find((item) => item.role === 'USER');
-    if (userMessage) resend(userMessage, userMessage.content).catch(reportError);
-  };
-  const rate = (message: Message, rating: Rating) => {
+  const submitFeedback = async (message: Message, rating: Rating, comment: string) => {
     if (!activeId) return;
-    const comment = window.prompt(t('feedbackPrompt'), message.feedbackComment || '');
-    if (comment === null) return;
-    feedback.mutateAsync({ conversationId: activeId, messageId: message.id, rating, comment }).catch(reportError);
+    try {
+      await feedback.mutateAsync({ conversationId: activeId, messageId: message.id, rating, comment });
+      setDialog(null);
+      toast.success(t('feedbackSaved'));
+    } catch (cause) {
+      reportError(cause);
+    }
   };
-
-  const actions = (message: Message) => (
-    <div className="mt-3 flex flex-wrap gap-1 text-xs">
-      <ActionButton onClick={() => navigator.clipboard.writeText(message.content).catch(reportError)}>
-        {t('copyText')}
-      </ActionButton>
-      <ActionButton disabled={generating} onClick={() => branch(message).catch(reportError)}>
-        {t('branch')}
-      </ActionButton>
-      {message.role === 'USER' && !message.metadata.tool ? (
-        <ActionButton disabled={generating} onClick={() => edit(message)}>
-          {t('editResend')}
-        </ActionButton>
-      ) : message.role === 'ASSISTANT' ? (
-        <>
-          {!message.metadata.tool && (
-            <ActionButton disabled={generating} onClick={() => regenerate(message)}>
-              {t('regenerate')}
-            </ActionButton>
-          )}
-          {([1, -1] as const).map((rating) => (
-            <ActionButton
-              key={rating}
-              disabled={generating}
-              aria-label={rating === 1 ? t('helpful') : t('unhelpful')}
-              className={message.feedback === rating ? 'bg-primary-soft text-primary' : undefined}
-              onClick={() => rate(message, rating)}
-            >
-              {rating === 1 ? '👍' : '👎'}
-            </ActionButton>
-          ))}
-        </>
-      ) : null}
-    </div>
+  const handlers: MessageActions = {
+    branch: (message) =>
+      branch(message)
+        .then(() => toast.success(t('branched')))
+        .catch(reportError),
+    edit: (message) => setDialog({ kind: 'edit', message }),
+    regenerate: (message) => {
+      const index = messages.findIndex((item) => item.id === message.id);
+      const userMessage = messages.slice(0, index).findLast((item) => item.role === 'USER');
+      if (userMessage) resend(userMessage, userMessage.content).catch(reportError);
+    },
+    rate: (message, rating) => setDialog({ kind: 'feedback', message, rating }),
+  };
+  // The bubbles get one object for the life of the page, which calls the latest handlers; a new
+  // object each render would re-render every memoized bubble on each streamed chunk.
+  const handlersRef = useRef(handlers);
+  useLayoutEffect(() => {
+    handlersRef.current = handlers;
+  });
+  const messageActions = useMemo<MessageActions>(
+    () => ({
+      branch: (message) => handlersRef.current.branch(message),
+      edit: (message) => handlersRef.current.edit(message),
+      regenerate: (message) => handlersRef.current.regenerate(message),
+      rate: (message, rating) => handlersRef.current.rate(message, rating),
+    }),
+    [],
   );
+
+  const rowMenu = (item: ConversationSummary): MenuProps['items'] => [
+    {
+      key: 'pin',
+      icon: item.pinned ? <PinOff size={14} /> : <Pin size={14} />,
+      label: item.pinned ? t('unpin') : t('pin'),
+      onClick: () => void update(item, { pinned: !item.pinned }),
+    },
+    {
+      key: 'rename',
+      icon: <Pencil size={14} />,
+      label: t('rename'),
+      onClick: () => setDialog({ kind: 'rename', item }),
+    },
+    {
+      key: 'archive',
+      icon: item.archived ? <ArchiveRestore size={14} /> : <Archive size={14} />,
+      label: item.archived ? t('restore') : t('archive'),
+      onClick: () =>
+        void update(item, { archived: !item.archived }, item.archived ? t('restoredToast') : t('archivedToast')),
+    },
+    { type: 'divider' },
+    {
+      key: 'delete',
+      icon: <Trash2 size={14} />,
+      label: t('delete'),
+      danger: true,
+      onClick: () => confirmDelete(item),
+    },
+  ];
 
   const sidebar = (
     <>
       <div className="space-y-3 p-3">
-        <Button className="w-full" onClick={newChat}>
-          <Plus size={17} /> {t('newChat')}
+        <Button type="primary" size="large" block icon={<Plus size={17} />} onClick={newChat}>
+          {t('newChat')}
         </Button>
-        <div className="relative">
-          <Search className="absolute top-2.5 left-3 text-fg-tertiary" size={16} />
-          <input
-            aria-label={t('searchLabel')}
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder={t('searchContent')}
-            className="h-10 w-full rounded-brand bg-fill-tertiary pr-3 pl-9 text-sm outline-none focus:ring-2 focus:ring-primary/30"
-          />
-        </div>
-        <label className="flex gap-2 text-xs">
-          <input type="checkbox" checked={archived} onChange={(event) => setArchived(event.target.checked)} />{' '}
+        <Input
+          size="large"
+          variant="filled"
+          allowClear
+          aria-label={t('searchLabel')}
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder={t('searchContent')}
+          prefix={<Search size={16} className="text-fg-tertiary" />}
+        />
+        <Checkbox checked={archived} onChange={(event) => setArchived(event.target.checked)} className="text-xs">
           {t('showArchived')}
-        </label>
+        </Checkbox>
       </div>
       <div className="flex-1 space-y-1 overflow-auto px-2 pb-3">
         {conversations.data?.map((item) => (
           <div
             key={item.id}
-            className={cn('rounded-brand p-2', activeId === item.id ? 'bg-primary-soft' : 'hover:bg-fill-quaternary')}
+            className={cn(
+              'group flex items-center rounded-brand pr-1',
+              activeId === item.id ? 'bg-primary-soft' : 'hover:bg-fill-quaternary',
+            )}
           >
-            <Link href={`/c/${item.id}`} onClick={leaveSidebar} className="block truncate text-sm">
-              {item.pinned ? '★ ' : ''}
-              {item.title}
+            <Link
+              href={`/c/${item.id}`}
+              onClick={leaveSidebar}
+              className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left text-sm text-fg"
+            >
+              {item.pinned ? (
+                <Pin size={15} className="shrink-0 text-primary" aria-label={t('pinned')} />
+              ) : (
+                <MessageSquare size={15} className="shrink-0 text-fg-tertiary" />
+              )}
+              <span className="truncate">{item.title}</span>
             </Link>
-            <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-fg-secondary">
-              <button onClick={() => update(item.id, { pinned: !item.pinned })}>
-                {item.pinned ? t('unpin') : t('pin')}
-              </button>
-              <button onClick={() => update(item.id, { archived: !item.archived })}>
-                {item.archived ? t('restore') : t('archive')}
-              </button>
-              <button onClick={() => rename(item)}>{t('rename')}</button>
-              <button onClick={() => remove(item)}>{t('delete')}</button>
-            </div>
+            <Dropdown menu={{ items: rowMenu(item) }} trigger={['click']} placement="bottomRight">
+              <Button
+                type="text"
+                size="small"
+                title={t('chatActions')}
+                aria-label={t('chatActions')}
+                icon={<MoreHorizontal size={15} />}
+                // Stays visible while its menu is open.
+                className="hidden text-fg-tertiary group-focus-within:inline-flex group-hover:inline-flex pointer-coarse:inline-flex [&.ant-dropdown-open]:inline-flex"
+              />
+            </Dropdown>
           </div>
         ))}
+        {conversations.data?.length === 0 && (searchQuery || archived) && (
+          <p className="px-3 py-2 text-xs text-fg-tertiary">{searchQuery ? t('noMatches') : t('noArchived')}</p>
+        )}
       </div>
     </>
   );
 
+  const detail = conversation.data;
   const header = (
     <>
       <div className="min-w-0 flex-1">
         <h1 className="truncate font-semibold">{title}</h1>
         <p className="hidden truncate text-xs text-fg-secondary sm:block">{t('private')}</p>
       </div>
-      <div className="flex shrink-0 items-center gap-2">
-        {conversation.data && (
-          <>
-            <button
-              title={t('exportMarkdown')}
-              onClick={() => exportChat(conversation.data, 'md')}
-              className="flex h-9 items-center gap-1 rounded-brand px-2 text-xs text-fg-secondary hover:bg-fill-tertiary"
-            >
-              <FileDown size={15} />
-              <span className="hidden sm:inline">Markdown</span>
-            </button>
-            <button
-              title={t('exportJson')}
-              onClick={() => exportChat(conversation.data, 'json')}
-              className="flex h-9 items-center gap-1 rounded-brand px-2 text-xs text-fg-secondary hover:bg-fill-tertiary"
-            >
-              <FileJson size={15} />
-              <span className="hidden sm:inline">JSON</span>
-            </button>
-          </>
+      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+        {detail && (
+          <Dropdown
+            trigger={['click']}
+            placement="bottomRight"
+            menu={{
+              items: [
+                { key: 'md', label: t('exportMarkdown'), onClick: () => exportChat(detail, 'md') },
+                { key: 'json', label: t('exportJson'), onClick: () => exportChat(detail, 'json') },
+              ],
+            }}
+          >
+            <Button type="text" icon={<Download size={16} />} title={t('export')} aria-label={t('export')} />
+          </Dropdown>
         )}
         <Select
           aria-label={t('chatModel')}
-          className="w-36 sm:w-64 lg:w-auto"
+          className="w-36 sm:w-64 lg:w-96"
+          value={modelId || undefined}
           disabled={generating}
-          value={modelId}
-          onChange={(event) => setSelectedModelId(event.target.value)}
-        >
-          {modelList.map((model) => (
-            <option key={model.id} value={model.id} disabled={!model.available}>
-              {t('modelOption', {
-                name: model.displayName,
-                provider: model.provider,
-                location: model.local ? t('modelLocal') : t('modelExternal'),
-                status: enums.modelStatus(model.status),
-              })}
-            </option>
-          ))}
-        </Select>
+          onChange={setSelectedModelId}
+          popupMatchSelectWidth={false}
+          options={modelList.map((model) => ({
+            value: model.id,
+            disabled: !model.available,
+            label: t('modelOption', {
+              name: model.displayName,
+              provider: model.provider,
+              location: model.local ? t('modelLocal') : t('modelExternal'),
+              status: enums.modelStatus(model.status),
+            }),
+          }))}
+        />
         {selectedModel && (
-          <Badge className="hidden xl:inline-flex" tone={selectedModel.available ? 'success' : 'error'}>
+          <StatusTag tone={selectedModel.available ? 'success' : 'error'} className="hidden xl:inline-flex">
             {t('modelBadge', {
               location: enums.label('location', selectedModel.local ? 'LOCAL' : 'EXTERNAL'),
               status: enums.modelStatus(selectedModel.status),
             })}
-          </Badge>
+          </StatusTag>
         )}
       </div>
     </>
@@ -284,110 +329,88 @@ export function ChatApp() {
   return (
     <Shell active="chat" sidebar={sidebar} header={header}>
       <div className="flex h-full flex-col">
-        <section className="flex-1 overflow-auto">
-          <div className="mx-auto max-w-3xl space-y-5 px-4 py-6 md:px-6 md:py-10">
-            {notFound ? (
-              <NotFound />
-            ) : activeId && conversation.isPending ? (
-              <div className="grid place-items-center py-20">
-                <LoaderCircle className="animate-spin text-primary" />
-              </div>
-            ) : activeId && conversation.isError ? null : (
-              <>
-                {!messages?.length && <EmptyState models={modelList} />}
-                {messages?.map((message) => (
-                  <MessageBubble
-                    key={message.id}
-                    message={message}
-                    actions={message.status === 'STREAMING' ? undefined : actions(message)}
-                  />
-                ))}
-              </>
-            )}
-            <div ref={bottomRef} />
-          </div>
-        </section>
+        <MessageList
+          messages={notFound ? [] : messages}
+          actions={messageActions}
+          canChange={!generating}
+          modelNames={modelNames}
+        >
+          {notFound ? (
+            <NotFound />
+          ) : activeId && conversation.isPending ? (
+            <div className="grid place-items-center py-20">
+              <LoaderCircle className="animate-spin text-primary" />
+            </div>
+          ) : activeId && conversation.isError ? null : (
+            !messages.length && <EmptyState models={modelList} />
+          )}
+        </MessageList>
         <footer className="shrink-0 bg-linear-to-t from-layout via-layout px-3 pt-2 pb-[calc(1.25rem+env(safe-area-inset-bottom))] md:px-5">
-          <div className="mx-auto max-w-3xl">
+          <div className="mx-auto flex max-w-3xl flex-col gap-2">
             {selectedModel && !selectedModel.local && (
-              <div className="mb-2 rounded-brand bg-warning-soft px-3 py-2 text-xs text-warning-text">
-                {t('externalNotice', { provider: selectedModel.provider })}
-              </div>
+              <Alert type="warning" title={t('externalNotice', { provider: selectedModel.provider })} />
             )}
             {error && (
-              <div role="alert" className="mb-2 rounded-brand bg-error-soft px-3 py-2 text-sm text-error-text">
-                {error}
-              </div>
+              <Alert type="error" title={error} closable={Boolean(chatError)} onClose={() => setChatError('')} />
             )}
-            <Card className="flex items-end gap-2 p-2 shadow-lg">
-              <Textarea
-                aria-label={t('messageLabel')}
-                rows={1}
-                maxLength={20000}
-                value={input}
-                disabled={generating || notFound}
-                onChange={(event) => setInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
-                    event.preventDefault();
-                    submit();
-                  }
-                }}
-                placeholder={t('placeholder')}
-                className="max-h-40 min-h-11 border-0 shadow-none focus:ring-0"
-              />
-              {generating ? (
-                <Button
-                  variant="secondary"
-                  className="h-11 w-11 shrink-0 px-0"
-                  onClick={() => stream?.abort.abort()}
-                  title={t('stop')}
-                >
-                  <Square size={16} />
-                </Button>
-              ) : (
-                <Button
-                  className="h-11 w-11 shrink-0 px-0"
-                  onClick={submit}
-                  disabled={!input.trim() || !selectedModel?.available || notFound}
-                  title={t('send')}
-                >
-                  <Send size={17} />
-                </Button>
-              )}
-            </Card>
-            <p className="mt-2 text-center text-[11px] text-fg-secondary">{t('disclaimerSources')}</p>
+            <ChatComposer
+              generating={generating}
+              canSend={Boolean(selectedModel?.available)}
+              disabled={notFound}
+              onSend={(prompt) => void send({ conversationId: activeId, prompt, modelId })}
+              onStop={() => stream?.abort.abort()}
+            />
+            <p className="text-center text-[11px] text-fg-secondary">{t('disclaimerSources')}</p>
           </div>
         </footer>
       </div>
+      {dialog?.kind === 'rename' && (
+        <PromptDialog
+          key={dialog.item.id}
+          title={t('renameTitle')}
+          label={t('renamePrompt')}
+          initialValue={dialog.item.title}
+          requiredMessage={t('titleRequired')}
+          maxLength={120}
+          saving={updateConversation.isPending}
+          onSubmit={async (value) => {
+            if (await update(dialog.item, { title: value }, t('renamed'))) setDialog(null);
+          }}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.kind === 'edit' && (
+        <PromptDialog
+          key={dialog.message.id}
+          title={t('editResend')}
+          label={t('editPrompt')}
+          initialValue={dialog.message.content}
+          multiline
+          requiredMessage={t('messageRequired')}
+          maxLength={20000}
+          okText={t('send')}
+          onSubmit={(value) => {
+            setDialog(null);
+            resend(dialog.message, value).catch(reportError);
+          }}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.kind === 'feedback' && (
+        <PromptDialog
+          key={`${dialog.message.id}:${dialog.rating}`}
+          title={dialog.rating === 1 ? t('helpful') : t('unhelpful')}
+          label={t('feedbackPrompt')}
+          initialValue={dialog.message.feedbackComment ?? ''}
+          multiline
+          maxLength={1000}
+          okText={t('sendFeedback')}
+          saving={feedback.isPending}
+          onSubmit={(value) => void submitFeedback(dialog.message, dialog.rating, value)}
+          onClose={() => setDialog(null)}
+        />
+      )}
     </Shell>
-  );
-}
-
-function exportChat(chat: ConversationDetail, format: 'md' | 'json') {
-  if (format === 'json') return download('conversation.json', JSON.stringify(chat, null, 2), 'application/json');
-  const sources = (message: Message) =>
-    message.citations
-      .map(
-        (source) =>
-          `[${source.label}] ${source.filename}${source.page ? `, page ${source.page}` : ''}\n> ${source.content.replace(/\n/g, '\n> ')}`,
-      )
-      .join('\n\n');
-  const body = chat.messages
-    .map(
-      (message) =>
-        `## ${message.role}${message.modelId ? ` (${message.modelId})` : ''}\n\n${message.content}\n\n${sources(message)}`,
-    )
-    .join('\n\n');
-  download('conversation.md', `# ${chat.title}\n\n${body}`, 'text/markdown');
-}
-
-function ActionButton({ className, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  return (
-    <button
-      {...props}
-      className={cn('rounded-brand-sm px-2 py-1 hover:bg-fill-tertiary disabled:opacity-50', className)}
-    />
   );
 }
 
@@ -418,79 +441,6 @@ function EmptyState({ models }: { models: Model[] }) {
       <p className="mx-auto mt-2 max-w-md text-sm text-fg-secondary">
         {t('emptyBody', { count: models.filter((model) => model.available).length })}
       </p>
-    </div>
-  );
-}
-
-function MessageBubble({ message, actions }: { message: Message; actions?: React.ReactNode }) {
-  const t = useTranslations('chat');
-  const enums = useEnumLabel();
-  const mine = message.role === 'USER';
-  const { tool, filename } = message.metadata;
-  return (
-    <div className={cn('flex', mine ? 'justify-end' : 'justify-start')}>
-      <div
-        className={cn(
-          'max-w-[95%] min-w-0 rounded-brand-lg px-4 py-3 text-sm leading-6',
-          mine ? 'bg-primary text-on-primary' : 'w-full border border-line-secondary bg-surface',
-        )}
-      >
-        {mine ? (
-          <div className="whitespace-pre-wrap">{message.content}</div>
-        ) : (
-          <>
-            <div className="mb-2 flex items-center gap-2 text-xs text-fg-secondary">
-              {message.status === 'STREAMING' && <LoaderCircle className="animate-spin" size={11} />}
-              {tool ? t('localTool', { tool }) : message.modelId}
-              <Badge tone={message.status === 'ERROR' ? 'error' : 'neutral'}>
-                {enums.label('messageStatus', message.status)}
-              </Badge>
-            </div>
-            <div className="prose max-w-none overflow-auto">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]}>
-                {message.content || (message.status === 'STREAMING' ? '…' : '')}
-              </ReactMarkdown>
-            </div>
-            {message.citations.length > 0 && (
-              <details className="mt-4 rounded-brand bg-fill-quaternary p-3">
-                <summary className="cursor-pointer text-xs font-semibold">{t('sources')}</summary>
-                {message.citations.map((source) => (
-                  <details key={source.id} className="mt-3">
-                    <summary className="cursor-pointer text-xs">
-                      [{source.label}] {source.filename}
-                      {source.page ? ` · ${t('sourcePage', { page: source.page })}` : ''}
-                    </summary>
-                    <p className="mt-2 text-xs whitespace-pre-wrap text-fg-secondary">{source.content}</p>
-                  </details>
-                ))}
-              </details>
-            )}
-            {message.usage && (
-              <p className="mt-3 text-[11px] text-fg-secondary">
-                {t('usageLine', {
-                  input: message.usage.inputTokens,
-                  output: message.usage.outputTokens,
-                  duration: message.usage.durationMs,
-                  kind: enums.label('usageKind', message.usage.usageKind),
-                  currency: message.usage.currency,
-                  cost: Number(message.usage.actualProviderCost).toFixed(6),
-                  charge: Number(message.usage.customerCharge).toFixed(6),
-                })}
-              </p>
-            )}
-            {filename && (
-              <Button
-                className="mt-3"
-                variant="secondary"
-                onClick={() => download(filename, message.metadata.content || '', message.metadata.mime)}
-              >
-                {t('downloadFile', { filename })}
-              </Button>
-            )}
-          </>
-        )}
-        {actions}
-      </div>
     </div>
   );
 }

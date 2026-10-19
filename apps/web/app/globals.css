@@ -105,34 +105,107 @@
   --chart-cursor: var(--app-color-primary-bg);
 }
 
-/* Markdown replies. Unlayered on purpose so they keep winning over the highlight.js theme.
-   Code blocks stay dark in both modes; their colors match the github-dark highlight theme. */
-.prose pre {
-  overflow-x: auto;
-  border-radius: var(--app-radius);
-  background: #0d1117;
-  color: #e6edf3;
-  padding: 1rem;
-}
-.prose pre code.hljs {
-  padding: 0;
-  background: transparent;
-}
-.prose code:not(pre code) {
-  border-radius: var(--app-radius-sm);
-  background: color-mix(in srgb, var(--app-color-primary) 12%, transparent);
-  padding: 0.1rem 0.3rem;
-}
-.prose p {
-  margin: 0.6rem 0;
-}
-.prose ul,
-.prose ol {
-  padding-left: 1.25rem;
-}
-.prose a {
-  color: var(--app-color-primary);
-  text-decoration: underline;
+/* AI replies (XMarkdown). Its base stylesheet is unlayered and driven by CSS variables, so spacing
+   is tuned through those variables and colors come from the --app-* tokens of the brand and mode. */
+@layer components {
+  .x-markdown-app {
+    --text-color: var(--app-color-text);
+    --font-size: inherit;
+    --margin-block: 0 0 0.75em 0;
+    --margin-ul-ol: 0 0 0.75em 0;
+    --padding-ul-ol: 0 0 0 1.5em;
+    --margin-li: 0.25em 0;
+    --margin-pre: 0.75em 0;
+    --td-th-padding: 0.5em 0.85em;
+    --table-margin: 0.75em 0;
+    --hr-margin: 1.25em 0;
+    --padding-code-inline: 0.15em 0.4em;
+    --small-border-radius: var(--app-radius-sm);
+  }
+
+  .x-markdown-app > :last-child {
+    margin-bottom: 0;
+  }
+
+  .x-markdown-app :is(h1, h2, h3, h4) {
+    margin: 1.25em 0 0.5em;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+
+  .x-markdown-app :is(h1, h2, h3, h4):first-child {
+    margin-top: 0;
+  }
+
+  .x-markdown-app h1 {
+    font-size: 1.5em;
+  }
+
+  .x-markdown-app h2 {
+    font-size: 1.3em;
+  }
+
+  .x-markdown-app h3 {
+    font-size: 1.15em;
+  }
+
+  .x-markdown-app a {
+    color: var(--app-color-primary);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .x-markdown-app li::marker {
+    color: var(--app-color-text-tertiary);
+  }
+
+  .x-markdown-app blockquote {
+    margin: 0.75em 0;
+    border-left: 3px solid var(--app-color-primary-border);
+    border-radius: 0 var(--app-radius) var(--app-radius) 0;
+    background: var(--app-color-primary-bg);
+    padding: 0.5em 1em;
+    color: var(--app-color-text-secondary);
+  }
+
+  .x-markdown-app hr {
+    border: 0;
+    border-top: 1px solid var(--app-color-border-secondary);
+  }
+
+  /* Wide tables scroll inside the reply instead of widening the page. */
+  .x-markdown-app table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .x-markdown-app thead {
+    background: var(--app-color-fill-quaternary);
+  }
+
+  .x-markdown-app :is(th, td) {
+    border: 1px solid var(--app-color-border-secondary);
+    text-align: left;
+  }
+
+  .x-markdown-app :not(pre) > code {
+    background: color-mix(in srgb, var(--app-color-primary) 12%, transparent);
+    font-family: var(--font-mono);
+  }
+
+  .x-markdown-app .plain-code {
+    overflow-x: auto;
+    border-radius: var(--app-radius);
+    background: var(--app-color-fill-quaternary);
+    padding: 0.75em 1em;
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+  }
+
+  .x-markdown-app .xmd-tail {
+    color: var(--app-color-primary);
+  }
 }
 
 /* Live usage page (features/usage/live-usage-page.tsx). */
@@ -149,10 +222,10 @@
 @keyframes live-glow {
   0%,
   100% {
-    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.15);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--app-color-warning) 15%, transparent);
   }
   50% {
-    box-shadow: 0 0 0 12px rgba(245, 158, 11, 0);
+    box-shadow: 0 0 0 12px color-mix(in srgb, var(--app-color-warning) 0%, transparent);
   }
 }
 @keyframes live-enter {
@@ -181,47 +254,66 @@
     opacity: 0;
   }
 }
+@keyframes live-fade {
+  0%,
+  60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
 @keyframes slow-spin {
   to {
     transform: rotate(360deg);
   }
 }
-.live-token-bar {
-  transform-origin: bottom;
-  animation: live-rise 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-.token-glow {
-  animation: live-glow 1.8s ease-in-out infinite;
-}
-.live-row {
-  animation: live-enter 0.55s ease-out;
-}
-.token-increase {
-  animation: live-pop 2.4s ease-out both;
-}
-.animate-spin-slow {
-  animation: slow-spin 3s linear infinite;
-}
-.live-hero,
-.live-metric {
-  transition:
-    transform 0.25s ease,
-    box-shadow 0.25s ease;
-}
-.live-hero:hover,
-.live-metric:hover {
-  transform: translateY(-2px);
-}
-@media (prefers-reduced-motion: reduce) {
-  .live-token-bar,
-  .token-glow,
-  .live-row,
-  .token-increase,
+
+@layer components {
+  .live-token-bar {
+    transform-origin: bottom;
+    animation: live-rise 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .token-glow {
+    animation: live-glow 1.8s ease-in-out infinite;
+  }
+  .live-row {
+    animation: live-enter 0.55s ease-out;
+  }
+  /* The "+N tokens" badge disappears through this animation, so it is never switched off. */
+  .token-increase {
+    animation: live-pop 2.4s ease-out both;
+  }
   .animate-spin-slow {
-    animation: none !important;
+    animation: slow-spin 3s linear infinite;
   }
   .live-hero,
   .live-metric {
-    transition: none;
+    transition:
+      transform 0.25s ease,
+      box-shadow 0.25s ease;
+  }
+  .live-hero:hover,
+  .live-metric:hover {
+    transform: translateY(-2px);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .live-token-bar,
+    .token-glow,
+    .live-row,
+    .animate-spin-slow {
+      animation: none;
+    }
+    .token-increase {
+      animation-name: live-fade;
+    }
+    .live-hero,
+    .live-metric {
+      transition: none;
+    }
+    .live-hero:hover,
+    .live-metric:hover {
+      transform: none;
+    }
   }
 }
