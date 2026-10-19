@@ -29,6 +29,7 @@ export function swaggerConfig(env: NodeJS.ProcessEnv = process.env) {
     .addTag('health', 'Liveness')
     .addTag('models', 'Models available to the caller')
     .addTag('conversations', 'Conversations and streamed chat')
+    .addTag('knowledge', 'Product catalog retrieval (RAG)')
     .addTag('usage', "The caller's usage and costs")
     .addTag('admin', 'Administration (ADMIN role)')
     .addOAuth2({

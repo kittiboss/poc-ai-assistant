@@ -34,6 +34,10 @@ class CitationView {
   @ApiProperty({ ...NULLABLE_INT, description: 'PDF page, when known.' }) page!: number | null;
   @ApiProperty({ description: 'The retrieved excerpt.' }) content!: string;
   @ApiProperty({ example: 'S1', description: 'The label the reply cites, e.g. [S1].' }) label!: string;
+  @ApiPropertyOptional({ enum: ['product'], description: 'Present for product-catalog retrieval results.' })
+  kind?: 'product';
+  @ApiPropertyOptional({ type: 'number', example: 0.812, description: 'Product vector similarity score from 0 to 1.' })
+  score?: number;
 }
 
 class MessageMetadata {
@@ -61,7 +65,7 @@ export class MessageView {
   @ApiProperty({ enum: MessageStatus, description: 'INTERRUPTED keeps partial content after cancellation or an API restart.' }) status!: MessageStatus;
   @ApiProperty({ ...NULLABLE_STRING, example: 'local-mock' }) modelId!: string | null;
   @ApiProperty({ ...NULLABLE_STRING, description: 'Set on assistant messages; matches the usage record.' }) requestId!: string | null;
-  @ApiProperty({ type: [CitationView], description: 'Project sources retrieved for this reply.' }) citations!: CitationView[];
+  @ApiProperty({ type: [CitationView], description: 'Project or product-catalog sources retrieved for this reply.' }) citations!: CitationView[];
   @ApiProperty({ type: () => MessageMetadata }) metadata!: MessageMetadata;
   @ApiProperty({ ...NULLABLE_INT, enum: [-1, 1], description: 'The owner\'s rating of an assistant reply.' }) feedback!: number | null;
   @ApiProperty(NULLABLE_STRING) feedbackComment!: string | null;

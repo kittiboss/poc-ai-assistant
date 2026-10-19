@@ -2,12 +2,15 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 
 const upstreamOrigin = 'https://generativelanguage.googleapis.com';
 const maxRequestBytes = 2 * 1024 * 1024;
-const allowedMethods = new Set(['generateContent', 'streamGenerateContent', 'countTokens']);
+const generationMethods = new Set(['generateContent', 'streamGenerateContent', 'countTokens']);
+const embeddingMethods = new Set(['embedContent', 'batchEmbedContents']);
+const maxEmbeddingBatch = 100;
 // Grounding (Search/Maps), code execution and URL context arrive as tools and can be billed
 // separately; cached content incurs storage charges. The POC never needs any of them.
 const forbiddenFields = ['tools', 'toolConfig', 'tool_config', 'cachedContent', 'cached_content'];
 
-export type ProxyOptions = { apiKey: string; model: string; maxOutputTokens: number };
+/** embeddingModel is optional: without it, no embedding call can leave the installation. */
+export type ProxyOptions = { apiKey: string; model: string; embeddingModel?: string; maxOutputTokens: number };
 
 export function buildUpstreamUrl(requestUrl: string) {
   const url = new URL(requestUrl, upstreamOrigin);
@@ -16,18 +19,25 @@ export function buildUpstreamUrl(requestUrl: string) {
   return url;
 }
 
-/** Only plain text generation (and free token counting) for the one configured model may leave the installation. */
-export function isAllowedRequest(method: string, upstream: URL, model: string) {
-  const match = upstream.pathname.match(/^\/v1beta\/models\/([^/:]+):([A-Za-z]+)$/);
-  return method === 'POST' && Boolean(match) && match![1] === model && allowedMethods.has(match![2]);
+/** Only text generation (plus free token counting) for GEMINI_MODEL, and text embedding for GEMINI_EMBEDDING_MODEL, may leave the installation. */
+export function isAllowedRequest(method: string, upstream: URL, model: string, embeddingModel?: string) {
+  const match = /^\/v1beta\/models\/([^/:]+):([A-Za-z]+)$/.exec(upstream.pathname);
+  if (method !== 'POST' || !match) return false;
+  const [, target, action] = match;
+  return (target === model && generationMethods.has(action)) || (Boolean(embeddingModel) && target === embeddingModel && embeddingMethods.has(action));
 }
 
 /** Returns the body to forward, or an error string when the request uses a feature outside the POC allowlist. */
-export function sanitizeBody(raw: Buffer, maxOutputTokens: number): Buffer | string {
+export function sanitizeBody(raw: Buffer, maxOutputTokens: number, embeddingModel?: string): Buffer | string {
   let body: Record<string, unknown>;
   try { body = JSON.parse(raw.toString('utf8') || '{}'); } catch { return 'Request body must be JSON'; }
   const forbidden = forbiddenFields.find((field) => body[field] !== undefined);
   if (forbidden) return `Field "${forbidden}" is disabled by the POC cost policy`;
+  if (body.requests !== undefined) {
+    const requests = body.requests;
+    if (!Array.isArray(requests) || !requests.length || requests.length > maxEmbeddingBatch) return `Embedding batches must contain 1 to ${maxEmbeddingBatch} requests`;
+    if (requests.some((item) => !item || typeof item !== 'object' || (item as { model?: unknown }).model !== `models/${embeddingModel}`)) return 'Every embedding request must target the configured embedding model';
+  }
   if (body.contents !== undefined) {
     const configKey = body.generation_config !== undefined ? 'generation_config' : 'generationConfig';
     const config = (body[configKey] || {}) as Record<string, unknown>;
@@ -62,13 +72,13 @@ function reject(response: ServerResponse, status: number, message: string) {
 async function proxy(request: IncomingMessage, response: ServerResponse, options: ProxyOptions) {
   const upstreamUrl = buildUpstreamUrl(request.url || '/');
   process.stdout.write(`Gemini proxy request ${request.method || 'UNKNOWN'} ${upstreamUrl.pathname}\n`);
-  if (!isAllowedRequest(request.method || '', upstreamUrl, options.model)) {
+  if (!isAllowedRequest(request.method || '', upstreamUrl, options.model, options.embeddingModel)) {
     reject(response, 403, 'Request is outside the Gemini proxy allowlist');
     return;
   }
 
   try {
-    const body = sanitizeBody(await readBody(request), options.maxOutputTokens);
+    const body = sanitizeBody(await readBody(request), options.maxOutputTokens, options.embeddingModel);
     if (typeof body === 'string') {
       reject(response, 400, body);
       return;
@@ -105,7 +115,7 @@ export function createGeminiProxy(options: ProxyOptions) {
   return createServer((request, response) => {
     if (request.method === 'GET' && request.url === '/health') {
       response.writeHead(200, { 'Content-Type': 'application/json' });
-      response.end(JSON.stringify({ status: 'ok', credentialConfigured: Boolean(options.apiKey), model: options.model }));
+      response.end(JSON.stringify({ status: 'ok', credentialConfigured: Boolean(options.apiKey), model: options.model, embeddingModel: options.embeddingModel || null }));
       return;
     }
     void proxy(request, response, options);

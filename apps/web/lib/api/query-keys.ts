@@ -11,6 +11,7 @@ export const queryKeys = {
   conversation: (id: string) => ['conversations', id] as const,
   myUsage: ['usage', 'me'] as const,
   liveUsage: ['usage', 'me', 'live'] as const,
+  knowledge: ['knowledge', 'status'] as const,
   admin: {
     all: ['admin'] as const,
     workspace: ['admin', 'workspace'] as const,

@@ -13,6 +13,7 @@ import { useEnumLabel } from '@/i18n/use-enum-label';
 import type { AdminSummary } from '@/lib/api/types';
 import { providers, useAdminData, type Filters } from './admin-queries';
 import { AuditLog } from './audit-log';
+import { KnowledgePanel } from './knowledge-panel';
 import { ModelRegistry } from './model-registry';
 import { PricingSection } from './pricing-section';
 import { useAdminFormat } from './use-admin-format';
@@ -214,6 +215,7 @@ export function AdminDashboard() {
         </SectionCard>
 
         <ModelRegistry models={models} loading={data.models.isPending} />
+        <KnowledgePanel refreshKey={models} />
         <PricingSection models={models} pricing={data.pricing.data ?? []} loading={data.pricing.isPending} />
         <UserPermissions users={data.users.data ?? []} models={models} loading={data.users.isPending} />
         <AuditLog entries={data.audit.data ?? []} loading={data.audit.isPending} />

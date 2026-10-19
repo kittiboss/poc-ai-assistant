@@ -70,3 +70,4 @@ export function estimateTokens(text: string): number {
 }
 
 export * from './workspace';
+export * from './products';

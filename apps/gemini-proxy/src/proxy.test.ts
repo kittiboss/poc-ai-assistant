@@ -72,4 +72,24 @@ describe('Gemini credential proxy', () => {
       server.close();
     }
   });
+
+  it('allows embedding only for the configured embedding model, and nothing when none is configured', () => {
+    const allowed = (path: string, embeddingModel?: string) => isAllowedRequest('POST', buildUpstreamUrl(path), model, embeddingModel);
+    expect(allowed('/v1beta/models/gemini-embedding-2:batchEmbedContents', 'gemini-embedding-2')).toBe(true);
+    expect(allowed('/v1beta/models/gemini-embedding-2:embedContent', 'gemini-embedding-2')).toBe(true);
+    expect(allowed('/v1beta/models/gemini-embedding-2:batchEmbedContents')).toBe(false);
+    expect(allowed('/v1beta/models/gemini-embedding-001:batchEmbedContents', 'gemini-embedding-2')).toBe(false);
+    expect(allowed(`/v1beta/models/${model}:batchEmbedContents`, 'gemini-embedding-2')).toBe(false);
+    expect(allowed('/v1beta/models/gemini-embedding-2:generateContent', 'gemini-embedding-2')).toBe(false);
+  });
+
+  it('validates embedding batches against the configured model and size limit', () => {
+    const batch = (requests: unknown) => sanitizeBody(Buffer.from(JSON.stringify({ requests })), 512, 'gemini-embedding-2');
+    const item = { model: 'models/gemini-embedding-2', content: { parts: [{ text: 'hello' }] }, outputDimensionality: 768 };
+    expect(Buffer.isBuffer(batch([item, item]))).toBe(true);
+    expect(batch([{ ...item, model: 'models/other' }])).toMatch(/configured embedding model/);
+    expect(batch([])).toMatch(/1 to 100/);
+    expect(batch(Array.from({ length: 101 }, () => item))).toMatch(/1 to 100/);
+    expect(JSON.parse((batch([item]) as Buffer).toString()).requests[0].outputDimensionality).toBe(768);
+  });
 });

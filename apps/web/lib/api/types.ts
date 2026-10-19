@@ -23,3 +23,7 @@ export type PriceResult = Schema<'PriceResultView'>;
 export type UpdatePricing = components['schemas']['UpdatePricingDto'];
 export type UpdateModel = components['schemas']['UpdateModelDto'];
 export type SendMessage = components['schemas']['SendMessageDto'];
+export type IndexRun = Schema<'IndexRunView'>;
+export type KnowledgeStatus = Schema<'KnowledgeStatusView'>;
+export type KnowledgeImportResult = Schema<'ImportResultView'>;
+export type KnowledgeReindexResult = Schema<'ReindexResultView'>;

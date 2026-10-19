@@ -1,6 +1,6 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { createApp, MOCK_RESPONSE } from './app';
+import { createApp, MOCK_RESPONSE, mockEmbedding } from './app';
 
 describe('OpenAI-compatible mock provider', () => {
   it('returns the required deterministic response', async () => {
@@ -35,5 +35,21 @@ describe('OpenAI-compatible mock provider', () => {
     const streamedText = stream.text.split('\n').filter((line) => line.startsWith('data: {')).map((line) => JSON.parse(line.slice(6)).choices?.[0]?.delta?.content || '').join('');
     expect(streamedText).toBe(whole.body.choices[0].message.content);
     expect(streamedText).toContain('items.reduce');
+  });
+
+  it('embeds deterministically, normalised, and closer for texts that share words', async () => {
+    const response = await request(createApp()).post('/v1/embeddings').send({
+      input: ['wireless earbuds with IPX5 water resistance', 'earbuds IPX5 water resistant', 'enameled cast iron dutch oven'],
+      dimensions: 768,
+    });
+    expect(response.status).toBe(200);
+    const [a, b, c] = response.body.data.map((item: { embedding: number[] }) => item.embedding);
+    const dot = (x: number[], y: number[]) => x.reduce((sum, value, i) => sum + value * y[i], 0);
+    expect(a).toHaveLength(768);
+    expect(dot(a, a)).toBeCloseTo(1, 6);
+    expect(dot(a, b)).toBeGreaterThan(dot(a, c));
+    expect(mockEmbedding('wireless earbuds with IPX5 water resistance')).toEqual(a);
+    expect(response.body.usage.prompt_tokens).toBeGreaterThan(0);
+    expect(mockEmbedding('')[0]).toBe(1);
   });
 });

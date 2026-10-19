@@ -31,7 +31,11 @@ This repository is an enterprise-shaped POC, not a production security or billin
 ## Platform limitations
 
 - Single-customer/single-installation architecture only; this is intentional.
-- POC RAG is PostgreSQL full-text/substring retrieval over bounded, locally extracted text. It has no embeddings, OCR, semantic ranking, citation-grounding evaluation, document versioning, or enterprise search connectors.
+- Project-document RAG is PostgreSQL full-text/substring retrieval over bounded, locally extracted text. It has no embeddings, OCR, semantic ranking, citation-grounding evaluation, document versioning, or enterprise search connectors.
+- Product-catalog RAG returns the top-k most similar products. Questions over the whole table (counts, totals, "all out-of-stock items", price ranges) need SQL-backed answers (text-to-SQL or structured filters), and ranking would benefit from hybrid keyword search, a reranker, and an evaluation set.
+- The catalog is visible to every signed-in user, including cost price. Add field-level and per-collection access control before mixing data of different sensitivity.
+- Indexing state lives in the API process (one run at a time per instance) and planning reads the whole catalog into memory. For large catalogs or multiple API replicas, move indexing to a durable job queue (Valkey/BullMQ worker) with a distributed lock and streamed planning.
+- Gemini free-tier embeddings may be used by Google to improve its products, and the free tier's per-minute quota bounds indexing speed. Production needs a paid tier with appropriate data terms, or a self-hosted embedding model.
 - POC document ingestion supports TXT/MD/CSV/JSON/text PDF/DOCX with size/page/count limits and an isolated parser worker. It has no malware scanning, content-disarm, DLP, classification workflow, or secure enterprise file connector.
 - POC local tools are explicitly invoked allowlisted functions, not an autonomous agent or arbitrary code/shell execution. There is no connector permission framework, BYOK workflow, license enforcement, or subscription plan.
 - POC department/user/model/role quotas and simulated budgets are admission controls, not payment or invoice controls. Department and role totals use current membership rather than historical snapshots. Sensitive-content detection is regex best-effort, not enterprise DLP or moderation.
