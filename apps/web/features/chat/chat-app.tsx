@@ -34,6 +34,7 @@ import {
   useConversations,
   useDeleteConversation,
   useFeedback,
+  useKnowledgeStatus,
   useModels,
   useUpdateConversation,
 } from './chat-queries';
@@ -64,6 +65,7 @@ export function ChatApp() {
   const chatError = useUIStore((state) => state.chatError);
   const setChatError = useUIStore((state) => state.setChatError);
   const [archived, setArchived] = useState(false);
+  const [useProductCatalog, setUseProductCatalog] = useState(true);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   // Search runs on the server (titles and message content), so it waits for a pause in typing.
   const [searchQuery, setSearchQuery] = useState(search.trim());
@@ -73,6 +75,7 @@ export function ChatApp() {
   }, [search]);
 
   const models = useModels();
+  const catalog = useKnowledgeStatus();
   const conversations = useConversations({ search: searchQuery, archived });
   const conversation = useConversation(activeId, stream?.conversationId === activeId);
   const updateConversation = useUpdateConversation();
@@ -86,6 +89,7 @@ export function ChatApp() {
   const modelNames = useMemo(() => new Map(modelList.map((model) => [model.id, model.displayName])), [modelList]);
   const modelId = selectedModelId || modelList.find((model) => model.available)?.id || modelList[0]?.id || '';
   const selectedModel = modelList.find((model) => model.id === modelId);
+  const catalogOn = useProductCatalog && Boolean(catalog.data?.available);
   const generating = stream !== null;
   const notFound =
     (activeId !== undefined && !isConversationId(activeId)) ||
@@ -142,7 +146,7 @@ export function ChatApp() {
   };
   const resend = async (userMessage: Message, prompt: string) => {
     const copy = await branch(userMessage, true);
-    if (copy) await send({ conversationId: copy.id, prompt, modelId });
+    if (copy) await send({ conversationId: copy.id, prompt, modelId, useProductCatalog: catalogOn });
   };
   const submitFeedback = async (message: Message, rating: Rating, comment: string) => {
     if (!activeId) return;
@@ -314,6 +318,19 @@ export function ChatApp() {
             }),
           }))}
         />
+        <Checkbox
+          checked={catalogOn}
+          disabled={generating || !catalog.data?.available}
+          onChange={(event) => setUseProductCatalog(event.target.checked)}
+          title={
+            catalog.data?.available
+              ? t('productCatalogReady', { count: catalog.data.indexed })
+              : t('productCatalogUnavailable', { problem: catalog.data?.problem ?? t('productCatalogNotReady') })
+          }
+          className="whitespace-nowrap"
+        >
+          {t('productCatalog')}
+        </Checkbox>
         {selectedModel && (
           <StatusTag tone={selectedModel.available ? 'success' : 'error'} className="hidden xl:inline-flex">
             {t('modelBadge', {
@@ -347,6 +364,15 @@ export function ChatApp() {
         </MessageList>
         <footer className="shrink-0 bg-linear-to-t from-layout via-layout px-3 pt-2 pb-[calc(1.25rem+env(safe-area-inset-bottom))] md:px-5">
           <div className="mx-auto flex max-w-3xl flex-col gap-2">
+            {catalogOn && catalog.data?.embeddingModel.local === false && (
+              <Alert
+                type="warning"
+                title={t('productCatalogExternal', {
+                  provider: catalog.data.embeddingModel.provider ?? t('productCatalogExternalProvider'),
+                  model: catalog.data.embeddingModel.displayName,
+                })}
+              />
+            )}
             {selectedModel && !selectedModel.local && (
               <Alert type="warning" title={t('externalNotice', { provider: selectedModel.provider })} />
             )}
@@ -357,7 +383,9 @@ export function ChatApp() {
               generating={generating}
               canSend={Boolean(selectedModel?.available)}
               disabled={notFound}
-              onSend={(prompt) => void send({ conversationId: activeId, prompt, modelId })}
+              onSend={(prompt) =>
+                void send({ conversationId: activeId, prompt, modelId, useProductCatalog: catalogOn })
+              }
               onStop={() => stream?.abort.abort()}
             />
             <p className="text-center text-[11px] text-fg-secondary">{t('disclaimerSources')}</p>

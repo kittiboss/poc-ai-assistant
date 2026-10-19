@@ -1,10 +1,12 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
 }
 
 enum Provider {
@@ -43,6 +45,11 @@ enum UsageKind {
   ACTUAL
   ESTIMATED
   SYNTHETIC
+}
+
+enum UsageOperation {
+  CHAT
+  EMBEDDING
 }
 
 enum PricingStrategy {
@@ -168,8 +175,9 @@ model UsageRecord {
   id             String        @id @default(uuid()) @db.Uuid
   requestId      String        @unique
   userId         String        @db.Uuid
-  conversationId String        @db.Uuid
+  conversationId String?       @db.Uuid
   modelId        String
+  operation      UsageOperation @default(CHAT)
   pricingVersionId String?     @db.Uuid
   provider       Provider
   inputTokens    Int
@@ -186,7 +194,7 @@ model UsageRecord {
   pricingSnapshot Json
   createdAt      DateTime      @default(now())
   user         User         @relation(fields: [userId], references: [id])
-  conversation Conversation @relation(fields: [conversationId], references: [id])
+  conversation Conversation? @relation(fields: [conversationId], references: [id])
   model        AIModel      @relation(fields: [modelId], references: [id])
   pricingVersion PricingVersion? @relation(fields: [pricingVersionId], references: [id])
   @@index([userId, createdAt])
@@ -325,3 +333,44 @@ model UsageReservation {
   @@index([expiresAt])
 }
 
+/// Product catalog from the supplied schema.sql; snake_case columns are kept as delivered.
+model Product {
+  productId     Int      @id @map("product_id")
+  sku           String   @unique @db.VarChar(20)
+  name          String   @db.VarChar(150)
+  description   String
+  category      String   @db.VarChar(50)
+  subcategory   String   @db.VarChar(50)
+  brand         String   @db.VarChar(50)
+  price         Decimal  @db.Decimal(10, 2)
+  costPrice     Decimal  @map("cost_price") @db.Decimal(10, 2)
+  currency      String   @default("USD") @db.Char(3)
+  stockQuantity Int      @default(0) @map("stock_quantity")
+  weightKg      Decimal? @map("weight_kg") @db.Decimal(8, 2)
+  color         String?  @db.VarChar(50)
+  material      String?  @db.VarChar(100)
+  rating        Decimal? @db.Decimal(2, 1)
+  reviewCount   Int      @default(0) @map("review_count")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @map("created_at") @db.Timestamp(6)
+  updatedAt     DateTime @map("updated_at") @db.Timestamp(6)
+
+  @@map("products")
+}
+
+/// Embedded passages for retrieval. Written with raw SQL (Prisma cannot write the vector column);
+/// the HNSW index on "embedding" is created in the migration.
+model KnowledgeChunk {
+  id             String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  source         String
+  sourceId       String
+  title          String
+  content        String
+  contentHash    String
+  embeddingModel String
+  embedding      Unsupported("vector(768)")
+  createdAt      DateTime                    @default(now())
+  updatedAt      DateTime                    @default(now()) @updatedAt
+
+  @@unique([source, sourceId, embeddingModel])
+}

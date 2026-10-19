@@ -1,5 +1,10 @@
 import { Injectable } from "@nestjs/common";
-import { Provider, RequestStatus, UsageKind } from "@prisma/client";
+import {
+  Provider,
+  RequestStatus,
+  UsageKind,
+  UsageOperation,
+} from "@prisma/client";
 import { calculatePrice, estimateTokens } from "@enterprise/shared";
 import Big from "big.js";
 import type { AuthUser } from "../common/auth/auth.decorators";
@@ -17,8 +22,10 @@ import {
 export type UsageInput = {
   requestId: string;
   userId: string;
-  conversationId: string;
+  /** Null for work outside a conversation, such as indexing the product catalog. */
+  conversationId: string | null;
   model: { id: string; provider: Provider; local: boolean };
+  operation?: UsageOperation;
   input: string;
   output: string;
   durationMs: number;
@@ -81,6 +88,7 @@ export class UsageService {
         userId: args.userId,
         conversationId: args.conversationId,
         modelId: args.model.id,
+        operation: args.operation ?? UsageOperation.CHAT,
         pricingVersionId: pricing.id,
         provider: args.model.provider,
         inputTokens,

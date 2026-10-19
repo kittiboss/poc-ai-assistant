@@ -13,6 +13,7 @@ services:
       PORT: 4020
       GEMINI_API_KEY: ${GEMINI_API_KEY:?Set GEMINI_API_KEY in the ignored .env file}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      GEMINI_EMBEDDING_MODEL: ${GEMINI_EMBEDDING_MODEL:-gemini-embedding-2}
       GEMINI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-1024}
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4020/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
@@ -20,7 +21,8 @@ services:
       timeout: 3s
       retries: 20
     # The only container granted internet egress for a model provider. It holds the
-    # credential and forwards nothing but text generation for GEMINI_MODEL.
+    # credential and forwards nothing but text generation for GEMINI_MODEL and text
+    # embedding for GEMINI_EMBEDDING_MODEL.
     networks: [backend, edge]
     restart: unless-stopped
 
@@ -28,6 +30,8 @@ services:
     environment:
       GEMINI_PROXY_URL: http://gemini-proxy:4020/v1beta/models/${GEMINI_MODEL:-gemini-3.5-flash-lite}
       GEMINI_LITELLM_MODEL: gemini/${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      GEMINI_EMBEDDING_PROXY_URL: http://gemini-proxy:4020/v1beta/models/${GEMINI_EMBEDDING_MODEL:-gemini-embedding-2}
+      GEMINI_EMBEDDING_LITELLM_MODEL: gemini/${GEMINI_EMBEDDING_MODEL:-gemini-embedding-2}
     volumes:
       - ./infra/litellm/config.gemini.yaml:/app/config.yaml:ro
     depends_on:
@@ -39,3 +43,6 @@ services:
       ENABLE_EXTERNAL_PROVIDERS: ${ENABLE_EXTERNAL_PROVIDERS:-false}
       GEMINI_API_KEY: ${GEMINI_API_KEY:?Set GEMINI_API_KEY in the ignored .env file}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      GEMINI_EMBEDDING_MODEL: ${GEMINI_EMBEDDING_MODEL:-gemini-embedding-2}
+      # Retrieval uses Gemini Embedding 2 once an admin enables it in the model registry.
+      RAG_EMBEDDING_MODEL: ${RAG_EMBEDDING_MODEL:-gemini-embedding}

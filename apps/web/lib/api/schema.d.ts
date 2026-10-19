@@ -533,6 +533,66 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/knowledge/status': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Product catalog status for chat
+     * @description Whether chat can use the product catalog, and with which embedding model. Never calls a provider.
+     */
+    get: operations['KnowledgeController_status'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/admin/knowledge/products/import': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Import the product catalog from CSV (audited)
+     * @description Upserts rows by product_id using the columns of prisma/data/schema.sql. The whole file is rejected if any row is invalid. Does not embed anything; run reindex afterwards.
+     */
+    post: operations['KnowledgeAdminController_importProducts'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/admin/knowledge/reindex': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Start embedding new or changed products (audited)
+     * @description Uses RAG_EMBEDDING_MODEL and returns immediately; poll GET /knowledge/status (lastRun) for progress. Unchanged products are skipped. With an external model the provider is called in small paced batches (default 25 texts every 15.5 s, because Gemini's free tier counts each text against a 100-per-minute quota), through the same quotas and daily limits as chat.
+     */
+    post: operations['KnowledgeAdminController_reindex'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/admin/summary': {
     parameters: {
       query?: never;
@@ -984,6 +1044,16 @@ export interface components {
        * @example S1
        */
       label: string;
+      /**
+       * @description Present for product-catalog retrieval results.
+       * @enum {string}
+       */
+      kind?: 'product';
+      /**
+       * @description Product vector similarity score from 0 to 1.
+       * @example 0.812
+       */
+      score?: number;
     };
     MessageMetadata: {
       /** @description Local tool that produced this message; no model was called. */
@@ -1032,7 +1102,7 @@ export interface components {
       modelId: string | null;
       /** @description Set on assistant messages; matches the usage record. */
       requestId: string | null;
-      /** @description Project sources retrieved for this reply. */
+      /** @description Project or product-catalog sources retrieved for this reply. */
       citations: components['schemas']['CitationView'][];
       metadata: components['schemas']['MessageMetadata'];
       /**
@@ -1112,6 +1182,11 @@ export interface components {
       templateId?: string;
       /** @description Acknowledge regex warnings for the complete outgoing context. */
       acknowledgeSensitive?: boolean;
+      /**
+       * @description Retrieve matching products from the indexed catalog and supply them as cited context. With an external embedding model the message text is sent to that provider for the search.
+       * @default false
+       */
+      useProductCatalog: boolean;
     };
     ProjectDto: {
       name: string;
@@ -1152,6 +1227,127 @@ export interface components {
       temperature: number;
       maxOutputTokens: number;
       enabled: boolean;
+    };
+    EmbeddingModelRef: {
+      /** @example gemini-embedding */
+      id: string;
+      /** @example Gemini Embedding 2 */
+      displayName: string;
+      /** @example GEMINI */
+      provider: string | null;
+      local: boolean | null;
+    };
+    IndexRunView: {
+      /** @example gemini-embedding */
+      embeddingModel: string;
+      /**
+       * @description New or changed products this run embeds.
+       * @example 200
+       */
+      pending: number;
+      /**
+       * @description Products embedded so far.
+       * @example 100
+       */
+      embedded: number;
+      /**
+       * @description Passages removed for deleted products.
+       * @example 0
+       */
+      removed: number;
+      /**
+       * @description Embedding requests (up to 100 products locally, 25 by default for external models).
+       * @example 8
+       */
+      batches: number;
+      /** Format: date-time */
+      startedAt: string;
+      /**
+       * Format: date-time
+       * @description Null while running.
+       */
+      finishedAt: string | null;
+      /** @description Why the run stopped early; saved batches stay indexed. */
+      error: string | null;
+    };
+    KnowledgeStatusView: {
+      /** @description The embedding model is enabled and configured, so the catalog can be indexed. */
+      ready: boolean;
+      /** @description True when chat can use the product catalog (ready and indexed). */
+      available: boolean;
+      /** @example the product catalog has not been indexed yet */
+      problem: string | null;
+      /** @description Set by RAG_EMBEDDING_MODEL. */
+      embeddingModel: components['schemas']['EmbeddingModelRef'];
+      /** @example 200 */
+      products: number;
+      /**
+       * @description Products whose current text is embedded with this model.
+       * @example 200
+       */
+      indexed: number;
+      /**
+       * @description New or changed products awaiting indexing.
+       * @example 0
+       */
+      stale: number;
+      /**
+       * @description Stored passages for products that no longer exist.
+       * @example 0
+       */
+      orphaned: number;
+      indexing: boolean;
+      /** @description Current or most recent indexing run since the API started. */
+      lastRun: components['schemas']['IndexRunView'] | null;
+    };
+    ImportResultView: {
+      /** @example 200 */
+      rows: number;
+      /** @example 0 */
+      created: number;
+      /** @example 200 */
+      updated: number;
+      status: components['schemas']['KnowledgeStatusView'];
+    };
+    ReindexResultView: {
+      /** @example gemini-embedding */
+      embeddingModel: string;
+      /**
+       * @description New or changed products this run embeds.
+       * @example 200
+       */
+      pending: number;
+      /**
+       * @description Products embedded so far.
+       * @example 100
+       */
+      embedded: number;
+      /**
+       * @description Passages removed for deleted products.
+       * @example 0
+       */
+      removed: number;
+      /**
+       * @description Embedding requests (up to 100 products locally, 25 by default for external models).
+       * @example 8
+       */
+      batches: number;
+      /** Format: date-time */
+      startedAt: string;
+      /**
+       * Format: date-time
+       * @description Null while running.
+       */
+      finishedAt: string | null;
+      /** @description Why the run stopped early; saved batches stay indexed. */
+      error: string | null;
+      /** @description False when nothing changed, so no provider was called. */
+      started: boolean;
+      /**
+       * @description Expected duration; external models are paced to the provider's per-minute quota.
+       * @example 109
+       */
+      estimatedSeconds: number;
     };
     TokenTotals: {
       inputTokens: number | null;
@@ -3286,6 +3482,172 @@ export interface operations {
       };
       /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
       401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  KnowledgeController_status: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['KnowledgeStatusView'];
+        };
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  KnowledgeAdminController_importProducts: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'multipart/form-data': {
+          /**
+           * Format: binary
+           * @description products.csv, at most 2 MB
+           */
+          file: string;
+        };
+      };
+    };
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ImportResultView'];
+        };
+      };
+      /** @description Missing file, invalid CSV (row-level errors are listed), or a SKU owned by another product_id. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Caller does not have the ADMIN role. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  KnowledgeAdminController_reindex: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ReindexResultView'];
+        };
+      };
+      /** @description The embedding model is disabled, unconfigured, or not an embedding model. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Caller does not have the ADMIN role. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Indexing is already running. */
+      409: {
         headers: {
           [name: string]: unknown;
         };

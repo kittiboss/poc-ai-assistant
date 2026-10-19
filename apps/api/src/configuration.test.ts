@@ -59,6 +59,40 @@ describe("security and provider configuration", () => {
     );
   });
 
+  it("routes product-catalog embeddings offline by default and Gemini embeddings only in opt-in overlays", () => {
+    const read = (file: string) => readFileSync(resolve(root, file), "utf8");
+    for (const file of [
+      "config.yaml",
+      "config.gemini.yaml",
+      "config.external.yaml",
+      "config.groq.yaml",
+      "config.openrouter.yaml",
+    ])
+      expect(read(`infra/litellm/${file}`)).toContain(
+        "model_name: mock-embedding",
+      );
+    expect(read("infra/litellm/config.yaml")).not.toContain("gemini-embedding");
+    for (const file of ["config.gemini.yaml", "config.external.yaml"]) {
+      const config = read(`infra/litellm/${file}`);
+      expect(config).toContain("model_name: gemini-embedding");
+      expect(config).toMatch(
+        /api_base: os\.environ\/GEMINI_EMBEDDING_PROXY_URL\s+api_key: local-gemini-proxy/,
+      );
+    }
+    const base = read("docker-compose.yml");
+    expect(base).toContain(
+      "RAG_EMBEDDING_MODEL: ${RAG_EMBEDDING_MODEL:-mock-embedding}",
+    );
+    expect(base).toContain("context: infra/postgres");
+    for (const overlay of [
+      "docker-compose.gemini.yml",
+      "docker-compose.external.yml",
+    ])
+      expect(read(overlay)).toMatch(
+        /GEMINI_EMBEDDING_PROXY_URL: http:\/\/gemini-proxy:4020\//,
+      );
+  });
+
   it("keeps external providers out of the default LiteLLM routes", () => {
     const config = readFileSync(
       resolve(root, "infra/litellm/config.yaml"),

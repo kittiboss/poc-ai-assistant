@@ -36,6 +36,42 @@ export class GatewayService {
     } catch { return new Set(); }
   }
 
+  /**
+   * Embeds texts through LiteLLM's OpenAI-compatible /v1/embeddings route; vectors come back in input order.
+   * `requestDimensions` asks the provider to shorten its vectors; the result is always checked against `dimensions`.
+   */
+  async embed(model: string, inputs: string[], dimensions: number, requestDimensions: boolean, signal?: AbortSignal): Promise<{ vectors: number[][]; usage?: GatewayUsage }> {
+    let response: Response;
+    try {
+      response = await fetch(`${this.url}/v1/embeddings`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${this.key}` },
+        body: JSON.stringify({ model, input: inputs, ...(requestDimensions ? { dimensions } : {}), encoding_format: 'float' }),
+        signal: signal ?? AbortSignal.timeout(60_000),
+      });
+    } catch (error) {
+      if (signal?.aborted) throw error;
+      throw new BadGatewayException('AI gateway is unavailable');
+    }
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      this.logger.warn(`Gateway rejected ${model} embedding request with ${response.status}: ${detail.slice(0, 300)}`);
+      throw gatewayError(response.status);
+    }
+    const json = (await response.json()) as { data?: Array<{ embedding: number[]; index?: number }>; usage?: GatewayUsage };
+    const data = json.data || [];
+    // Some providers return index 0 for every item; fall back to response order then.
+    const indexed = data.every((item, i) => item.index === undefined || item.index === i) || new Set(data.map((item) => item.index)).size !== data.length
+      ? data
+      : [...data].sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+    const vectors = indexed.map((item) => item.embedding);
+    if (vectors.length !== inputs.length || vectors.some((vector) => vector.length !== dimensions)) {
+      this.logger.warn(`Embedding response for ${model} had ${vectors.length} vector(s) of length ${vectors[0]?.length ?? 0}; expected ${inputs.length} × ${dimensions}`);
+      throw new BadGatewayException('The embedding provider returned an unexpected response.');
+    }
+    return { vectors, usage: json.usage };
+  }
+
   async stream(
     model: string,
     messages: GatewayMessage[],
