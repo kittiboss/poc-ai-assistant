@@ -279,30 +279,44 @@ export function ChatApp() {
   );
 
   const detail = conversation.data;
+  // Only the title and the export menu, so the title keeps its room on a phone.
   const header = (
     <>
       <div className="min-w-0 flex-1">
         <h1 className="truncate font-semibold">{title}</h1>
         <p className="hidden truncate text-xs text-fg-secondary sm:block">{t('private')}</p>
       </div>
-      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-        {detail && (
-          <Dropdown
-            trigger={['click']}
-            placement="bottomRight"
-            menu={{
-              items: [
-                { key: 'md', label: t('exportMarkdown'), onClick: () => exportChat(detail, 'md') },
-                { key: 'json', label: t('exportJson'), onClick: () => exportChat(detail, 'json') },
-              ],
-            }}
-          >
-            <Button type="text" icon={<Download size={16} />} title={t('export')} aria-label={t('export')} />
-          </Dropdown>
-        )}
+      {detail && (
+        <Dropdown
+          trigger={['click']}
+          placement="bottomRight"
+          menu={{
+            items: [
+              { key: 'md', label: t('exportMarkdown'), onClick: () => exportChat(detail, 'md') },
+              { key: 'json', label: t('exportJson'), onClick: () => exportChat(detail, 'json') },
+            ],
+          }}
+        >
+          <Button
+            type="text"
+            icon={<Download size={16} />}
+            title={t('export')}
+            aria-label={t('export')}
+            className="-mr-1 shrink-0"
+          />
+        </Dropdown>
+      )}
+    </>
+  );
+
+  // The model and the product catalog for the next message, right above the composer. The status tag
+  // needs a wide composer; a container query, because the sidebar changes the width too.
+  const composerOptions = (
+    <div className="@container">
+      <div className="flex items-center gap-2 @sm:gap-3">
         <Select
           aria-label={t('chatModel')}
-          className="w-36 sm:w-64 lg:w-96"
+          className="max-w-96 min-w-0 flex-1"
           value={modelId || undefined}
           disabled={generating}
           onChange={setSelectedModelId}
@@ -327,12 +341,12 @@ export function ChatApp() {
               ? t('productCatalogReady', { count: catalog.data.indexed })
               : t('productCatalogUnavailable', { problem: catalog.data?.problem ?? t('productCatalogNotReady') })
           }
-          className="whitespace-nowrap"
+          className="shrink-0 whitespace-nowrap"
         >
           {t('productCatalog')}
         </Checkbox>
         {selectedModel && (
-          <StatusTag tone={selectedModel.available ? 'success' : 'error'} className="hidden xl:inline-flex">
+          <StatusTag tone={selectedModel.available ? 'success' : 'error'} className="hidden shrink-0 @xl:inline-flex">
             {t('modelBadge', {
               location: enums.label('location', selectedModel.local ? 'LOCAL' : 'EXTERNAL'),
               status: enums.modelStatus(selectedModel.status),
@@ -340,7 +354,7 @@ export function ChatApp() {
           </StatusTag>
         )}
       </div>
-    </>
+    </div>
   );
 
   return (
@@ -379,6 +393,7 @@ export function ChatApp() {
             {error && (
               <Alert type="error" title={error} closable={Boolean(chatError)} onClose={() => setChatError('')} />
             )}
+            {composerOptions}
             <ChatComposer
               generating={generating}
               canSend={Boolean(selectedModel?.available)}

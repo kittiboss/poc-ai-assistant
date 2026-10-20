@@ -13,7 +13,7 @@ export interface UIState {
   sidebarOpen: boolean;
   /** Set when the session could not be renewed, so the sign-in screen can say why */
   sessionExpired: boolean;
-  /** Model picked in the chat header; empty means the first available one */
+  /** Model picked above the chat composer; empty means the first available one */
   selectedModelId: string;
   conversationSearch: string;
   stream: ActiveStream | null;
