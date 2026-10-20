@@ -1,10 +1,17 @@
+import type { XProviderProps } from '@ant-design/x';
 import type { ThemeConfig } from 'antd';
 import type { Locale } from '@/i18n/config';
 import type { BrandFontKey } from '@/theme/font-families';
 import type { ThemeMode } from '@/theme/theme-mode';
 
-/** Ant Design overrides for one mode, including component tokens such as Layout.siderBg. */
-export type BrandModeTheme = Pick<ThemeConfig, 'token' | 'components'>;
+/** The theme XProvider takes: Ant Design's, with Ant Design X component tokens added. */
+export type AppThemeConfig = NonNullable<XProviderProps['theme']>;
+
+/**
+ * Overrides for one mode, including component tokens such as Layout.siderBg and those of
+ * Ant Design X components such as Sender.
+ */
+export type BrandModeTheme = Pick<AppThemeConfig, 'token' | 'components'>;
 
 /**
  * Everything that differs between customer installations. Keep it plain JSON (no functions or

@@ -1,11 +1,11 @@
-import { theme, type ThemeConfig } from 'antd';
+import { theme } from 'antd';
 import type { Locale } from '@/i18n/config';
-import type { BrandConfig } from '@/types/brand';
+import type { AppThemeConfig, BrandConfig } from '@/types/brand';
 import { fontStack } from './font-families';
 import type { ResolvedTheme } from './theme-mode';
 
 /** Single source of truth: AntD reads this directly, Tailwind reads it through css-vars.ts. */
-export function createAntdTheme(brand: BrandConfig, mode: ResolvedTheme, locale?: Locale): ThemeConfig {
+export function createAntdTheme(brand: BrandConfig, mode: ResolvedTheme, locale?: Locale): AppThemeConfig {
   const overrides = brand.theme[mode];
   return {
     // A per-mode key gives light and dark tokens different selectors. With a shared key,
