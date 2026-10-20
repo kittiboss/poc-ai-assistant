@@ -125,6 +125,7 @@ apps/
     messages/             UI texts per language (en, th)
     stores/               Zustand UI state (navigation drawer, chosen model, active stream, session notice)
     lib/                  API client and types generated from the OpenAPI document, auth helpers, small helpers
+    e2e/                  Playwright end-to-end tests against the running stack (desktop and phone)
   mock-provider/          offline OpenAI-compatible deterministic provider
   gemini-proxy/           opt-in credential proxy and cost allowlist for Gemini
   groq-proxy/             opt-in credential proxy and cost allowlist for Groq
