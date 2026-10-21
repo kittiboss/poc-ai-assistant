@@ -1,5 +1,5 @@
 'use client';
-import { Alert, App, Button, Checkbox, Dropdown, Input, Select, type MenuProps } from 'antd';
+import { Alert, App, Button, Checkbox, Dropdown, Input, Select, Tooltip, type MenuProps } from 'antd';
 import {
   Archive,
   ArchiveRestore,
@@ -278,6 +278,13 @@ export function ChatApp() {
     </>
   );
 
+  // The folded sidebar keeps only "New chat", as an icon.
+  const railActions = (
+    <Tooltip title={t('newChat')} placement="right">
+      <Button type="primary" size="large" icon={<Plus size={17} />} aria-label={t('newChat')} onClick={newChat} />
+    </Tooltip>
+  );
+
   const detail = conversation.data;
   // Only the title and the export menu, so the title keeps its room on a phone.
   const header = (
@@ -358,7 +365,7 @@ export function ChatApp() {
   );
 
   return (
-    <Shell active="chat" sidebar={sidebar} header={header}>
+    <Shell active="chat" sidebar={sidebar} railActions={railActions} header={header}>
       <div className="flex h-full flex-col">
         <MessageList
           messages={notFound ? [] : messages}
