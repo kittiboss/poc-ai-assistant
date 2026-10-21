@@ -44,8 +44,11 @@ import { MessageList } from './message-list';
 import { PromptDialog } from './prompt-dialog';
 import { useSendMessage } from './use-send-message';
 
+/** What the chat menu needs, from the list (sidebar) or the open chat (header). */
+type ChatItem = Pick<ConversationSummary, 'id' | 'title' | 'pinned' | 'archived'>;
+
 type Dialog =
-  | { kind: 'rename'; item: ConversationSummary }
+  | { kind: 'rename'; item: ChatItem }
   | { kind: 'edit'; message: Message }
   | { kind: 'feedback'; message: Message; rating: Rating };
 
@@ -109,7 +112,7 @@ export function ChatApp() {
     leaveSidebar();
     router.push('/');
   };
-  const update = async (item: ConversationSummary, change: ConversationChange, done?: string) => {
+  const update = async (item: ChatItem, change: ConversationChange, done?: string) => {
     try {
       await updateConversation.mutateAsync({ id: item.id, change });
       if (done) toast.success(done);
@@ -119,7 +122,7 @@ export function ChatApp() {
       return false;
     }
   };
-  const confirmDelete = (item: ConversationSummary) =>
+  const confirmDelete = (item: ChatItem) =>
     modal.confirm({
       title: t('deleteTitle'),
       content: t('deleteConfirm', { title: item.title }),
@@ -187,7 +190,7 @@ export function ChatApp() {
     [],
   );
 
-  const rowMenu = (item: ConversationSummary): MenuProps['items'] => [
+  const chatMenu = (item: ChatItem): MenuProps['items'] => [
     {
       key: 'pin',
       icon: item.pinned ? <PinOff size={14} /> : <Pin size={14} />,
@@ -258,7 +261,7 @@ export function ChatApp() {
               )}
               <span className="truncate">{item.title}</span>
             </Link>
-            <Dropdown menu={{ items: rowMenu(item) }} trigger={['click']} placement="bottomRight">
+            <Dropdown menu={{ items: chatMenu(item) }} trigger={['click']} placement="bottomRight">
               <Button
                 type="text"
                 size="small"
@@ -286,7 +289,7 @@ export function ChatApp() {
   );
 
   const detail = conversation.data;
-  // Only the title and the export menu, so the title keeps its room on a phone.
+  // Only the title, the export menu and the chat's own menu, so the title keeps its room on a phone.
   const header = (
     <>
       <div className="min-w-0 flex-1">
@@ -294,24 +297,28 @@ export function ChatApp() {
         <p className="hidden truncate text-xs text-fg-secondary sm:block">{t('private')}</p>
       </div>
       {detail && (
-        <Dropdown
-          trigger={['click']}
-          placement="bottomRight"
-          menu={{
-            items: [
-              { key: 'md', label: t('exportMarkdown'), onClick: () => exportChat(detail, 'md') },
-              { key: 'json', label: t('exportJson'), onClick: () => exportChat(detail, 'json') },
-            ],
-          }}
-        >
-          <Button
-            type="text"
-            icon={<Download size={16} />}
-            title={t('export')}
-            aria-label={t('export')}
-            className="-mr-1 shrink-0"
-          />
-        </Dropdown>
+        <div className="-mr-1 flex shrink-0 items-center gap-1">
+          <Dropdown
+            trigger={['click']}
+            placement="bottomRight"
+            menu={{
+              items: [
+                { key: 'md', label: t('exportMarkdown'), onClick: () => exportChat(detail, 'md') },
+                { key: 'json', label: t('exportJson'), onClick: () => exportChat(detail, 'json') },
+              ],
+            }}
+          >
+            <Button type="text" icon={<Download size={16} />} title={t('export')} aria-label={t('export')} />
+          </Dropdown>
+          <Dropdown menu={{ items: chatMenu(detail) }} trigger={['click']} placement="bottomRight">
+            <Button
+              type="text"
+              icon={<MoreHorizontal size={16} />}
+              title={t('chatActions')}
+              aria-label={t('chatActions')}
+            />
+          </Dropdown>
+        </div>
       )}
     </>
   );
