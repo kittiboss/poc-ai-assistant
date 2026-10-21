@@ -74,8 +74,9 @@
   }
 
   /* Thai needs more room for vowels and tone marks above and below the line, including in
-     text set with Tailwind's size utilities, which carry their own line heights. */
-  :root:lang(th) {
+     text set with Tailwind's size utilities, which carry their own line heights. Every language
+     gets the same heights, so switching language does not resize anything. */
+  :root {
     line-height: 1.7;
     --text-xs--line-height: 1.7;
     --text-sm--line-height: 1.7;
