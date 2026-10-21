@@ -19,6 +19,7 @@
     "test:groq": "node --env-file=.env scripts/groq-smoke.mjs",
     "test:openrouter": "node --env-file=.env scripts/openrouter-smoke.mjs",
     "keycloak:sync-clients": "node scripts/keycloak-sync-clients.mjs",
+    "switch-brand": "node scripts/switch-brand.mjs",
     "lint": "npm run lint -ws --if-present",
     "format": "prettier --write .",
     "db:generate": "npm run prisma:generate -w @enterprise/api",

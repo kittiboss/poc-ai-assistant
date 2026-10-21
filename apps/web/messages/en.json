@@ -30,6 +30,8 @@
   },
   "nav": {
     "openMenu": "Open menu",
+    "openSidebar": "Open sidebar",
+    "closeSidebar": "Close sidebar",
     "tagline": "LOCAL POC",
     "chat": "Chat",
     "usage": "Usage dashboard",

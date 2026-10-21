@@ -2,9 +2,14 @@ import { chatRow, expect, lastReply, startChat, test } from './fixtures';
 
 // The mobile project only (390 × 844, touch).
 
-test('the menu drawer opens, navigates and closes', async ({ page, m }) => {
-  await page.getByRole('button', { name: m.nav.openMenu }).click();
+test('the menu drawer opens, closes from its button, navigates and closes', async ({ page, m }) => {
+  const openMenu = page.getByRole('button', { name: m.nav.openMenu });
   const drawer = page.getByRole('dialog');
+  await openMenu.click();
+  await drawer.getByRole('button', { name: m.nav.closeSidebar }).click();
+  await expect(drawer).toBeHidden();
+
+  await openMenu.click();
   await expect(drawer).toBeVisible();
   await drawer.getByRole('link', { name: m.nav.usage }).click();
   await expect(page).toHaveURL(/\/usage$/);

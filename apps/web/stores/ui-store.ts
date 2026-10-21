@@ -9,9 +9,11 @@ export interface ActiveStream {
 export interface UIState {
   /** The sidebar drawer on screens narrower than md */
   mobileNavOpen: boolean;
+  /** The sidebar beside the page from md up; open by default */
+  sidebarOpen: boolean;
   /** Set when the session could not be renewed, so the sign-in screen can say why */
   sessionExpired: boolean;
-  /** Model picked in the chat header; empty means the first available one */
+  /** Model picked above the chat composer; empty means the first available one */
   selectedModelId: string;
   conversationSearch: string;
   stream: ActiveStream | null;
@@ -21,6 +23,7 @@ export interface UIState {
 
 export interface UIActions {
   setMobileNavOpen: (open: boolean) => void;
+  setSidebarOpen: (open: boolean) => void;
   setSessionExpired: (expired: boolean) => void;
   setSelectedModelId: (id: string) => void;
   setConversationSearch: (search: string) => void;
@@ -33,6 +36,7 @@ export type UIStore = UIState & UIActions;
 export function createUIStore(initial: Partial<UIState> = {}) {
   return createStore<UIStore>()((set) => ({
     mobileNavOpen: false,
+    sidebarOpen: true,
     sessionExpired: false,
     selectedModelId: '',
     conversationSearch: '',
@@ -40,6 +44,7 @@ export function createUIStore(initial: Partial<UIState> = {}) {
     chatError: '',
     ...initial,
     setMobileNavOpen: (mobileNavOpen) => set({ mobileNavOpen }),
+    setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
     setSessionExpired: (sessionExpired) => set({ sessionExpired }),
     setSelectedModelId: (selectedModelId) => set({ selectedModelId }),
     setConversationSearch: (conversationSearch) => set({ conversationSearch }),

@@ -10,8 +10,8 @@ export type AppLocale = keyof typeof messages;
 
 /** Demo accounts of the development realm (infra/keycloak, listed in the README). */
 export const accounts = {
-  admin: { username: 'admin', password: 'Admin123!' },
-  employee: { username: 'employee1', password: 'Employee123!' },
+  admin: { username: 'admin', password: 'Admin123!', email: 'admin@enterprise.local' },
+  employee: { username: 'employee1', password: 'Employee123!', email: 'employee1@enterprise.local' },
 } as const;
 export type Account = keyof typeof accounts;
 

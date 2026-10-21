@@ -71,3 +71,23 @@ test('deletes a chat after confirming', async ({ page, m, createdChats }) => {
   await expect(chatRow(page, id)).toHaveCount(0);
   createdChats.delete(id);
 });
+
+test("the header has the open chat's menu, right of the export button", async ({ page, m, createdChats }) => {
+  const id = await startChat(page, m, createdChats, 'A chat for the header menu');
+  const header = page.locator('header');
+  const actions = header.getByRole('button', { name: m.chat.chatActions });
+  const exportBox = await header.getByRole('button', { name: m.chat.export }).boundingBox();
+  expect((await actions.boundingBox())!.x).toBeGreaterThan(exportBox!.x);
+
+  await actions.click();
+  await page.getByRole('menuitem', { name: m.chat.pin }).click();
+  await expect(chatRow(page, id).getByLabel(m.chat.pinned)).toBeVisible();
+
+  await actions.click();
+  await expect(page.getByRole('menuitem', { name: m.chat.unpin })).toBeVisible();
+  await page.getByRole('menuitem', { name: m.chat.delete }).click();
+  await page.getByRole('dialog').getByRole('button', { name: m.chat.delete }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(chatRow(page, id)).toHaveCount(0);
+  createdChats.delete(id);
+});

@@ -1,5 +1,5 @@
 'use client';
-import { Alert, App, Button, Checkbox, Dropdown, Input, Select, type MenuProps } from 'antd';
+import { Alert, App, Button, Checkbox, Dropdown, Input, Select, Tooltip, type MenuProps } from 'antd';
 import {
   Archive,
   ArchiveRestore,
@@ -44,8 +44,11 @@ import { MessageList } from './message-list';
 import { PromptDialog } from './prompt-dialog';
 import { useSendMessage } from './use-send-message';
 
+/** What the chat menu needs, from the list (sidebar) or the open chat (header). */
+type ChatItem = Pick<ConversationSummary, 'id' | 'title' | 'pinned' | 'archived'>;
+
 type Dialog =
-  | { kind: 'rename'; item: ConversationSummary }
+  | { kind: 'rename'; item: ChatItem }
   | { kind: 'edit'; message: Message }
   | { kind: 'feedback'; message: Message; rating: Rating };
 
@@ -109,7 +112,7 @@ export function ChatApp() {
     leaveSidebar();
     router.push('/');
   };
-  const update = async (item: ConversationSummary, change: ConversationChange, done?: string) => {
+  const update = async (item: ChatItem, change: ConversationChange, done?: string) => {
     try {
       await updateConversation.mutateAsync({ id: item.id, change });
       if (done) toast.success(done);
@@ -119,7 +122,7 @@ export function ChatApp() {
       return false;
     }
   };
-  const confirmDelete = (item: ConversationSummary) =>
+  const confirmDelete = (item: ChatItem) =>
     modal.confirm({
       title: t('deleteTitle'),
       content: t('deleteConfirm', { title: item.title }),
@@ -187,7 +190,7 @@ export function ChatApp() {
     [],
   );
 
-  const rowMenu = (item: ConversationSummary): MenuProps['items'] => [
+  const chatMenu = (item: ChatItem): MenuProps['items'] => [
     {
       key: 'pin',
       icon: item.pinned ? <PinOff size={14} /> : <Pin size={14} />,
@@ -258,7 +261,7 @@ export function ChatApp() {
               )}
               <span className="truncate">{item.title}</span>
             </Link>
-            <Dropdown menu={{ items: rowMenu(item) }} trigger={['click']} placement="bottomRight">
+            <Dropdown menu={{ items: chatMenu(item) }} trigger={['click']} placement="bottomRight">
               <Button
                 type="text"
                 size="small"
@@ -278,15 +281,23 @@ export function ChatApp() {
     </>
   );
 
+  // The folded sidebar keeps only "New chat", as an icon.
+  const railActions = (
+    <Tooltip title={t('newChat')} placement="right">
+      <Button type="primary" size="large" icon={<Plus size={17} />} aria-label={t('newChat')} onClick={newChat} />
+    </Tooltip>
+  );
+
   const detail = conversation.data;
+  // Only the title, the export menu and the chat's own menu, so the title keeps its room on a phone.
   const header = (
     <>
       <div className="min-w-0 flex-1">
         <h1 className="truncate font-semibold">{title}</h1>
         <p className="hidden truncate text-xs text-fg-secondary sm:block">{t('private')}</p>
       </div>
-      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-        {detail && (
+      {detail && (
+        <div className="-mr-1 flex shrink-0 items-center gap-1">
           <Dropdown
             trigger={['click']}
             placement="bottomRight"
@@ -299,10 +310,27 @@ export function ChatApp() {
           >
             <Button type="text" icon={<Download size={16} />} title={t('export')} aria-label={t('export')} />
           </Dropdown>
-        )}
+          <Dropdown menu={{ items: chatMenu(detail) }} trigger={['click']} placement="bottomRight">
+            <Button
+              type="text"
+              icon={<MoreHorizontal size={16} />}
+              title={t('chatActions')}
+              aria-label={t('chatActions')}
+            />
+          </Dropdown>
+        </div>
+      )}
+    </>
+  );
+
+  // The model and the product catalog for the next message, right above the composer. The status tag
+  // needs a wide composer; a container query, because the sidebar changes the width too.
+  const composerOptions = (
+    <div className="@container">
+      <div className="flex items-center gap-2 @sm:gap-3">
         <Select
           aria-label={t('chatModel')}
-          className="w-36 sm:w-64 lg:w-96"
+          className="max-w-96 min-w-0 flex-1"
           value={modelId || undefined}
           disabled={generating}
           onChange={setSelectedModelId}
@@ -327,12 +355,12 @@ export function ChatApp() {
               ? t('productCatalogReady', { count: catalog.data.indexed })
               : t('productCatalogUnavailable', { problem: catalog.data?.problem ?? t('productCatalogNotReady') })
           }
-          className="whitespace-nowrap"
+          className="shrink-0 whitespace-nowrap"
         >
           {t('productCatalog')}
         </Checkbox>
         {selectedModel && (
-          <StatusTag tone={selectedModel.available ? 'success' : 'error'} className="hidden xl:inline-flex">
+          <StatusTag tone={selectedModel.available ? 'success' : 'error'} className="hidden shrink-0 @xl:inline-flex">
             {t('modelBadge', {
               location: enums.label('location', selectedModel.local ? 'LOCAL' : 'EXTERNAL'),
               status: enums.modelStatus(selectedModel.status),
@@ -340,11 +368,11 @@ export function ChatApp() {
           </StatusTag>
         )}
       </div>
-    </>
+    </div>
   );
 
   return (
-    <Shell active="chat" sidebar={sidebar} header={header}>
+    <Shell active="chat" sidebar={sidebar} railActions={railActions} header={header}>
       <div className="flex h-full flex-col">
         <MessageList
           messages={notFound ? [] : messages}
@@ -379,6 +407,7 @@ export function ChatApp() {
             {error && (
               <Alert type="error" title={error} closable={Boolean(chatError)} onClose={() => setChatError('')} />
             )}
+            {composerOptions}
             <ChatComposer
               generating={generating}
               canSend={Boolean(selectedModel?.available)}

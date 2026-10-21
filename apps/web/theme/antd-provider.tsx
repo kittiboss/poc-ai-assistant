@@ -17,7 +17,7 @@ export function AntdProvider({ children }: { children: ReactNode }) {
   const locale = useLocale();
   // DatePicker month and day names come from dayjs, which has one global locale.
   if (dayjs.locale() !== locale) dayjs.locale(locale);
-  const themeConfig = useMemo(() => createAntdTheme(brand, resolvedTheme, locale), [brand, resolvedTheme, locale]);
+  const themeConfig = useMemo(() => createAntdTheme(brand, resolvedTheme), [brand, resolvedTheme]);
 
   return (
     <XProvider theme={themeConfig} locale={antdLocales[locale]}>

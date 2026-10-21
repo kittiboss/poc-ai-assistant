@@ -133,6 +133,17 @@ NEXT_PUBLIC_BRAND=acme docker compose up --build -d frontend
 2. Put the logo and favicon in `apps/web/public/brands/<id>/`.
 3. Build with `NEXT_PUBLIC_BRAND=<id>`. An unknown id fails the build rather than shipping another brand.
 
+To switch brands quickly, for a demo, with the stack running:
+
+```bash
+npm run switch-brand -- acme          # about 2 s; builds the brand's image the first time
+npm run switch-brand -- default
+npm run switch-brand -- acme build    # rebuild that brand's image after pulling new code
+npm run switch-brand                  # list brands and the one running
+```
+
+Each brand is built once into its own image (`enterprise-ai-assistant-frontend:brand-<id>`), and switching recreates only the frontend container with the same Compose files the stack was started with. The script sets the brand for the build itself, so `NEXT_PUBLIC_BRAND` in `.env` does not change what it builds. It stops with a message if another program, such as a forgotten `next dev`, holds port 3000. Reload open tabs after switching, or use a private window to see the brand's default language and theme.
+
 A brand sets the product name, organization, logo, favicon, primary color, corner radius, font (one of the fonts bundled in `apps/web/theme/fonts.ts`), default language, default theme mode, and optional Ant Design token overrides per mode. Fonts are committed to the repository, so builds need no internet access.
 
 Users pick light, dark, or system theme and Thai or English on the **Settings** page (language also on the sign-in screen); both choices are stored in cookies. Colors in both Ant Design components and Tailwind classes come from the same brand tokens (see [Architecture](docs/ARCHITECTURE.md)).

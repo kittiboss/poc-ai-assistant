@@ -9,7 +9,7 @@ test.describe('signed out', () => {
 
     // No saved session here, so this goes through the Keycloak login form.
     await signIn(page, 'admin', m);
-    await expect(page.getByText(m.nav.signedInAs.replace('{username}', 'admin'))).toBeVisible();
+    await expect(page.getByRole('group', { name: m.nav.signedInAs.replace('{username}', 'admin') })).toBeVisible();
 
     await page.getByRole('button', { name: m.nav.logout }).click();
     await expect(page.getByRole('button', { name: m.auth.continue })).toBeVisible();
