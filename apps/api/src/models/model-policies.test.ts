@@ -3,6 +3,7 @@ import {
   credentialFor,
   externalProviderAllowed,
   modelAllowedForUser,
+  VENDOR_GATEWAY_CREDENTIAL,
 } from "./model-policies";
 
 describe("provider and model authorization policy", () => {
@@ -67,5 +68,14 @@ describe("provider and model authorization policy", () => {
     expect(modelAllowedForUser(["USER"], ["USER"])).toBe(true);
     expect(modelAllowedForUser(["USER"], ["USER"], false)).toBe(false);
     expect(modelAllowedForUser(["ADMIN"], ["USER"], true)).toBe(true);
+  });
+  it("in a vendor-managed deployment leaves external models to the platform gateway, still behind the switch", () => {
+    const env = { MODEL_ACCESS: "vendor-gateway" };
+    // No provider key, proxy marker or free-tier flag in this deployment: the platform holds them.
+    expect(credentialFor("GEMINI", env)).toBe(VENDOR_GATEWAY_CREDENTIAL);
+    expect(credentialFor("GROQ", env)).toBe(VENDOR_GATEWAY_CREDENTIAL);
+    expect(credentialFor("MOCK", env)).toBe("local");
+    expect(externalProviderAllowed("GEMINI", false, credentialFor("GEMINI", env))).toBe(false);
+    expect(externalProviderAllowed("GEMINI", true, credentialFor("GEMINI", env))).toBe(true);
   });
 });

@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "build": "npm run build -w @enterprise/shared && npm run build -w @enterprise/mock-provider && npm run build -w @enterprise/gemini-proxy && npm run build -w @enterprise/groq-proxy && npm run build -w @enterprise/openrouter-proxy && npm run build -w @enterprise/api && npm run build -w @enterprise/web",
-    "test": "npm run test -w @enterprise/shared && npm run test -w @enterprise/mock-provider && npm run test -w @enterprise/gemini-proxy && npm run test -w @enterprise/groq-proxy && npm run test -w @enterprise/openrouter-proxy && npm run test -w @enterprise/api",
+    "test": "npm run test -w @enterprise/shared && npm run test -w @enterprise/mock-provider && npm run test -w @enterprise/gemini-proxy && npm run test -w @enterprise/groq-proxy && npm run test -w @enterprise/openrouter-proxy && npm run test -w @enterprise/api && npm run test -w @enterprise/vendor-control",
     "test:e2e": "node scripts/e2e-smoke.mjs && node scripts/rag-smoke.mjs",
     "test:e2e:web": "npm run test:e2e -w @enterprise/web",
     "test:rag": "node scripts/rag-smoke.mjs",
@@ -24,7 +24,19 @@
     "format": "prettier --write .",
     "db:generate": "npm run prisma:generate -w @enterprise/api",
     "db:migrate": "npm run prisma:migrate -w @enterprise/api",
-    "db:seed": "npm run prisma:seed -w @enterprise/api"
+    "db:seed": "npm run prisma:seed -w @enterprise/api",
+    "platform:build": "node scripts/platform/platform.mjs build",
+    "platform:up": "node scripts/platform/platform.mjs up",
+    "platform:down": "node scripts/platform/platform.mjs down",
+    "platform:smoke": "node scripts/platform/platform-smoke.mjs",
+    "tenant:create": "node scripts/platform/tenant.mjs create",
+    "tenant:rotate": "node scripts/platform/tenant.mjs rotate",
+    "test:vendor": "npm run test -w @enterprise/vendor-control",
+    "test:vendor:integration": "node scripts/platform/vendor-integration.mjs",
+    "tenant:credits": "node scripts/platform/tenant.mjs credits",
+    "tenant:status": "node scripts/platform/tenant.mjs status",
+    "tenant:down": "node scripts/platform/tenant.mjs down",
+    "tenant:smoke": "node scripts/platform/tenant-smoke.mjs"
   },
   "devDependencies": {
     "playwright-core": "1.64.0",

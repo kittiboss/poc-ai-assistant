@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Vendor Console · Simulation</title>
+    <link rel="stylesheet" href="./style.css" />
+    <script src="./app.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <header>
+        <span class="badge">VENDOR PLATFORM · POC</span>
+        <h1>Credits, tenants & model pricing</h1>
+        <p>
+          Simulation only. No payments are collected. USD values represent test
+          credit, not money owed.
+        </p>
+      </header>
+      <p id="status" role="status" aria-live="polite"></p>
+      <section>
+        <div class="heading">
+          <h2>Customer deployments</h2>
+          <button id="refresh">Refresh</button>
+        </div>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Tenant</th>
+                <th>Available / held</th>
+                <th>Consumed</th>
+                <th>Sim. cost / margin</th>
+                <th>Requests</th>
+                <th>Controls</th>
+              </tr>
+            </thead>
+            <tbody id="tenants"></tbody>
+          </table>
+        </div>
+      </section>
+      <section>
+        <h2>Register a deployment</h2>
+        <p>
+          Creates an isolated tenant record with $2 test credit and mock models.
+          Activate it on the host using the command shown below; no Docker
+          socket is exposed to this console.
+        </p>
+        <form id="create">
+          <label
+            >ID<input
+              name="id"
+              required
+              pattern="[a-z0-9][a-z0-9-]{0,19}"
+              maxlength="20" /></label
+          ><label
+            >Organization name<input
+              name="name"
+              required
+              maxlength="100" /></label
+          ><label
+            >Web port<input
+              name="webPort"
+              type="number"
+              value="3400"
+              min="1024"
+              max="65000"
+              required /></label
+          ><button>Register</button>
+        </form>
+        <code id="provision"></code>
+      </section>
+      <section>
+        <h2>Sale prices</h2>
+        <p>
+          USD per 1 million tokens. Each save creates a version; in-flight
+          requests keep their original price. Cost and margins are vendor-only
+          simulated estimates. Actual provider billing is outside this POC.
+        </p>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Model</th>
+                <th>Version</th>
+                <th>Input / output sale</th>
+                <th>Input / output sim. cost</th>
+                <th>Strategy</th>
+              </tr>
+            </thead>
+            <tbody id="prices"></tbody>
+          </table>
+        </div>
+        <form id="pricing">
+          <label>Model<select name="model" id="models"></select></label
+          ><label
+            >Strategy<select name="strategy">
+              <option>PERCENTAGE_MARKUP</option>
+              <option>FIXED_RATE</option>
+            </select></label
+          ><label
+            >Sim. input cost<input
+              name="inputCost"
+              type="number"
+              step="0.000000001"
+              min="0"
+              value="0.1"
+              required /></label
+          ><label
+            >Sim. output cost<input
+              name="outputCost"
+              type="number"
+              step="0.000000001"
+              min="0"
+              value="0.5"
+              required /></label
+          ><label
+            >Markup %<input
+              name="markupPercent"
+              type="number"
+              min="0"
+              max="10000"
+              value="50"
+              required /></label
+          ><label
+            >Fixed input rate<input
+              name="inputRate"
+              type="number"
+              min="0"
+              step="0.000000001"
+              value="0.15" /></label
+          ><label
+            >Fixed output rate<input
+              name="outputRate"
+              type="number"
+              min="0"
+              step="0.000000001"
+              value="0.75" /></label
+          ><button>Save new version</button>
+        </form>
+      </section>
+      <section>
+        <details>
+          <summary>Pricing version history · latest 100</summary>
+          <div class="scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Version</th>
+                  <th>Model</th>
+                  <th>Created</th>
+                  <th>Input / output sale</th>
+                  <th>Strategy</th>
+                </tr>
+              </thead>
+              <tbody id="price-history"></tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+      <section id="history" hidden>
+        <h2 id="history-title">Credit history</h2>
+        <p>
+          Latest 100 immutable transactions and requests. SIM receipts are not
+          tax invoices.
+        </p>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Receipt</th>
+                <th>Time</th>
+                <th>Type</th>
+                <th>USD</th>
+                <th>Reference</th>
+              </tr>
+            </thead>
+            <tbody id="ledger"></tbody>
+          </table>
+        </div>
+        <h3>Request ledger</h3>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Request</th>
+                <th>Model / kind</th>
+                <th>Status</th>
+                <th>Input / output</th>
+                <th>Test charge / version</th>
+              </tr>
+            </thead>
+            <tbody id="requests"></tbody>
+          </table>
+        </div>
+      </section>
+      <footer>
+        Free-tier quotas still apply. External providers are opt-in. Default new
+        deployments use local mock models only.
+      </footer>
+    </main>
+  </body>
+</html>

@@ -154,6 +154,8 @@ describe("product catalog indexing", () => {
       expect.any(Array),
       768,
       false,
+      undefined,
+      expect.stringMatching(/^knowledge-index:/),
     );
     expect(governance.reserve).toHaveBeenCalledTimes(2);
     expect(governance.reserve.mock.calls[0][0]).toMatchObject({
@@ -312,6 +314,8 @@ describe("product retrieval", () => {
       ["task: search result | query: water resistant earbuds"],
       768,
       true,
+      undefined,
+      'req-1:retrieval',
     );
     expect(usage.record.mock.calls[0][0]).toMatchObject({
       requestId: "req-1:retrieval",

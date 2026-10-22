@@ -8,6 +8,7 @@ import type {
   AdminSummary,
   AdminUser,
   AuditLog,
+  CreditStatus,
   PriceResult,
   PricingConfiguration,
   UpdateModel,
@@ -54,6 +55,12 @@ export function useAdminData(filters: Filters) {
     audit: useQuery<AuditLog[]>({
       queryKey: queryKeys.admin.audit,
       queryFn: async ({ signal }) => unwrap(await client.GET('/api/admin/audit', { signal })),
+    }),
+    // The central ledger settles synchronously; polling keeps this summary fresh between page actions.
+    credit: useQuery<CreditStatus>({
+      queryKey: queryKeys.admin.credit,
+      queryFn: async ({ signal }) => unwrap(await client.GET('/api/admin/credit', { signal })),
+      refetchInterval: 15_000,
     }),
   };
 }

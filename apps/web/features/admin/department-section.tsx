@@ -4,6 +4,7 @@ import { App, Input, Table, type TableColumnsType } from 'antd';
 import { useFormatter, useTranslations } from 'next-intl';
 import { SectionCard } from '@/components/ui/section-card';
 import { costFormat } from '@/i18n/formats';
+import { runtimeConfig } from '@/lib/runtime-config';
 import { useWorkspaceMutations, type WorkspaceDashboard } from './workspace-queries';
 
 type User = WorkspaceDashboard['users'][number];
@@ -78,7 +79,7 @@ export function DepartmentSection({ dashboard, loading }: { dashboard?: Workspac
       <Table<DepartmentUsage>
         rowKey={(row) => row.department}
         size="small"
-        columns={usageColumns}
+        columns={runtimeConfig().vendorManaged ? usageColumns.filter((column) => column.key !== 'cost') : usageColumns}
         dataSource={dashboard?.departmentUsage}
         loading={loading}
         locale={{ emptyText: t('noUsage') }}

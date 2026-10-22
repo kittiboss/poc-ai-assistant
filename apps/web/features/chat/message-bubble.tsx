@@ -1,4 +1,5 @@
 'use client';
+import { runtimeConfig } from '@/lib/runtime-config';
 
 import { Actions, Bubble, type ActionsProps } from '@ant-design/x';
 import { Button, Collapse, Tooltip } from 'antd';
@@ -109,14 +110,16 @@ export const MessageBubble = memo(function MessageBubble({
     <div className="flex flex-col gap-1">
       {usage && (
         <p className="text-[11px] text-fg-tertiary">
-          {t('usageLine', {
-            input: format.number(usage.inputTokens),
-            output: format.number(usage.outputTokens),
-            duration: format.number(usage.durationMs),
-            kind: enums.label('usageKind', usage.usageKind),
-            cost: money(usage.actualProviderCost),
-            charge: money(usage.customerCharge),
-          })}
+          {runtimeConfig().vendorManaged
+            ? `${format.number(usage.inputTokens)} in · ${format.number(usage.outputTokens)} out · ${format.number(usage.durationMs)} ms`
+            : t('usageLine', {
+                input: format.number(usage.inputTokens),
+                output: format.number(usage.outputTokens),
+                duration: format.number(usage.durationMs),
+                kind: enums.label('usageKind', usage.usageKind),
+                cost: money(usage.actualProviderCost),
+                charge: money(usage.customerCharge),
+              })}
         </p>
       )}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">

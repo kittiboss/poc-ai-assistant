@@ -10,6 +10,8 @@ import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../common/prisma/prisma.service";
 import type { AuthUser } from "../common/auth/auth.decorators";
 import { UsersService } from "../users/users.service";
+import { vendorGateway } from "../models/model-policies";
+import { customerResponse } from "../common/vendor-response.interceptor";
 import { chunkPages, extractDocument } from "./documents";
 import type {
   MemoryDto,
@@ -316,9 +318,10 @@ export class WorkspaceService {
           _count: true,
           _sum: { totalTokens: true, simulatedProviderCost: true },
         });
-        return { text: JSON.stringify(data, null, 2) };
+        return { text: JSON.stringify(vendorGateway() ? customerResponse(data) : data, null, 2) };
       }
       if (dto.tool === "prices") {
+        if (vendorGateway()) throw new ForbiddenException('Current sale prices are available on the test credits page');
         const models = await this.prisma.aIModel.findMany({
           where: { enabled: true },
           include: {

@@ -1,0 +1,101 @@
+# One customer deployment on the vendor platform. Created and started by `npm run tenant:create -- <id>`,
+# which runs `docker compose -p tenant-<id> --env-file deploy/tenants/<id>.env -f deploy/tenant/docker-compose.yml`.
+# It holds no provider credential: every AI request goes to the platform gateway with this
+# customer's own key, which identifies its model/rate entitlements and central simulated credit ledger.
+services:
+  postgres:
+    image: enterprise-ai/postgres:local
+    environment:
+      POSTGRES_DB: enterprise_ai
+      POSTGRES_USER: enterprise_ai
+      POSTGRES_PASSWORD: ${TENANT_DB_PASSWORD:?Create the tenant with npm run tenant:create}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U enterprise_ai -d enterprise_ai"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [internal]
+    restart: unless-stopped
+
+  backend:
+    image: enterprise-ai/api:local
+    environment:
+      DATABASE_URL: postgresql://enterprise_ai:${TENANT_DB_PASSWORD}@postgres:5432/enterprise_ai?schema=public
+      API_PORT: 3001
+      KEYCLOAK_URL: ${KEYCLOAK_PUBLIC_URL:?Create the tenant with npm run tenant:create}
+      KEYCLOAK_INTERNAL_URL: http://keycloak:8080
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:?Create the tenant with npm run tenant:create}
+      OIDC_AUDIENCE: enterprise-ai-api
+      CORS_ORIGIN: ${WEB_PUBLIC_URL}
+      API_PUBLIC_URL: ${API_PUBLIC_URL}
+      LITELLM_URL: http://vendor-control:4050
+      LITELLM_API_KEY: ${LITELLM_API_KEY:?Create the tenant with npm run tenant:create}
+      MODEL_ACCESS: vendor-gateway
+      # The platform decides which external models this customer may use (its key's allowlist).
+      ENABLE_EXTERNAL_PROVIDERS: "true"
+      AI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-1024}
+      # This customer's share of the platform's daily external quota.
+      EXTERNAL_DAILY_REQUEST_LIMIT: ${EXTERNAL_DAILY_REQUEST_LIMIT}
+      EXTERNAL_DAILY_TOKEN_LIMIT: ${EXTERNAL_DAILY_TOKEN_LIMIT}
+      RAG_EMBEDDING_MODEL: ${RAG_EMBEDDING_MODEL:-mock-embedding}
+      RAG_TOP_K: 5
+      # This customer's share of the embedding quota (Gemini free tier: 100 texts per minute in all).
+      RAG_EXTERNAL_BATCH_SIZE: ${RAG_EXTERNAL_BATCH_SIZE}
+      RAG_EXTERNAL_BATCH_INTERVAL_MS: ${RAG_EXTERNAL_BATCH_INTERVAL_MS}
+      LOG_CONTENT: "false"
+      SWAGGER_ENABLED: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:?Create the tenant with npm run tenant:create}:3001"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3001/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 15s
+    networks: [internal, edge, platform-shared]
+    restart: unless-stopped
+
+  frontend:
+    image: enterprise-ai/web:local
+    # The same image serves every customer; the browser receives these at runtime (apps/web/lib/runtime-config.ts).
+    environment:
+      APP_API_URL: ${API_PUBLIC_URL}/api
+      APP_KEYCLOAK_URL: ${KEYCLOAK_PUBLIC_URL}
+      APP_KEYCLOAK_REALM: ${KEYCLOAK_REALM}
+      APP_OIDC_CLIENT_ID: enterprise-ai-web
+      APP_MODEL_ACCESS: vendor-gateway
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:?Create the tenant with npm run tenant:create}:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000"]
+      interval: 10s
+      timeout: 4s
+      retries: 20
+    networks: [edge]
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+
+networks:
+  internal:
+    internal: true
+  edge:
+  # Created by the platform; holds only Keycloak and the AI gateway.
+  platform-shared:
+    external: true
+    name: platform-shared

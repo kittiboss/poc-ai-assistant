@@ -16,7 +16,7 @@ import { randomUUID } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import type { AuthUser } from "../common/auth/auth.decorators";
 import { PrismaService } from "../common/prisma/prisma.service";
-import { GatewayService } from "../gateway/gateway.service";
+import { GatewayService, refusedByGateway } from "../gateway/gateway.service";
 import {
   credentialFor,
   externalProviderAllowed,
@@ -449,7 +449,7 @@ export class KnowledgeService {
       outputTokens: 0,
     });
     const started = Date.now();
-    // Providers report no token counts for embeddings, so usage is ESTIMATED (or SYNTHETIC for the mock).
+    let gatewayUsage: import('../gateway/gateway.service').GatewayUsage | undefined;
     const record = (status: RequestStatus, refused = false) =>
       this.usage.record({
         requestId: call.requestId,
@@ -461,10 +461,10 @@ export class KnowledgeService {
         output: "",
         durationMs: Date.now() - started,
         status,
-        // A rate-limited call was refused by the provider, so it processed no tokens.
+        // A refused call (rate limit, no credit) processed no tokens.
         ...(refused
           ? { usage: { prompt_tokens: 0, completion_tokens: 0 } }
-          : {}),
+          : { usage: gatewayUsage }),
       });
     const isRateLimit = (error: unknown) =>
       error instanceof HttpException &&
@@ -472,12 +472,15 @@ export class KnowledgeService {
     try {
       for (let attempt = 0; ; attempt++) {
         try {
-          const { vectors } = await this.gateway.embed(
+          const { vectors, usage } = await this.gateway.embed(
             call.model.id,
             call.texts,
             EMBEDDING_DIMENSIONS,
             call.model.capabilities.includes(OUTPUT_DIMENSIONS_CAPABILITY),
+            undefined,
+            attempt ? `${call.requestId}:retry${attempt}` : call.requestId,
           );
+          gatewayUsage = usage;
           await record(RequestStatus.COMPLETED);
           return vectors;
         } catch (error) {
@@ -494,7 +497,7 @@ export class KnowledgeService {
         }
       }
     } catch (error) {
-      await record(RequestStatus.ERROR, isRateLimit(error)).catch(
+      await record(RequestStatus.ERROR, refusedByGateway(error)).catch(
         () => undefined,
       );
       throw error;

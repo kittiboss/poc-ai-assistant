@@ -613,6 +613,60 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/admin/credit': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * The organization's prepaid AI credit
+     * @description Read from the authoritative platform ledger in vendor-managed deployments.
+     */
+    get: operations['AdminController_credit'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/admin/billing': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Simulated balance, customer sale prices, request ledger and test receipts */
+    get: operations['AdminController_billing'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/admin/billing/topups': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Grant test credit (simulation only; never collects money) */
+    post: operations['AdminController_topup'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/admin/audit': {
     parameters: {
       query?: never;
@@ -806,8 +860,18 @@ export interface components {
        *     ]
        */
       capabilities: string[];
-      /** @enum {string} */
-      status: 'Disabled' | 'Not permitted' | 'Not configured' | 'Daily limit reached' | 'Available' | 'Unavailable';
+      /**
+       * @description Credit exhausted: the prepaid credit on the platform gateway is used up (vendor-managed deployments).
+       * @enum {string}
+       */
+      status:
+        | 'Disabled'
+        | 'Not permitted'
+        | 'Not configured'
+        | 'Credit exhausted'
+        | 'Daily limit reached'
+        | 'Available'
+        | 'Unavailable';
     };
     LiveTokenTotals: {
       requests: number;
@@ -1432,6 +1496,42 @@ export interface components {
       costs: components['schemas']['CostSum'];
       daily: components['schemas']['DailyPoint'][];
       externalToday: components['schemas']['ExternalGuardrail'];
+    };
+    GatewayCreditView: {
+      /**
+       * @example USD
+       * @enum {string}
+       */
+      currency: 'USD';
+      /**
+       * @description Prepaid credit added so far.
+       * @example 5
+       */
+      limit: number;
+      /** @example 0.42 */
+      spent: number;
+      /**
+       * @description Never below 0; the last request may overshoot the limit slightly.
+       * @example 4.58
+       */
+      remaining: number;
+      /** @description New AI requests are refused until credit is added. */
+      exhausted: boolean;
+    };
+    CreditStatusView: {
+      /** @description MODEL_ACCESS=vendor-gateway: AI usage is billed to prepaid credit on the platform gateway. */
+      vendorManaged: boolean;
+      /** @description Null outside vendor mode, or while the gateway cannot be reached. */
+      credit: components['schemas']['GatewayCreditView'] | null;
+    };
+    TestCreditDto: {
+      /**
+       * @description Simulated USD only; no payment is collected.
+       * @example 2.00
+       */
+      amount: string;
+      /** @description Unique idempotency key, reused when retrying the same top-up. */
+      reference: string;
     };
     AuditActor: {
       /** @example admin */
@@ -3728,6 +3828,146 @@ export interface operations {
       };
     };
   };
+  AdminController_credit: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['CreditStatusView'];
+        };
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Caller does not have the ADMIN role. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  AdminController_billing: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Organization credit, sale prices and the latest 100 transactions/requests. No provider costs. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Caller does not have the ADMIN role. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  AdminController_topup: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['TestCreditDto'];
+      };
+    };
+    responses: {
+      /** @description Idempotent SIM receipt. Not a real payment or tax invoice. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Caller does not have the ADMIN role. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
   AdminController_audit: {
     parameters: {
       query?: {
@@ -4098,7 +4338,7 @@ export interface operations {
           'application/json': components['schemas']['ErrorResponse'];
         };
       };
-      /** @description Caller does not have the ADMIN role. */
+      /** @description Caller does not have the ADMIN role, or prices are set by the platform gateway (vendor-managed deployment). */
       403: {
         headers: {
           [name: string]: unknown;

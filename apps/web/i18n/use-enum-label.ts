@@ -19,6 +19,7 @@ const modelStatusKeys: Record<string, string> = {
   'Not permitted': 'notPermitted',
   'Not configured': 'notConfigured',
   'Daily limit reached': 'dailyLimitReached',
+  'Credit exhausted': 'creditExhausted',
   Unavailable: 'unavailable',
 };
 

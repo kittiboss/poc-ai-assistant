@@ -3,10 +3,10 @@ import { Provider } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import type { AuthUser } from '../common/auth/auth.decorators';
 import { PrismaService } from '../common/prisma/prisma.service';
-import { GatewayService } from '../gateway/gateway.service';
+import { GatewayService, gatewayError } from '../gateway/gateway.service';
 import { UsageService } from '../usage/usage.service';
 import { UsersService } from '../users/users.service';
-import { credentialFor, externalProviderAllowed, isExternalProvider, modelAllowedForUser } from './model-policies';
+import { credentialFor, externalProviderAllowed, isExternalProvider, modelAllowedForUser, vendorGateway } from './model-policies';
 
 const externalSwitch = () => process.env.ENABLE_EXTERNAL_PROVIDERS === 'true';
 
@@ -28,18 +28,20 @@ export class ModelsService {
       include: { permissions: { where: { userId: user.id } } },
       orderBy: [{ local: 'desc' }, { displayName: 'asc' }],
     });
-    const reachable = await this.reachability(models.filter((model) => model.enabled));
+    const [reachable, credit] = await Promise.all([this.reachability(models.filter((model) => model.enabled)), this.gateway.credit()]);
     const budgetExhausted = models.some((model) => model.enabled && isExternalProvider(model.provider)) && await this.usage.externalBudgetExhausted();
+    // Every model, local ones included, is billed through the platform gateway's prepaid credit.
+    const creditExhausted = credit?.exhausted === true;
     return models.map((model) => {
       const permitted = modelAllowedForUser(model.allowedRoles, auth.roles, model.permissions[0]?.allowed);
       const configured = externalProviderAllowed(model.provider, externalSwitch(), credentialFor(model.provider));
       const limited = isExternalProvider(model.provider) && budgetExhausted;
-      const available = model.enabled && permitted && configured && !limited && reachable(model);
+      const available = model.enabled && permitted && configured && !limited && !creditExhausted && reachable(model);
       return {
         id: model.id, displayName: model.displayName, provider: model.provider, providerModelId: model.providerModelId,
         enabled: model.enabled, permitted, available, local: model.local, contextWindow: model.contextWindow,
         capabilities: model.capabilities,
-        status: !model.enabled ? 'Disabled' : !permitted ? 'Not permitted' : !configured ? 'Not configured' : limited ? 'Daily limit reached' : available ? 'Available' : 'Unavailable',
+        status: !model.enabled ? 'Disabled' : !permitted ? 'Not permitted' : !configured ? 'Not configured' : creditExhausted ? 'Credit exhausted' : limited ? 'Daily limit reached' : available ? 'Available' : 'Unavailable',
       };
     });
   }
@@ -58,6 +60,7 @@ export class ModelsService {
     if (isExternalProvider(model.provider) && await this.usage.externalBudgetExhausted()) {
       throw new HttpException('The daily external-provider limit for this installation has been reached. Local models remain available.', HttpStatus.TOO_MANY_REQUESTS);
     }
+    if ((await this.gateway.credit())?.exhausted) throw gatewayError(HttpStatus.BAD_REQUEST, 'budget_exceeded');
     return model;
   }
 
@@ -76,6 +79,7 @@ export class ModelsService {
     const before = await this.prisma.aIModel.findUnique({ where: { id } });
     if (!before) throw new NotFoundException('Model not found');
     if (isExternalProvider(before.provider) && data.enabled && !externalProviderAllowed(before.provider, externalSwitch(), credentialFor(before.provider))) throw new BadRequestException('External models require both ENABLE_EXTERNAL_PROVIDERS=true and valid provider credentials');
+    if (vendorGateway() && data.enabled && !(await this.gateway.routes()).has(id)) throw new BadRequestException("This model is not included in your organization's plan on the platform gateway");
     const after = await this.prisma.aIModel.update({ where: { id }, data });
     await this.audit.record({ actorId: actor.id, action: 'MODEL_UPDATE', entityType: 'AIModel', entityId: id, before, after });
     return after;

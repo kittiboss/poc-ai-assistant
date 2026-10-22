@@ -20,6 +20,7 @@ export const queryKeys = {
     pricing: ['admin', 'pricing'] as const,
     users: ['admin', 'users'] as const,
     audit: ['admin', 'audit'] as const,
+    credit: ['admin', 'credit'] as const,
     summary: (filters: object) => ['admin', 'summary', filters] as const,
   },
 };

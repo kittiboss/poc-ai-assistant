@@ -99,6 +99,8 @@ export function ChatApp() {
     (conversation.error instanceof ApiError && [400, 404].includes(conversation.error.status));
   const loadError = [models.error, conversations.error, notFound ? null : conversation.error].find(Boolean);
   const error = chatError || loadError?.message;
+  // The platform gateway reports every model as out of credit; say why nothing can be sent.
+  const creditExhausted = modelList.some((model) => model.status === 'Credit exhausted');
   const title =
     conversation.data?.title ?? conversations.data?.find((item) => item.id === activeId)?.title ?? t('newConversation');
   const reportError = (cause: unknown) => toast.error((cause as Error).message);
@@ -404,6 +406,7 @@ export function ChatApp() {
             {selectedModel && !selectedModel.local && (
               <Alert type="warning" title={t('externalNotice', { provider: selectedModel.provider })} />
             )}
+            {creditExhausted && !error && <Alert type="error" title={t('creditExhausted')} />}
             {error && (
               <Alert type="error" title={error} closable={Boolean(chatError)} onClose={() => setChatError('')} />
             )}

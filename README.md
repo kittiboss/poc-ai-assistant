@@ -13,6 +13,8 @@ Browser → Next.js → NestJS → LiteLLM → local mock provider
 
 ## Start locally
 
+For the **vendor-managed, three-customer POC with a simulated credit ledger and vendor console**, use the separate [phase 1–2 setup guide](docs/VENDOR_MANAGED_POC.md). It uses ports 3100/3200/3300, unique tenant logins, and never collects real payments. The instructions below remain the original standalone developer stack.
+
 Requirements:
 
 - Docker Desktop / Docker Engine with Compose v2

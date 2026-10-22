@@ -1,0 +1,38 @@
+{
+  "$comment": "One test customer on the vendor platform. Limits are this customer's third of the shared free-tier account: replace them with a third of your account's real limits (provider console).",
+  "id": "a",
+  "name": "Customer A",
+  "webPort": 3100,
+  "apiPort": 3101,
+  "initialCreditUsd": 2,
+  "models": [
+    "local-mock",
+    "mock-embedding",
+    "google-gemini",
+    "gemini-embedding",
+    "groq-llama",
+    "openrouter-free"
+  ],
+  "modelRateLimits": {
+    "gemini-embedding": { "rpm": 5, "tpm": 80000 },
+    "google-gemini": {
+      "rpm": 5,
+      "tpm": 80000
+    },
+    "groq-llama": {
+      "rpm": 10,
+      "tpm": 2000
+    },
+    "openrouter-free": {
+      "rpm": 6
+    }
+  },
+  "dailyExternalLimits": {
+    "requests": 33,
+    "tokens": 33333
+  },
+  "embeddingBatch": {
+    "size": 8,
+    "intervalMs": 15500
+  }
+}

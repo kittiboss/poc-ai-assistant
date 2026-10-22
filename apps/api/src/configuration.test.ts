@@ -219,3 +219,70 @@ describe("security and provider configuration", () => {
     ]);
   });
 });
+
+/** One top-level service (or network) block of a Compose file, as text. */
+function block(compose: string, section: "services" | "networks", name: string) {
+  const sectionText = compose.slice(compose.indexOf(`\n${section}:\n`));
+  const start = sectionText.indexOf(`\n  ${name}:\n`);
+  if (start < 0) return undefined;
+  const rest = sectionText.slice(start + 1);
+  const end = rest.slice(1).search(/\n(\s{2}\S|\S)/);
+  return end < 0 ? rest : rest.slice(0, end + 1);
+}
+const serviceNames = (compose: string) => {
+  const services = compose.slice(compose.indexOf("\nservices:\n"), compose.search(/\n(volumes|networks):\n/));
+  return [...services.matchAll(/^ {2}([a-z-]+):$/gm)].map((match) => match[1]);
+};
+
+describe("vendor-managed platform deployment", () => {
+  const read = (file: string) => readFileSync(resolve(root, file), "utf8");
+  const platform = read("deploy/platform/docker-compose.yml");
+  const tenant = read("deploy/tenant/docker-compose.yml");
+
+  it("gives a customer deployment no provider credential and no way around the gateway", () => {
+    expect(serviceNames(tenant)).toEqual(["postgres", "backend", "frontend"]);
+    expect(tenant).not.toMatch(/MASTER_KEY|(GEMINI|GROQ|OPENROUTER|OPENAI|ANTHROPIC)_API_KEY|CREDENTIAL_CONFIGURED/);
+    const backend = block(tenant, "services", "backend")!;
+    expect(backend).toContain("MODEL_ACCESS: vendor-gateway");
+    expect(backend).toContain("LITELLM_API_KEY: ${LITELLM_API_KEY:?");
+    expect(backend).toContain("LITELLM_URL: http://vendor-control:4050");
+    expect(block(tenant, "networks", "platform-shared")).toMatch(/external: true\n\s+name: platform-shared/);
+  });
+
+  it("lets customer deployments reach only Keycloak and the gateway on the platform", () => {
+    expect(block(platform, "networks", "shared")).toMatch(/name: platform-shared\n\s+internal: true/);
+    const onShared = serviceNames(platform).filter((name) => /networks: \[[^\]]*\bshared\b/.test(block(platform, "services", name)!));
+    expect(onShared).toEqual(["keycloak", "vendor-control"]);
+    // The credential proxies do not authenticate callers, so only the gateway may reach them.
+    for (const proxy of ["gemini-proxy", "groq-proxy", "openrouter-proxy"]) {
+      const service = block(platform, "services", proxy)!;
+      expect(service).toContain("networks: [gateway, egress]");
+      expect(service).toMatch(/profiles: \[\w+\]/);
+    }
+    expect(block(platform, "services", "mock-provider")).toContain("networks: [gateway]");
+    expect(block(platform, "networks", "gateway")).toContain("internal: true");
+    // The admin API is published to this machine only.
+    expect(block(platform, "services", "litellm")).toContain('"127.0.0.1:4000:4000"');
+  });
+
+  it("prices every gateway route so prepaid credit goes down, and keeps keys in the proxies", () => {
+    const config = read("deploy/platform/litellm.yaml");
+    const routes = config.split("\n  - model_name: ").slice(1);
+    expect(routes.map((route) => route.split("\n")[0])).toEqual([
+      "local-mock",
+      "mock-embedding",
+      "google-gemini",
+      "gemini-embedding",
+      "groq-llama",
+      "openrouter-free",
+    ]);
+    for (const route of routes) expect(route).toMatch(/input_cost_per_token: 0\.\d+[1-9]/);
+    expect(config).not.toMatch(/api_key: os\.environ/);
+    expect(config).toContain("master_key: os.environ/LITELLM_MASTER_KEY");
+  });
+
+  it("keeps platform and customer secrets out of Git", () => {
+    const ignored = read(".gitignore").split("\n");
+    expect(ignored).toEqual(expect.arrayContaining(["deploy/platform/.env", "deploy/tenants/*.env"]));
+  });
+});

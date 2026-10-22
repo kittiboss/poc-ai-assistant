@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { admin, localUser, usersWith } from '../testing/fixtures';
 import { gateway, modelsService, prismaWith } from '../testing/model-fixtures';
+import { gatewayError } from '../gateway/gateway.service';
 import { ChatService, STALE_STREAM_MS } from './chat.service';
 import { ConversationsService } from './conversations.service';
 
@@ -19,6 +20,45 @@ describe('chat streaming lifecycle', () => {
     expect(error.getStatus()).toBe(429);
     expect(prisma.message.create).not.toHaveBeenCalled();
     expect(response.status).not.toHaveBeenCalled();
+  });
+
+  describe('prepaid credit on the platform gateway', () => {
+    const localMock = { id: 'local-mock', provider: 'MOCK', enabled: true, local: true, allowedRoles: ['USER', 'ADMIN'], capabilities: ['chat'], contextWindow: 8192, permissions: [] };
+    const conversation = { id: 'conversation-1', userId: localUser.id, title: 'x', projectId: null };
+
+    it('refuses a message once the credit is used up, before persisting anything or opening a stream', async () => {
+      gateway.credit.mockResolvedValueOnce({ currency: 'USD', limit: 1, spent: 1, remaining: 0, exhausted: true });
+      const prisma = { ...prismaWith({ requests: 0, tokens: 0 }), message: { create: vi.fn() },
+        aIModel: { findMany: vi.fn(), findUnique: vi.fn().mockResolvedValue(localMock) },
+        conversation: { findFirst: vi.fn().mockResolvedValue(conversation) } };
+      const response = { status: vi.fn(), write: vi.fn() };
+      const chat = new ChatService(prisma as never, usersWith(prisma), new ConversationsService(prisma as never, usersWith(prisma)), modelsService(prisma), gateway as never, {} as never, {} as never, {} as never, {} as never);
+      const error = await chat.stream(admin, 'conversation-1', { content: 'hi', modelId: 'local-mock' }, response as never).catch((cause) => cause);
+      expect(error.getStatus()).toBe(402);
+      expect(error.getResponse()).toMatchObject({ code: 'CREDIT_EXHAUSTED' });
+      expect(prisma.message.create).not.toHaveBeenCalled();
+      expect(response.status).not.toHaveBeenCalled();
+    });
+
+    it('tells the web why the gateway refused a started stream, and records no tokens for it', async () => {
+      const prisma = { ...prismaWith({ requests: 0, tokens: 0 }),
+        message: { create: vi.fn(), findUnique: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]), update: vi.fn().mockResolvedValue({}) },
+        usageRecord: { findUnique: vi.fn().mockResolvedValue(null), aggregate: vi.fn().mockResolvedValue({ _count: 0, _sum: { totalTokens: 0 } }) },
+        aIModel: { findMany: vi.fn(), findUnique: vi.fn().mockResolvedValue(localMock) },
+        conversation: { findFirst: vi.fn().mockResolvedValue(conversation), update: vi.fn() },
+        $transaction: vi.fn().mockResolvedValue([{ id: 'user-message' }, { id: 'assistant-message' }, {}]) };
+      const usage = { record: vi.fn().mockResolvedValue({}) };
+      const workspace = { context: vi.fn().mockResolvedValue({ instructions: 'system', citations: [], maxOutputTokens: 64 }) };
+      const governance = { reserve: vi.fn(), release: vi.fn(), checkSensitive: vi.fn(), settings: vi.fn() };
+      const refusing = { ...gateway, maxOutputTokens: () => 64, stream: vi.fn().mockRejectedValue(gatewayError(400, 'budget_exceeded')) };
+      const response = { status: vi.fn().mockReturnThis(), set: vi.fn().mockReturnThis(), flushHeaders: vi.fn(), on: vi.fn(), write: vi.fn(), end: vi.fn(), writableEnded: false };
+      const chat = new ChatService(prisma as never, usersWith(prisma), new ConversationsService(prisma as never, usersWith(prisma)), modelsService(prisma), refusing as never, usage as never, workspace as never, governance as never, {} as never);
+      await chat.stream(admin, 'conversation-1', { content: 'hi', modelId: 'local-mock' }, response as never);
+      const errorEvent = response.write.mock.calls.map(([chunk]) => String(chunk)).find((chunk) => chunk.startsWith('event: error'));
+      expect(JSON.parse(errorEvent!.split('data: ')[1])).toMatchObject({ code: 'CREDIT_EXHAUSTED' });
+      expect(usage.record).toHaveBeenCalledWith(expect.objectContaining({ status: 'ERROR', usage: { prompt_tokens: 0, completion_tokens: 0 } }));
+      expect(governance.release).toHaveBeenCalled();
+    });
   });
 
   it('marks streams abandoned by an API restart as INTERRUPTED', async () => {

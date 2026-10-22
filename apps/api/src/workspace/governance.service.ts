@@ -13,7 +13,7 @@ import Big from "big.js";
 import { AuditService } from "../audit/audit.service";
 import type { AuthUser } from "../common/auth/auth.decorators";
 import { PrismaService } from "../common/prisma/prisma.service";
-import { EXTERNAL_PROVIDERS } from "../models/model-policies";
+import { EXTERNAL_PROVIDERS, vendorGateway } from "../models/model-policies";
 import { UsersService } from "../users/users.service";
 import { externalDailyLimits, startOfUtcDay } from "../usage/external-limits";
 import type { GovernanceDto, QuotaDto } from "./workspace.dto";
@@ -400,7 +400,7 @@ export class GovernanceService implements OnModuleInit, OnModuleDestroy {
       orderBy: { createdAt: "desc" },
       take: 10000,
     });
-    const columns = [
+    const allColumns = [
       "createdAt",
       "requestId",
       "userId",
@@ -417,6 +417,7 @@ export class GovernanceService implements OnModuleInit, OnModuleDestroy {
       "simulatedProviderCost",
       "simulatedCustomerCharge",
     ] as const;
+    const columns = allColumns.filter((key) => !vendorGateway() || !['actualProviderCost', 'simulatedProviderCost'].includes(key));
     return {
       filename: "usage.csv",
       content: toCsv([

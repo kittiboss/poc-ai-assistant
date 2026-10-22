@@ -1,10 +1,11 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type { PricingStrategy } from '@prisma/client';
 import { calculatePrice } from '@enterprise/shared';
 import Big from 'big.js';
 import { AuditService } from '../audit/audit.service';
 import type { AuthUser } from '../common/auth/auth.decorators';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { vendorGateway } from '../models/model-policies';
 import { UsersService } from '../users/users.service';
 import type { PreviewPricingDto, UpdatePricingDto } from './pricing.dto';
 
@@ -14,6 +15,7 @@ export class PricingService {
   constructor(private readonly prisma: PrismaService, private readonly users: UsersService, private readonly audit: AuditService) {}
 
   list(modelId?: string) {
+    if (vendorGateway()) return Promise.resolve([]); // Customer sale prices come from /admin/billing.
     return this.prisma.pricingConfiguration.findMany({
       where: modelId ? { modelId } : {}, include: { model: true, versions: { orderBy: { version: 'desc' } } }, orderBy: { model: { displayName: 'asc' } },
     });
@@ -25,11 +27,14 @@ export class PricingService {
   }
 
   preview(dto: PreviewPricingDto) {
+    if (vendorGateway()) throw new ForbiddenException('Pricing previews are available in the vendor console');
     const simulated = new Big(dto.inputTokens).times(dto.simulationInputRate || '0').plus(new Big(dto.outputTokens).times(dto.simulationOutputRate || '0')).div(1_000_000);
     return calculatePrice({ inputTokens: dto.inputTokens, outputTokens: dto.outputTokens, providerInputPerMillion: dto.providerInputRate, providerOutputPerMillion: dto.providerOutputRate, additionalProviderFee: dto.additionalFee, fixedInputPerMillion: dto.customerInputRate, fixedOutputPerMillion: dto.customerOutputRate, markupPercent: dto.markupPercent, strategy: dto.strategy, simulatedProviderCost: simulated.toString() });
   }
 
   async createVersion(auth: AuthUser, modelId: string, dto: UpdatePricingDto) {
+    // Credit is deducted at the gateway's prices, so a local price change would only make the two disagree.
+    if (vendorGateway()) throw new ForbiddenException('Prices are set by the platform gateway in this deployment');
     const actor = await this.users.syncUser(auth);
     const model = await this.prisma.aIModel.findUnique({ where: { id: modelId }, include: { pricing: { include: { versions: { orderBy: { version: 'desc' }, take: 1 } } } } });
     if (!model?.pricing) throw new NotFoundException('Model pricing not found');

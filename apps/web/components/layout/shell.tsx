@@ -11,6 +11,7 @@ import {
   PanelLeftOpen,
   Settings,
   ShieldCheck,
+  Wallet,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useRef } from 'react';
@@ -20,9 +21,10 @@ import { BrandLogo } from '@/components/brand/brand-logo';
 import { useBrand } from '@/components/brand/brand-provider';
 import { useRoles } from '@/lib/auth/use-roles';
 import { cn } from '@/lib/cn';
+import { runtimeConfig } from '@/lib/runtime-config';
 import { useUIStore } from '@/stores/ui-store-provider';
 
-type Section = 'chat' | 'usage' | 'live-usage' | 'admin' | 'settings';
+type Section = 'chat' | 'usage' | 'live-usage' | 'admin' | 'settings' | 'billing';
 
 /** Same width as the desktop sidebar (w-72). */
 const DRAWER_WIDTH = 288;
@@ -248,6 +250,9 @@ function NavItems({
       {link('usage', '/usage', <BarChart3 size={17} />, t('usage'))}
       {link('live-usage', '/usage/live', <Gauge size={17} />, t('liveUsage'))}
       {roles.includes('ADMIN') && link('admin', '/admin', <ShieldCheck size={17} />, t('admin'))}
+      {roles.includes('ADMIN') &&
+        runtimeConfig().vendorManaged &&
+        link('billing', '/billing', <Wallet size={17} />, t('billing'))}
       {link('settings', '/settings', <Settings size={17} />, t('settings'))}
       <NavItem
         icon={<LogOut size={17} />}

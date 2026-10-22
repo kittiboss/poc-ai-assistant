@@ -29,6 +29,7 @@
     "sessionExpired": "Your session has expired. Sign in again to continue."
   },
   "nav": {
+    "billing": "Test credits & billing",
     "openMenu": "Open menu",
     "openSidebar": "Open sidebar",
     "closeSidebar": "Close sidebar",
@@ -53,7 +54,7 @@
     "newConversation": "New conversation",
     "private": "Private to your company account",
     "modelOption": "{name} · {provider} · {location} · {status}",
-    "modelLocal": "Local · $0 external API",
+    "modelLocal": "Local · no external provider",
     "modelExternal": "External",
     "modelBadge": "{location} · {status}",
     "externalNotice": "External model: messages in this conversation are sent to {provider} under that provider’s data terms. Free-tier providers may use them to improve their products — do not send confidential data.",
@@ -120,7 +121,10 @@
     "archivedToast": "Chat archived",
     "restoredToast": "Chat restored",
     "noMatches": "No chats match your search",
-    "noArchived": "No archived chats"
+    "noArchived": "No archived chats",
+    "creditExhausted": "Your organization's prepaid AI credit is used up. Ask an administrator to add credit.",
+    "rateLimited": "The usage limit for this model was reached. Wait a moment and try again.",
+    "modelNotEntitled": "This model is not included in your organization's plan."
   },
   "usage": {
     "eyebrow": "YOUR ACCOUNT",
@@ -441,6 +445,14 @@
         "noComment": "No comment",
         "empty": "No feedback yet"
       }
+    },
+    "credit": {
+      "title": "Prepaid AI credit",
+      "description": "Every AI request, local mock included, is charged to this credit at the platform price list. New requests are refused once it runs out.",
+      "remaining": "Remaining",
+      "spentOf": "{spent} spent of {limit}",
+      "unavailable": "The platform gateway cannot be reached right now.",
+      "exhausted": "Credit is used up: AI requests are refused until the platform adds credit."
     }
   },
   "settings": {
@@ -497,7 +509,8 @@
       "notPermitted": "Not permitted",
       "notConfigured": "Not configured",
       "dailyLimitReached": "Daily limit reached",
-      "unavailable": "Unavailable"
+      "unavailable": "Unavailable",
+      "creditExhausted": "Credit exhausted"
     },
     "location": {
       "LOCAL": "LOCAL",

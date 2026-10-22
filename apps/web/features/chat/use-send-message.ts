@@ -5,7 +5,7 @@ import { App } from 'antd';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useApi } from '@/components/api/api-provider';
-import { API_URL, errorMessage } from '@/lib/api/client';
+import { apiUrl, errorMessage } from '@/lib/api/client';
 import { queryKeys } from '@/lib/api/query-keys';
 import type { ConversationDetail, Message, SendMessage } from '@/lib/api/types';
 import { useUIStore } from '@/stores/ui-store-provider';
@@ -114,7 +114,7 @@ export function useSendMessage() {
           useProductCatalog,
         };
         return fetch(
-          new Request(`${API_URL}/conversations/${id}/messages`, {
+          new Request(`${apiUrl()}/conversations/${id}/messages`, {
             method: 'POST',
             signal: abort.signal,
             headers: { 'Content-Type': 'application/json' },
@@ -122,6 +122,15 @@ export function useSendMessage() {
           }),
         );
       };
+      // Refusals the server marks with a code get this app's own wording (prepaid credit, rate limits, plan).
+      const refusal = (code?: string) =>
+        code === 'CREDIT_EXHAUSTED'
+          ? t('creditExhausted')
+          : code === 'RATE_LIMITED'
+            ? t('rateLimited')
+            : code === 'MODEL_NOT_ENTITLED'
+              ? t('modelNotEntitled')
+              : undefined;
       let response = await post(false);
       if (!response.ok) {
         const payload = (await response.json().catch(() => ({}))) as { code?: string; canAcknowledge?: boolean };
@@ -137,7 +146,10 @@ export function useSendMessage() {
           }))
         )
           response = await post(true);
-        else throw new Error(errorMessage(payload) || t('failedStatus', { status: response.status }));
+        else
+          throw new Error(
+            refusal(payload.code) || errorMessage(payload) || t('failedStatus', { status: response.status }),
+          );
       }
       if (!response.ok || !response.body) {
         const payload = await response.json().catch(() => ({}));
@@ -156,13 +168,13 @@ export function useSendMessage() {
           const event = frame.match(/^event:\s*(.+)$/m)?.[1];
           const raw = frame.match(/^data:\s*(.+)$/m)?.[1];
           if (!raw) continue;
-          const data = JSON.parse(raw) as { text?: string; message?: string };
+          const data = JSON.parse(raw) as { text?: string; message?: string; code?: string };
           if (event === 'token' && data.text) {
             content += data.text;
             setAssistant({ content });
           }
           if (event === 'done') completed = true;
-          if (event === 'error') throw new Error(data.message || t('failed'));
+          if (event === 'error') throw new Error(refusal(data.code) || data.message || t('failed'));
         }
         if (done) break;
       }

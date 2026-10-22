@@ -13,6 +13,7 @@ export type Citation = Message['citations'][number];
 export type MyUsage = Schema<'MyUsageResponse'>;
 export type LiveUsage = Schema<'LiveUsageResponse'>;
 export type AdminSummary = Schema<'AdminSummary'>;
+export type CreditStatus = Schema<'CreditStatusView'>;
 export type AdminModel = Schema<'AdminModelView'>;
 export type PricingConfiguration = Schema<'PricingConfigurationView'>;
 export type PricingVersion = Schema<'PricingVersionView'>;

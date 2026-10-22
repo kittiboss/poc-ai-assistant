@@ -1,5 +1,5 @@
-import { BadRequestException } from '@nestjs/common';
-import { describe, expect, it, vi } from 'vitest';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { auth, basePrisma, usersWith } from '../testing/fixtures';
 import { AuditService } from '../audit/audit.service';
 import { PricingService } from './pricing.service';
@@ -19,4 +19,13 @@ describe('pricing versions', () => {
     expect(prisma.auditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: 'PRICING_VERSION_CREATE', entityId: 'pricing-1' }) });
     await expect(service.createVersion(auth, 'local-mock', { ...zero, providerInputRate: '0.01' })).rejects.toBeInstanceOf(BadRequestException);
   });
+
+  it('leaves prices to the platform gateway in a vendor-managed deployment', async () => {
+    vi.stubEnv('MODEL_ACCESS', 'vendor-gateway');
+    const prisma = { ...basePrisma(), aIModel: { findUnique: vi.fn() }, pricingVersion: { create: vi.fn() } };
+    const service = new PricingService(prisma as never, usersWith(prisma), new AuditService(prisma as never));
+    await expect(service.createVersion(auth, 'local-mock', { strategy: 'SIMULATION', providerInputRate: '0', providerOutputRate: '0', currency: 'USD' })).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.pricingVersion.create).not.toHaveBeenCalled();
+  });
+  afterEach(() => vi.unstubAllEnvs());
 });

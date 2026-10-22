@@ -6,14 +6,16 @@ import { AuditService } from '../audit/audit.service';
 import { CurrentUser, Roles, type AuthUser } from '../common/auth/auth.decorators';
 import { Invalid, NotFound, Secured } from '../common/swagger/api-docs.decorators';
 import { ErrorResponse } from '../common/swagger/schema-types';
+import { GatewayService } from '../gateway/gateway.service';
+import { vendorGateway } from '../models/model-policies';
 import { UpdateModelDto } from '../models/models.dto';
 import { AIModelView } from '../models/models.schemas';
 import { ModelsService } from '../models/models.service';
 import { PreviewPricingDto, UpdatePricingDto } from '../pricing/pricing.dto';
 import { PriceResultView, PricingConfigurationView, PricingVersionView } from '../pricing/pricing.schemas';
 import { PricingService } from '../pricing/pricing.service';
-import { SummaryQueryDto, UpdatePermissionDto } from './admin.dto';
-import { AdminModelView, AdminSummary, AdminUserView, UserModelPermissionView } from './admin.schemas';
+import { SummaryQueryDto, TestCreditDto, UpdatePermissionDto } from './admin.dto';
+import { AdminModelView, AdminSummary, AdminUserView, CreditStatusView, UserModelPermissionView } from './admin.schemas';
 import { AdminService } from './admin.service';
 
 @ApiTags('admin')
@@ -27,11 +29,24 @@ export class AdminController {
     private readonly auditLog: AuditService,
     private readonly registry: ModelsService,
     private readonly prices: PricingService,
+    private readonly gateway: GatewayService,
   ) {}
 
   @ApiOperation({ summary: 'Aggregate usage and cost summary', description: 'Aggregates only; never returns conversation content. Includes the daily series and the external-provider guardrail status.' })
   @ApiOkResponse({ type: AdminSummary }) @Invalid()
   @Get('summary') summary(@Query() query: SummaryQueryDto) { return this.admin.summary(query); }
+
+  @ApiOperation({ summary: "The organization's prepaid AI credit", description: 'Read from the authoritative platform ledger in vendor-managed deployments.' })
+  @ApiOkResponse({ type: CreditStatusView })
+  @Get('credit') async credit(): Promise<CreditStatusView> { return { vendorManaged: vendorGateway(), credit: await this.gateway.credit() }; }
+
+  @ApiOperation({ summary: 'Simulated balance, customer sale prices, request ledger and test receipts' })
+  @ApiOkResponse({ description: 'Organization credit, sale prices and the latest 100 transactions/requests. No provider costs.' })
+  @Get('billing') billing() { return this.gateway.customerBilling(); }
+
+  @ApiOperation({ summary: 'Grant test credit (simulation only; never collects money)' })
+  @ApiCreatedResponse({ description: 'Idempotent SIM receipt. Not a real payment or tax invoice.' })
+  @Post('billing/topups') topup(@Body() body: TestCreditDto) { return this.gateway.customerBilling('/customer/topups', body); }
 
   @ApiOperation({ summary: 'Latest 100 audit entries', description: 'Model, permission, and pricing changes with before/after snapshots.' })
   @ApiOkResponse({ type: [AuditLogView] }) @Invalid()
@@ -66,6 +81,7 @@ export class AdminController {
   @ApiOperation({ summary: 'Create a new immutable pricing version (audited)', description: 'Existing versions and historical usage snapshots never change. Local models must keep actual provider cost at 0.' })
   @ApiParam({ name: 'modelId', example: 'local-mock' }) @ApiCreatedResponse({ type: PricingVersionView })
   @ApiBadRequestResponse({ description: 'Validation failed, or a non-zero provider cost was set for a local model.', type: ErrorResponse })
+  @ApiForbiddenResponse({ description: 'Caller does not have the ADMIN role, or prices are set by the platform gateway (vendor-managed deployment).', type: ErrorResponse })
   @NotFound('Model pricing')
   @Post('pricing/:modelId') updatePricing(@CurrentUser() user: AuthUser, @Param('modelId') modelId: string, @Body() dto: UpdatePricingDto) { return this.prices.createVersion(user, modelId, dto); }
 

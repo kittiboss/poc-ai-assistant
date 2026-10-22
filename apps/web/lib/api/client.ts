@@ -1,16 +1,15 @@
 import createClient from 'openapi-fetch';
+import { runtimeConfig } from '@/lib/runtime-config';
 import type { paths } from './schema';
 
-/** The API including its global `/api` prefix, as configured for the other NEXT_PUBLIC_* values. */
-export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
-
-// Paths in the OpenAPI document already start with /api.
-const API_ORIGIN = API_URL.replace(/\/api\/?$/, '');
+/** The API including its global `/api` prefix, as configured for this deployment (see runtime-config.ts). */
+export const apiUrl = () => runtimeConfig().apiUrl;
 
 export type ApiClient = ReturnType<typeof createApiClient>;
 
 export function createApiClient(fetch: (request: Request) => Promise<Response>) {
-  return createClient<paths>({ baseUrl: API_ORIGIN, fetch });
+  // Paths in the OpenAPI document already start with /api.
+  return createClient<paths>({ baseUrl: apiUrl().replace(/\/api\/?$/, ''), fetch });
 }
 
 export class ApiError extends Error {
