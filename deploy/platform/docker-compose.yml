@@ -213,6 +213,9 @@ services:
       VENDOR_ADMIN_KEY: ${VENDOR_ADMIN_KEY:?Run npm run platform:up to initialize vendor secrets}
       UPSTREAM_URL: http://litellm:4000
       PORT: 4050
+      # Console usage totals and tenant purge on the RAG engine.
+      RAG_ENGINE_URL: http://rag-engine:4060
+      RAG_ADMIN_KEY: ${RAG_ADMIN_KEY:?Run npm run platform:up to initialize RAG secrets}
     ports:
       - "127.0.0.1:4050:4050"
     depends_on:
@@ -228,9 +231,57 @@ services:
     networks: [gateway, shared, admin]
     restart: unless-stopped
 
+  # Knowledge of every customer, isolated by tenant with row-level security (pgvector).
+  rag-db:
+    image: enterprise-ai/postgres:local
+    command: ["postgres", "-c", "shared_buffers=32MB", "-c", "max_connections=20", "-c", "maintenance_work_mem=64MB"]
+    environment:
+      POSTGRES_DB: rag
+      POSTGRES_USER: rag
+      POSTGRES_PASSWORD: ${RAG_DB_PASSWORD:?Run npm run platform:up to initialize RAG secrets}
+    volumes:
+      - rag-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag -d rag"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 256m
+    networks: [rag]
+    restart: unless-stopped
+
+  # Central RAG engine: stores, chunks and searches each customer's documents within the vendor's
+  # limits. Customer APIs embed text through vendor-control themselves, so it holds no credential.
+  rag-engine:
+    image: enterprise-ai/rag-engine:local
+    build:
+      context: ../..
+      dockerfile: apps/rag-engine/Dockerfile
+    environment:
+      # Owner connection: applies the schema at start, then the engine signs in as rag_app.
+      DATABASE_URL: postgresql://rag:${RAG_DB_PASSWORD}@rag-db:5432/rag
+      RAG_APP_DB_PASSWORD: ${RAG_APP_DB_PASSWORD:?Run npm run platform:up to initialize RAG secrets}
+      RAG_ADMIN_KEY: ${RAG_ADMIN_KEY}
+      VENDOR_CONTROL_URL: http://vendor-control:4050
+      PORT: 4060
+    depends_on:
+      rag-db:
+        condition: service_healthy
+      vendor-control:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4060/health/readiness').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    mem_limit: 192m
+    networks: [rag, shared]
+    restart: unless-stopped
+
 volumes:
   keycloak-data:
   gateway-db-data:
+  rag-db-data:
 
 networks:
   edge:
@@ -241,7 +292,10 @@ networks:
   # Gateway, its database, the mock and the credential proxies. Customer deployments never join it.
   gateway:
     internal: true
-  # The only network customer deployments join: Keycloak and the gateway, nothing else.
+  # The RAG engine and its database. Customer deployments never join it.
+  rag:
+    internal: true
+  # The only network customer deployments join: Keycloak, vendor-control and the RAG engine.
   shared:
     name: platform-shared
     internal: true

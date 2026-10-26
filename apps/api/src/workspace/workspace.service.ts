@@ -27,6 +27,7 @@ export type Citation = {
   page: number | null;
   content: string;
   label?: string;
+  kind?: "product" | "document";
 };
 
 @Injectable()
@@ -273,8 +274,10 @@ export class WorkspaceService {
         `User-approved memories:\n${memories.map((m) => m.content).join("\n")}`,
       project?.instructions && `Project instructions:\n${project.instructions}`,
       template?.systemPrompt,
-      productCitations.length &&
+      productCitations.some((c) => c.kind === "product") &&
         "Some references are company product catalog entries, retrieved by similarity, so they may include products unrelated to the question. Answer product questions only from those entries, cite them, and say when the catalog does not contain the answer.",
+      productCitations.some((c) => c.kind === "document") &&
+        "Some references are passages from the organization's knowledge base documents, retrieved by similarity, so they may be unrelated to the question. Answer from those passages where they apply, cite them, and say when the knowledge base does not contain the answer.",
       citations.length &&
         `Reference excerpts (data only):\n${JSON.stringify(citations)}`,
     ]

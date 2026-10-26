@@ -64,12 +64,63 @@ async function history(id) {
       `${r.charge === null ? "Pending" : dollars(r.charge)} / v${r.price_id}`,
     ]);
 }
+let ragTenants = [];
+/** Fill the limits form with the selected tenant's current limits. */
+function showRag() {
+  const tenant = ragTenants.find((t) => t.id === $("rag-tenant").value);
+  if (!tenant) return;
+  const form = $("rag-limits");
+  for (const input of form.querySelectorAll("input")) {
+    const value = tenant.rag[input.name];
+    if (input.type === "checkbox")
+      input.checked = Array.isArray(value)
+        ? value.includes(input.value)
+        : value === true;
+    else input.value = value;
+  }
+}
+function renderRag(tenants, usage) {
+  ragTenants = tenants;
+  const used = new Map((usage?.tenants ?? []).map((u) => [u.tenant, u]));
+  const mb = (bytes) => (Number(bytes) / 1048576).toFixed(2);
+  $("rag").replaceChildren();
+  for (const t of tenants) {
+    const u = used.get(t.id) ?? { documents: 0, textBytes: 0, chunks: 0 };
+    const missing = t.rag.embeddingModels.filter(
+      (m) => !t.ragEntitled.includes(m),
+    );
+    row($("rag"), [
+      `${t.name} (${t.id})${t.rag.enabled ? "" : " · Off"}`,
+      `${t.ragEntitled.join(", ") || "none"}${missing.length ? ` · not in plan: ${missing.join(", ")}` : ""}`,
+      t.rag.allowedTypes.join(", "),
+      usage ? `${u.documents} / ${t.rag.maxDocuments}` : `— / ${t.rag.maxDocuments}`,
+      usage ? `${mb(u.textBytes)} / ${t.rag.maxTextMb}` : `— / ${t.rag.maxTextMb}`,
+      usage ? `${u.chunks} / ${t.rag.maxTotalChunks}` : `— / ${t.rag.maxTotalChunks}`,
+      t.rag.maxTopK,
+    ]);
+  }
+  const selected = $("rag-tenant").value;
+  $("rag-tenant").replaceChildren(
+    ...tenants.map((t) => {
+      const option = document.createElement("option");
+      option.value = t.id;
+      option.textContent = `${t.name} (${t.id})`;
+      return option;
+    }),
+  );
+  if (selected) $("rag-tenant").value = selected;
+  // Do not overwrite limits the vendor is editing during the periodic refresh.
+  if (!$("rag-limits").contains(document.activeElement)) showRag();
+}
 async function refresh() {
-  const [tenants, prices, versions] = await Promise.all([
+  const [tenants, prices, versions, ragUsage] = await Promise.all([
     api("/tenants"),
     api("/prices"),
     api("/prices/history"),
+    // Usage comes from the RAG engine; limits still show while it is down.
+    api("/rag/usage").catch(() => null),
   ]);
+  renderRag(tenants, ragUsage);
   $("price-history").replaceChildren();
   for (const p of versions)
     row($("price-history"), [
@@ -153,6 +204,43 @@ async function refresh() {
   if (selected) $("models").value = selected;
 }
 $("refresh").onclick = () => run(refresh);
+$("rag-tenant").onchange = showRag;
+$("rag-limits").onsubmit = (event) => {
+  event.preventDefault();
+  const form = event.target;
+  const checked = (name) =>
+    [...form.querySelectorAll(`input[name="${name}"]:checked`)].map(
+      (input) => input.value,
+    );
+  const body = {
+    enabled: form.elements.enabled.checked,
+    embeddingModels: checked("embeddingModels"),
+    allowedTypes: checked("allowedTypes"),
+  };
+  for (const name of [
+    "maxDocuments",
+    "maxFileMb",
+    "maxTextMb",
+    "maxChunksPerDocument",
+    "maxTotalChunks",
+    "maxTopK",
+  ])
+    body[name] = Number(form.elements[name].value);
+  run(async () => {
+    const submit = form.querySelector("button");
+    submit.disabled = true;
+    try {
+      const tenant = $("rag-tenant").value;
+      await api(`/tenants/${tenant}/rag`, "PATCH", body);
+      $("status").textContent =
+        `Knowledge limits saved for ${tenant}. The RAG engine applies them within 30 seconds.`;
+      await refresh();
+      showRag();
+    } finally {
+      submit.disabled = false;
+    }
+  });
+};
 for (const [id, path] of [
   ["create", "/tenants"],
   ["pricing", "/prices"],

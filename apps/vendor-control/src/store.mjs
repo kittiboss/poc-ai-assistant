@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { charge, money, priceInput, usd } from "./money.mjs";
+import { defaultRag, effectiveRag, ragInput } from "./rag.mjs";
 
 export const hash = (key) => createHash("sha256").update(key).digest("hex");
 export class Fault extends Error {
@@ -108,7 +109,9 @@ export class Store {
       );
     return tenant;
   }
-  async register(config, key, opening = 0) {
+  async register(input, key, opening = 0) {
+    // Knowledge limits seed the rag column once; after that the vendor console owns them.
+    const { rag: seed, ...config } = input ?? {};
     if (
       !validId(config?.id) ||
       typeof config.name !== "string" ||
@@ -124,20 +127,54 @@ export class Store {
       (typeof key !== "string" || !key.startsWith("sk-") || key.length < 20)
     )
       throw bad("Invalid gateway credential");
+    let rag;
+    try {
+      rag = ragInput(seed ?? defaultRag());
+    } catch (error) {
+      throw bad(error.message);
+    }
     return this.tx(async (db) => {
       const created = await db.query(
-        "INSERT INTO vendor.tenants(id,name,config,token_hash) VALUES($1,$2,$3,$4) ON CONFLICT(id) DO NOTHING RETURNING id",
-        [config.id, config.name, config, key ? hash(key) : null],
+        "INSERT INTO vendor.tenants(id,name,config,token_hash,rag) VALUES($1,$2,$3,$4,$5) ON CONFLICT(id) DO NOTHING RETURNING id",
+        [config.id, config.name, config, key ? hash(key) : null, rag],
       );
       if (!created.rowCount && key)
         await db.query(
-          "UPDATE vendor.tenants SET name=$2,config=$3,token_hash=$4 WHERE id=$1",
-          [config.id, config.name, config, hash(key)],
+          "UPDATE vendor.tenants SET name=$2,config=$3,token_hash=$4,rag=COALESCE(rag,$5) WHERE id=$1",
+          [config.id, config.name, config, hash(key), rag],
         );
       if (created.rowCount)
         await this.grant(config.id, opening, "opening", "OPENING", db);
       return { id: config.id, created: !!created.rowCount };
     });
+  }
+  async setRag(id, body) {
+    const {
+      rows: [tenant],
+    } = await this.pool.query("SELECT rag FROM vendor.tenants WHERE id=$1", [
+      id,
+    ]);
+    if (!tenant) throw new Fault(404, "not_found", "Unknown tenant");
+    let rag;
+    try {
+      rag = ragInput(body, tenant.rag ?? defaultRag());
+    } catch (error) {
+      throw bad(error.message);
+    }
+    await this.pool.query("UPDATE vendor.tenants SET rag=$2 WHERE id=$1", [
+      id,
+      rag,
+    ]);
+    return rag;
+  }
+  /** The tenant's knowledge entitlements, as the central RAG engine enforces them. */
+  ragFor(tenant) {
+    return {
+      tenant: tenant.id,
+      name: tenant.name,
+      limits: effectiveRag(tenant.rag, tenant.config),
+      embeddingBatch: tenant.config.embeddingBatch ?? null,
+    };
   }
   async grant(id, amount, reference, kind = "TOPUP", transaction) {
     let value;
@@ -435,13 +472,15 @@ export class Store {
   }
   async tenants() {
     const { rows } = await this.pool
-      .query(`SELECT t.id,t.name,t.enabled,t.config,t.token_hash IS NOT NULL AS provisioned,
+      .query(`SELECT t.id,t.name,t.enabled,t.config,t.rag,t.token_hash IS NOT NULL AS provisioned,
       (SELECT COALESCE(sum(cost),0) FROM vendor.requests WHERE tenant=t.id) cost,
       (SELECT count(*) FROM vendor.requests WHERE tenant=t.id AND state='PENDING') pending,
       (SELECT count(*) FROM vendor.requests WHERE tenant=t.id) requests FROM vendor.tenants t ORDER BY id`);
     return Promise.all(
       rows.map(async ({ cost, ...t }) => ({
         ...t,
+        rag: t.rag ?? defaultRag(),
+        ragEntitled: effectiveRag(t.rag, t.config).embeddingModels,
         credit: await this.balance(t.id),
         simulatedProviderCost: usd(cost),
         actualProviderCost: "0.000000000",

@@ -170,7 +170,7 @@ export class ChatService implements OnModuleInit, OnModuleDestroy {
     if (!dto.content.trim())
       throw new BadRequestException("Message cannot be empty");
     // Retrieval runs before anything is persisted, so a failed search leaves no half-written turn.
-    const productCitations = dto.useProductCatalog
+    const productCitations = dto.useKnowledge || dto.useProductCatalog
       ? await this.knowledge.retrieve({
           userId: user.id,
           roles: auth.roles,

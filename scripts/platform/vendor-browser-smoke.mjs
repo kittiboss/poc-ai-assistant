@@ -1,4 +1,5 @@
 // Browser verification with local mock chat only; leaves one small test-credit grant/history entry.
+// The knowledge base check uploads one small text file with mock embeddings and deletes it again.
 import assert from "node:assert/strict";
 import { chromium } from "playwright-core";
 import { join } from "node:path";
@@ -26,7 +27,7 @@ try {
   await consolePage
     .getByRole("heading", { name: "Credits, tenants & model pricing" })
     .waitFor();
-  await consolePage.getByRole("cell", { name: /Customer A \(a\)/ }).waitFor();
+  await consolePage.locator("#tenants").getByRole("cell", { name: /Customer A \(a\)/ }).waitFor();
   assert.ok((await consolePage.locator("#prices tr").count()) >= 2);
   await consolePage
     .locator("#tenants tr")
@@ -34,6 +35,10 @@ try {
     .getByRole("button", { name: "History", exact: true })
     .click();
   await consolePage.locator("#ledger tr").first().waitFor();
+  // Knowledge limits per customer, with usage from the RAG engine.
+  await consolePage.locator("#rag tr").filter({ hasText: "Customer A (a)" }).waitFor();
+  await consolePage.locator("#rag-tenant").selectOption("a");
+  assert.ok(Number(await consolePage.locator('#rag-limits input[name="maxTopK"]').inputValue()) >= 1);
   await consolePage.screenshot({
     path: "/tmp/vendor-console-poc.png",
     fullPage: true,
@@ -90,6 +95,29 @@ try {
     ),
     "No page-level mobile overflow",
   );
+  // Central knowledge base: upload, index with mock embeddings, delete.
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(`${env.WEB_PUBLIC_URL}/knowledge`);
+  await page.getByRole("heading", { name: "Knowledge base", exact: true }).waitFor();
+  await page.getByText("Mock Embedding · Local").waitFor();
+  const filename = `browser-smoke-${Date.now()}.txt`;
+  await page.locator('input[type="file"]').setInputFiles({
+    name: filename,
+    mimeType: "text/plain",
+    buffer: Buffer.from("Browser smoke: the support desk opens at 9 am."),
+  });
+  const row = page.locator("tr").filter({ hasText: filename });
+  await row.getByText("Ready", { exact: true }).waitFor({ timeout: 60000 });
+  await page.screenshot({ path: "/tmp/tenant-knowledge-poc.png", fullPage: true });
+  await row.getByRole("button", { name: "Delete" }).click();
+  await page.getByRole("button", { name: "Delete", exact: true }).last().click();
+  await row.waitFor({ state: "detached" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.ok(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    "No page-level mobile overflow on the knowledge base",
+  );
+  await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`${env.WEB_PUBLIC_URL}/admin`);
   await page
     .getByRole("heading", { name: "Pricing management", exact: true })
@@ -103,6 +131,7 @@ try {
       {
         vendorConsole: "passed",
         tenantBilling: "passed",
+        knowledgeBase: "passed",
         mockTopup: receipt.id,
         mobileLayout: "passed",
         browserErrors: 0,

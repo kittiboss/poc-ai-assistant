@@ -31,6 +31,8 @@ services:
       CORS_ORIGIN: ${WEB_PUBLIC_URL}
       API_PUBLIC_URL: ${API_PUBLIC_URL}
       LITELLM_URL: http://vendor-control:4050
+      # Central knowledge base; authenticated with the same platform credential as vendor-control.
+      RAG_ENGINE_URL: http://rag-engine:4060
       LITELLM_API_KEY: ${LITELLM_API_KEY:?Create the tenant with npm run tenant:create}
       MODEL_ACCESS: vendor-gateway
       # The platform decides which external models this customer may use (its key's allowlist).

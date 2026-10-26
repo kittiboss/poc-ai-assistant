@@ -24,4 +24,5 @@ export class SendMessageDto {
   @ApiPropertyOptional() @IsOptional() @IsUUID() templateId?: string;
   @ApiPropertyOptional({ description: 'Acknowledge regex warnings for the complete outgoing context.' }) @IsOptional() @IsBoolean() acknowledgeSensitive?: boolean;
   @ApiPropertyOptional({ default: false, description: 'Retrieve matching products from the indexed catalog and supply them as cited context. With an external embedding model the message text is sent to that provider for the search.' }) @IsOptional() @IsBoolean() useProductCatalog?: boolean;
+  @ApiPropertyOptional({ default: false, description: "Retrieve matching passages from your organization's knowledge base (the central knowledge base in vendor-managed deployments, otherwise the product catalog) and supply them as cited context." }) @IsOptional() @IsBoolean() useKnowledge?: boolean;
 }

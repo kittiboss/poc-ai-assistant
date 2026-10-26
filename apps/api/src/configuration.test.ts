@@ -246,13 +246,21 @@ describe("vendor-managed platform deployment", () => {
     expect(backend).toContain("MODEL_ACCESS: vendor-gateway");
     expect(backend).toContain("LITELLM_API_KEY: ${LITELLM_API_KEY:?");
     expect(backend).toContain("LITELLM_URL: http://vendor-control:4050");
+    // Knowledge lives in the central engine, reached with the same platform credential.
+    expect(backend).toContain("RAG_ENGINE_URL: http://rag-engine:4060");
+    expect(backend).not.toMatch(/RAG_ADMIN_KEY|RAG_DB_PASSWORD|RAG_APP_DB_PASSWORD/);
     expect(block(tenant, "networks", "platform-shared")).toMatch(/external: true\n\s+name: platform-shared/);
   });
 
-  it("lets customer deployments reach only Keycloak and the gateway on the platform", () => {
+  it("lets customer deployments reach only Keycloak, the gateway and the RAG engine on the platform", () => {
     expect(block(platform, "networks", "shared")).toMatch(/name: platform-shared\n\s+internal: true/);
     const onShared = serviceNames(platform).filter((name) => /networks: \[[^\]]*\bshared\b/.test(block(platform, "services", name)!));
-    expect(onShared).toEqual(["keycloak", "vendor-control"]);
+    expect(onShared).toEqual(["keycloak", "vendor-control", "rag-engine"]);
+    // Every customer's documents sit in rag-db: only the engine reaches it, and neither has egress.
+    expect(block(platform, "services", "rag-db")).toContain("networks: [rag]");
+    expect(block(platform, "services", "rag-engine")).toContain("networks: [rag, shared]");
+    expect(block(platform, "networks", "rag")).toContain("internal: true");
+    expect(block(platform, "services", "rag-engine")).not.toMatch(/ports:/);
     // The credential proxies do not authenticate callers, so only the gateway may reach them.
     for (const proxy of ["gemini-proxy", "groq-proxy", "openrouter-proxy"]) {
       const service = block(platform, "services", proxy)!;

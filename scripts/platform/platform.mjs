@@ -20,12 +20,22 @@ const [command, ...flags] = process.argv.slice(2);
 /** Provider settings the single-installation stack keeps in the root .env; the platform takes them over once. */
 const importedSettings = [...Object.keys(providerModels), 'GROQ_FREE_TIER_CONFIRMED', 'GEMINI_MODEL', 'GEMINI_EMBEDDING_MODEL', 'GROQ_MODEL'];
 
+const laterSecrets = () => ({
+  VENDOR_ADMIN_KEY: secret(32),
+  RAG_DB_PASSWORD: secret(16),
+  RAG_APP_DB_PASSWORD: secret(16),
+  RAG_ADMIN_KEY: secret(32),
+});
+
 function ensurePlatformEnv() {
   const existing = readEnvFile(platformEnvFile);
   if (existing) {
-    if (!existing.VENDOR_ADMIN_KEY) {
-      existing.VENDOR_ADMIN_KEY = secret(32);
+    // Secrets added by later platform versions; existing ones are never regenerated.
+    const added = Object.entries(laterSecrets()).filter(([key]) => !existing[key]);
+    if (added.length) {
+      Object.assign(existing, Object.fromEntries(added));
       writeEnvFile(platformEnvFile, existing, 'Vendor platform secrets. Never commit this file.');
+      console.log(`Added ${added.map(([key]) => key).join(', ')} to deploy/platform/.env.`);
     }
     return existing;
   }
@@ -38,7 +48,7 @@ function ensurePlatformEnv() {
     GATEWAY_DB_PASSWORD: secret(16),
     KEYCLOAK_ADMIN_PASSWORD: secret(12),
     KEYCLOAK_PORT: '8180',
-    VENDOR_ADMIN_KEY: secret(32),
+    ...laterSecrets(),
     ...imported,
   };
   writeEnvFile(platformEnvFile, env, 'Vendor platform secrets. Never commit this file. Provider keys enable their credential proxy.');
@@ -63,7 +73,7 @@ if (command === 'build') {
 } else if (command === 'up') {
   const env = ensurePlatformEnv();
   platformCompose(['up', '-d'], env);
-  await waitHealthy(['platform-keycloak-1', 'platform-litellm-1', 'platform-vendor-control-1']);
+  await waitHealthy(['platform-keycloak-1', 'platform-litellm-1', 'platform-vendor-control-1', 'platform-rag-engine-1']);
   const profiles = platformProfiles(env);
   console.log(`Platform is up. Keycloak: ${keycloakUrl(env)} · gateway admin API: http://127.0.0.1:4000`);
   console.log(`Provider proxies: ${profiles.length ? profiles.join(', ') : 'none (add a provider key to deploy/platform/.env)'}`);

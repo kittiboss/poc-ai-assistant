@@ -91,6 +91,25 @@ button {
 input {
   width: 150px;
 }
+fieldset {
+  display: flex;
+  gap: 12px;
+  border: 1px solid #26334b;
+  border-radius: 8px;
+  padding: 6px 12px 10px;
+  margin: 0;
+}
+legend {
+  font-size: 12px;
+  color: #b7c5de;
+}
+label.check {
+  flex-direction: row;
+  align-items: center;
+}
+label.check input {
+  width: auto;
+}
 button {
   background: #5055d4;
   cursor: pointer;
@@ -148,7 +167,10 @@ footer {
     padding: 16px;
   }
   form label,
-  form input {
+  form input:not([type="checkbox"]) {
     width: 100%;
+  }
+  fieldset {
+    flex-wrap: wrap;
   }
 }

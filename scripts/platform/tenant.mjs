@@ -290,6 +290,9 @@ async function credits(tenant, args) {
 
 async function status(only) {
   const tenants = await vendor("/admin/tenants");
+  // Knowledge totals come from the RAG engine; credit still shows if it is down.
+  const rag = await vendor("/admin/rag/usage").catch(() => null);
+  const used = new Map((rag?.tenants ?? []).map((u) => [u.tenant, u]));
   console.table(
     tenants
       .filter((t) => !only || t.id === only)
@@ -301,6 +304,9 @@ async function status(only) {
         remaining: usd(t.credit.remaining),
         enabled: t.enabled,
         models: t.config.models.join(" "),
+        knowledge: rag
+          ? `${used.get(t.id)?.documents ?? 0}/${t.rag.maxDocuments} docs, ${used.get(t.id)?.chunks ?? 0}/${t.rag.maxTotalChunks} chunks`
+          : "unavailable",
       })),
   );
 }
@@ -357,9 +363,11 @@ async function down(tenant, args) {
     });
   const admin = await keycloakAdmin();
   await admin(`/realms/${realmName(tenant)}`, { method: "DELETE" });
+  // Otherwise a tenant created again with this id would inherit the documents.
+  await vendor(`/admin/tenants/${tenant}/rag-data`, { method: "DELETE" });
   rmSync(envFile(tenant), { force: true });
   console.log(
-    `Customer ${tenant} removed: data, gateway key and realm deleted.`,
+    `Customer ${tenant} removed: data, knowledge base, gateway key and realm deleted.`,
   );
 }
 

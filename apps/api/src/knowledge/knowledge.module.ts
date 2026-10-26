@@ -8,7 +8,10 @@ import {
   KnowledgeAdminController,
   KnowledgeController,
 } from "./knowledge.controller";
+import { KnowledgeBaseController } from "./knowledge-base.controller";
+import { KnowledgeBaseService } from "./knowledge-base.service";
 import { KnowledgeService } from "./knowledge.service";
+import { RagEngineClient } from "./rag-engine.client";
 
 @Module({
   imports: [
@@ -18,8 +21,12 @@ import { KnowledgeService } from "./knowledge.service";
     WorkspaceModule,
     AuditModule,
   ],
-  controllers: [KnowledgeController, KnowledgeAdminController],
-  providers: [KnowledgeService],
+  controllers: [
+    KnowledgeController,
+    KnowledgeAdminController,
+    KnowledgeBaseController,
+  ],
+  providers: [KnowledgeService, KnowledgeBaseService, RagEngineClient],
   exports: [KnowledgeService],
 })
 export class KnowledgeModule {}

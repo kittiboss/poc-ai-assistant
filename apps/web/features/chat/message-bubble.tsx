@@ -192,7 +192,7 @@ export const MessageBubble = memo(function MessageBubble({
                 size="small"
                 items={message.citations.map((source) => ({
                   key: source.id,
-                  label: `[${source.label}] ${source.filename}${source.page ? ` · ${t('sourcePage', { page: source.page })}` : ''}${source.kind === 'product' && source.score !== undefined ? ` · ${t('productMatch', { score: format.number(source.score, { maximumFractionDigits: 3 }) })}` : ''}`,
+                  label: `[${source.label}] ${source.filename}${source.page ? ` · ${t('sourcePage', { page: source.page })}` : ''}${source.kind && source.score !== undefined ? ` · ${t(source.kind === 'product' ? 'productMatch' : 'documentMatch', { score: format.number(source.score, { maximumFractionDigits: 3 }) })}` : ''}`,
                   children: <p className="text-xs whitespace-pre-wrap text-fg-secondary">{source.content}</p>,
                 }))}
               />

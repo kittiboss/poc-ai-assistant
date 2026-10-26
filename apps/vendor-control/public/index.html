@@ -158,6 +158,104 @@
           </div>
         </details>
       </section>
+      <section>
+        <h2>Knowledge (RAG) limits</h2>
+        <p>
+          Every customer's documents live in the central RAG engine, isolated by
+          tenant. These limits are the frame each customer admin tunes within.
+          Embedding models also need the tenant's model entitlement.
+        </p>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Tenant</th>
+                <th>Embedding models</th>
+                <th>File types</th>
+                <th>Documents</th>
+                <th>Text MB</th>
+                <th>Chunks</th>
+                <th>Top-K max</th>
+              </tr>
+            </thead>
+            <tbody id="rag"></tbody>
+          </table>
+        </div>
+        <form id="rag-limits">
+          <label>Tenant<select name="tenant" id="rag-tenant"></select></label
+          ><label class="check"
+            ><input name="enabled" type="checkbox" />Enabled</label
+          ><fieldset>
+            <legend>Embedding models</legend>
+            <label class="check"
+              ><input
+                name="embeddingModels"
+                type="checkbox"
+                value="mock-embedding" />mock-embedding</label
+            ><label class="check"
+              ><input
+                name="embeddingModels"
+                type="checkbox"
+                value="gemini-embedding" />gemini-embedding</label
+            >
+          </fieldset>
+          <fieldset>
+            <legend>File types</legend>
+            <label class="check"
+              ><input name="allowedTypes" type="checkbox" value="csv" />CSV</label
+            ><label class="check"
+              ><input name="allowedTypes" type="checkbox" value="txt" />TXT</label
+            ><label class="check"
+              ><input name="allowedTypes" type="checkbox" value="md" />MD</label
+            ><label class="check"
+              ><input name="allowedTypes" type="checkbox" value="pdf" />PDF</label
+            >
+          </fieldset>
+          <label
+            >Max documents<input
+              name="maxDocuments"
+              type="number"
+              min="1"
+              max="200"
+              required /></label
+          ><label
+            >Max file MB<input
+              name="maxFileMb"
+              type="number"
+              min="1"
+              max="5"
+              required /></label
+          ><label
+            >Max text MB<input
+              name="maxTextMb"
+              type="number"
+              min="1"
+              max="50"
+              required /></label
+          ><label
+            >Chunks / document<input
+              name="maxChunksPerDocument"
+              type="number"
+              min="1"
+              max="2000"
+              required /></label
+          ><label
+            >Total chunks<input
+              name="maxTotalChunks"
+              type="number"
+              min="1"
+              max="20000"
+              required /></label
+          ><label
+            >Top-K max<input
+              name="maxTopK"
+              type="number"
+              min="1"
+              max="10"
+              required /></label
+          ><button>Save limits</button>
+        </form>
+      </section>
       <section id="history" hidden>
         <h2 id="history-title">Credit history</h2>
         <p>

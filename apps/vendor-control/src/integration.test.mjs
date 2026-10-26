@@ -122,6 +122,35 @@ test(
       },
     );
     await t.test(
+      "knowledge limits are seeded once and survive re-provisioning",
+      async () => {
+        const key = `sk-${randomUUID()}`;
+        await store.register(
+          {
+            ...defaultConfig("rag", "Knowledge"),
+            rag: { maxTopK: 4, embeddingModels: ["mock-embedding"] },
+          },
+          key,
+          "1",
+        );
+        const tenant = await store.authenticate(key);
+        assert.equal(tenant.config.rag, undefined);
+        assert.equal(store.ragFor(tenant).limits.maxTopK, 4);
+        await store.setRag("rag", { maxTopK: 2 });
+        // tenant:create and tenant:rotate re-register with the checked-in seed.
+        await store.register(
+          { ...defaultConfig("rag", "Knowledge"), rag: { maxTopK: 9 } },
+          `sk-${randomUUID()}`,
+        );
+        const [row] = (await store.tenants()).filter((t) => t.id === "rag");
+        assert.equal(row.rag.maxTopK, 2);
+        await assert.rejects(store.setRag("rag", { maxTopK: 0 }), {
+          status: 400,
+        });
+        await assert.rejects(store.setRag("missing", {}), { status: 404 });
+      },
+    );
+    await t.test(
       "database refuses updates/deletes of historical prices and ledger entries",
       async () => {
         await assert.rejects(
@@ -179,9 +208,16 @@ test(
       },
     );
     let upstreamCalls = 0;
+    const ragCalls = [];
     const app = createApp(store, {
       adminKey: "vendor-test-key-that-is-not-a-real-secret",
       upstreamUrl: "http://mock.invalid",
+      ragEngineUrl: "http://rag.invalid",
+      ragAdminKey: "rag-admin-test-key",
+      fetchRag: async (url, init) => {
+        ragCalls.push({ url, init });
+        return Response.json({ tenants: [] });
+      },
       fetchUpstream: async (path, init) => {
         upstreamCalls++;
         const body = JSON.parse(init.body);
@@ -241,6 +277,51 @@ test(
         assert.equal(
           (await call("/customer/billing", undefined, "wrong")).status,
           401,
+        );
+      },
+    );
+    await t.test(
+      "each tenant reads only its own knowledge limits; only the vendor edits them",
+      async () => {
+        const own = await (await call("/customer/rag", undefined, keyB)).json();
+        assert.equal(own.tenant, "b");
+        assert.deepEqual(own.limits.embeddingModels, ["mock-embedding"]);
+        assert.ok(!/token_hash|balance/.test(JSON.stringify(own)));
+        assert.equal((await call("/customer/rag", undefined, "wrong")).status, 401);
+        const asTenant = await fetch(`${base}/admin/tenants/b/rag`, {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${keyB}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ maxTopK: 10 }),
+        });
+        assert.equal(asTenant.status, 401);
+        const vendor = {
+          Authorization: "Bearer vendor-test-key-that-is-not-a-real-secret",
+          "Content-Type": "application/json",
+        };
+        const saved = await fetch(`${base}/admin/tenants/b/rag`, {
+          method: "PATCH",
+          headers: vendor,
+          body: JSON.stringify({ maxTopK: 3 }),
+        });
+        assert.equal(saved.status, 200);
+        assert.equal(
+          (await (await call("/customer/rag", undefined, keyB)).json()).limits.maxTopK,
+          3,
+        );
+        assert.equal(
+          (await fetch(`${base}/admin/rag/usage`, { headers: vendor })).status,
+          200,
+        );
+        assert.equal(
+          (await fetch(`${base}/admin/tenants/b/rag-data`, { method: "DELETE", headers: vendor })).status,
+          200,
+        );
+        assert.deepEqual(
+          ragCalls.map(({ url, init }) => [url, init.method, init.headers.Authorization]),
+          [
+            ["http://rag.invalid/admin/usage", "GET", "Bearer rag-admin-test-key"],
+            ["http://rag.invalid/admin/tenants/b", "DELETE", "Bearer rag-admin-test-key"],
+          ],
         );
       },
     );

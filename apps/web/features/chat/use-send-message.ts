@@ -60,12 +60,13 @@ export function useSendMessage() {
     conversationId,
     prompt,
     modelId,
-    useProductCatalog,
+    useKnowledge,
   }: {
     conversationId?: string;
     prompt: string;
     modelId: string;
-    useProductCatalog: boolean;
+    /** Product catalog, or the central knowledge base in vendor-managed deployments. */
+    useKnowledge: boolean;
   }) {
     setChatError('');
     const abort = new AbortController();
@@ -111,7 +112,8 @@ export function useSendMessage() {
           modelId,
           requestId,
           acknowledgeSensitive,
-          useProductCatalog,
+          useKnowledge,
+          useProductCatalog: false,
         };
         return fetch(
           new Request(`${apiUrl()}/conversations/${id}/messages`, {

@@ -593,6 +593,89 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/admin/knowledge/settings': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Knowledge base limits, settings and usage
+     * @description The vendor's limits for this organization, the current retrieval settings and what applies after the limits (`effective`), the index being searched (`active`) and built (`target`), usage, and the embedding models the plan includes.
+     */
+    get: operations['KnowledgeBaseController_overview'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /**
+     * Change retrieval settings (audited)
+     * @description Top-K and the minimum score apply at once. Changing the embedding model or chunking builds a new index version from the stored text; search keeps the current one until it is complete. An external embedding model receives the text of every document.
+     */
+    patch: operations['KnowledgeBaseController_updateSettings'];
+    trace?: never;
+  };
+  '/api/admin/knowledge/documents': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List documents in the knowledge base
+     * @description Status is INDEXING, READY or PAUSED (with a reason such as CREDIT_EXHAUSTED or POLICY).
+     */
+    get: operations['KnowledgeBaseController_documents'];
+    put?: never;
+    /**
+     * Upload a document (audited)
+     * @description CSV, TXT, MD or PDF, as the plan allows. Text is extracted in this deployment and stored in the central engine; indexing runs in the background through the same credit, quotas and policies as chat. A CSV with the product catalog columns keeps the catalog's passage format.
+     */
+    post: operations['KnowledgeBaseController_upload'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/admin/knowledge/documents/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Delete a document and its passages (audited) */
+    delete: operations['KnowledgeBaseController_remove'];
+    options?: never;
+    head?: never;
+    /** Turn a document on or off for chat (audited) */
+    patch: operations['KnowledgeBaseController_setEnabled'];
+    trace?: never;
+  };
+  '/api/admin/knowledge/documents/{id}/retry': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Resume indexing a paused document (audited) */
+    post: operations['KnowledgeBaseController_retry'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/admin/summary': {
     parameters: {
       query?: never;
@@ -1109,12 +1192,12 @@ export interface components {
        */
       label: string;
       /**
-       * @description Present for product-catalog retrieval results.
+       * @description product: a product-catalog entry. document: a passage from the central knowledge base.
        * @enum {string}
        */
-      kind?: 'product';
+      kind?: 'product' | 'document';
       /**
-       * @description Product vector similarity score from 0 to 1.
+       * @description Vector similarity score from 0 to 1 (catalog and knowledge base).
        * @example 0.812
        */
       score?: number;
@@ -1251,6 +1334,11 @@ export interface components {
        * @default false
        */
       useProductCatalog: boolean;
+      /**
+       * @description Retrieve matching passages from your organization's knowledge base (the central knowledge base in vendor-managed deployments, otherwise the product catalog) and supply them as cited context.
+       * @default false
+       */
+      useKnowledge: boolean;
     };
     ProjectDto: {
       name: string;
@@ -1363,6 +1451,11 @@ export interface components {
       indexing: boolean;
       /** @description Current or most recent indexing run since the API started. */
       lastRun: components['schemas']['IndexRunView'] | null;
+      /**
+       * @description catalog: this installation's product catalog. knowledge-base: the platform's central knowledge base (vendor-managed); products then counts documents and indexed/stale count passages.
+       * @enum {string}
+       */
+      source: 'catalog' | 'knowledge-base';
     };
     ImportResultView: {
       /** @example 200 */
@@ -1412,6 +1505,27 @@ export interface components {
        * @example 109
        */
       estimatedSeconds: number;
+    };
+    KnowledgeSettingsDto: {
+      /**
+       * @description One of the embedding models in your plan. Changing it re-indexes every document (an external model receives their text).
+       * @example mock-embedding
+       */
+      embeddingModel?: string;
+      /** @description Passages per question, up to the plan's maximum. */
+      topK?: number;
+      /** @description Passages scoring lower are not used. */
+      minScore?: number;
+      /** @description Characters per passage. Changing it re-indexes. */
+      chunkSize?: number;
+      /** @description Characters shared by consecutive passages (at most 40% of the chunk size). Changing it re-indexes. */
+      chunkOverlap?: number;
+      /** @description Acknowledge that documents with sensitive information go to an external embedding model. */
+      acknowledgeSensitive?: boolean;
+    };
+    KnowledgeDocumentUpdateDto: {
+      /** @description Whether chat may use this document. */
+      enabled: boolean;
     };
     TokenTotals: {
       inputTokens: number | null;
@@ -3757,6 +3871,548 @@ export interface operations {
       };
       /** @description Rate limit exceeded (60 requests per minute). */
       429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  KnowledgeBaseController_overview: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Knowledge base overview. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Caller does not have the ADMIN role, the vendor turned the knowledge base off, or external providers are paused. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description This deployment does not use the central knowledge base (not vendor-managed), or the document does not exist. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description The central knowledge service is unreachable. */
+      502: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  KnowledgeBaseController_updateSettings: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['KnowledgeSettingsDto'];
+      };
+    };
+    responses: {
+      /** @description Whether a re-index started, and the new overview. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Validation failed; unknown properties are rejected. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Caller does not have the ADMIN role, the vendor turned the knowledge base off, or external providers are paused. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description This deployment does not use the central knowledge base (not vendor-managed), or the document does not exist. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description The settings would exceed the plan's chunk limits. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description The central knowledge service is unreachable. */
+      502: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  KnowledgeBaseController_documents: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Documents, newest first. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Caller does not have the ADMIN role, the vendor turned the knowledge base off, or external providers are paused. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description This deployment does not use the central knowledge base (not vendor-managed), or the document does not exist. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description The central knowledge service is unreachable. */
+      502: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  KnowledgeBaseController_upload: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'multipart/form-data': {
+          /**
+           * Format: binary
+           * @description At most 5 MB, or the plan's limit.
+           */
+          file: string;
+          /** @enum {string} */
+          acknowledgeSensitive?: 'true' | 'false';
+        };
+      };
+    };
+    responses: {
+      /** @description The stored document and its passage count. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Missing or unreadable file, a type the plan does not allow, a scanned PDF without text, or sensitive information that needs review (code SENSITIVE_CONTEXT). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Caller does not have the ADMIN role, the vendor turned the knowledge base off, or external providers are paused. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description This deployment does not use the central knowledge base (not vendor-managed), or the document does not exist. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description A plan limit (documents, text, passages) would be exceeded. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description The file or its text is too large. */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description The central knowledge service is unreachable. */
+      502: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  KnowledgeBaseController_remove: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Document ID. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Deleted. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Malformed ID: IDs must be UUIDs. Or validation failed; unknown properties are rejected. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Caller does not have the ADMIN role, the vendor turned the knowledge base off, or external providers are paused. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Document does not exist or is not visible to the caller. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description The central knowledge service is unreachable. */
+      502: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  KnowledgeBaseController_setEnabled: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Document ID. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'application/json': components['schemas']['KnowledgeDocumentUpdateDto'];
+      };
+    };
+    responses: {
+      /** @description The document's new state. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Malformed ID: IDs must be UUIDs. Or validation failed; unknown properties are rejected. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Caller does not have the ADMIN role, the vendor turned the knowledge base off, or external providers are paused. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Document does not exist or is not visible to the caller. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description The central knowledge service is unreachable. */
+      502: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  KnowledgeBaseController_retry: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Document ID. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Indexing resumed. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Malformed ID: IDs must be UUIDs. Or validation failed; unknown properties are rejected. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Caller does not have the ADMIN role, the vendor turned the knowledge base off, or external providers are paused. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Document does not exist or is not visible to the caller. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description The central knowledge service is unreachable. */
+      502: {
         headers: {
           [name: string]: unknown;
         };

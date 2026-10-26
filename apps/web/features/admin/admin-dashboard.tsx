@@ -1,8 +1,19 @@
 'use client';
 import { Alert, Button, DatePicker, Progress, Select, Table, type TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
-import { ArrowDownToLine, ArrowUpFromLine, BarChart3, Coins, ShieldAlert, Users, Wallet, Zap } from 'lucide-react';
+import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  BarChart3,
+  BookOpen,
+  Coins,
+  ShieldAlert,
+  Users,
+  Wallet,
+  Zap,
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import Link from 'next/link';
 import { useState } from 'react';
 import { Shell } from '@/components/layout/shell';
 import { SimpleBarChart } from '@/components/ui/charts';
@@ -228,7 +239,7 @@ export function AdminDashboard() {
         </SectionCard>
 
         <ModelRegistry models={models} loading={data.models.isPending} />
-        <KnowledgePanel refreshKey={models} />
+        {vendor ? <KnowledgeBaseLink /> : <KnowledgePanel refreshKey={models} />}
         {!vendor && (
           <PricingSection models={models} pricing={data.pricing.data ?? []} loading={data.pricing.isPending} />
         )}
@@ -312,5 +323,23 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="text-xs font-medium text-fg-secondary">{label}</span>
       {children}
     </label>
+  );
+}
+
+/** Vendor-managed deployments keep their documents in the central knowledge base, on its own page. */
+function KnowledgeBaseLink() {
+  const t = useTranslations('admin.knowledge');
+  return (
+    <SectionCard
+      title={t('centralTitle')}
+      description={t('centralDescription')}
+      extra={
+        <Link href="/knowledge">
+          <Button icon={<BookOpen size={16} />}>{t('centralOpen')}</Button>
+        </Link>
+      }
+    >
+      {null}
+    </SectionCard>
   );
 }

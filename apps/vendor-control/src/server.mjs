@@ -28,7 +28,14 @@ const reference = (body, prefix) => {
 
 export function createApp(
   store,
-  { adminKey, upstreamUrl, fetchUpstream = fetch },
+  {
+    adminKey,
+    upstreamUrl,
+    fetchUpstream = fetch,
+    ragEngineUrl,
+    ragAdminKey,
+    fetchRag = fetch,
+  },
 ) {
   if (!adminKey || adminKey.length < 32)
     throw new Error("VENDOR_ADMIN_KEY must be at least 32 characters");
@@ -138,6 +145,40 @@ export function createApp(
     if (!result.rowCount) throw new Fault(404, "not_found", "Unknown tenant");
     res.json(result.rows[0]);
   });
+  app.patch("/admin/tenants/:id/rag", async (req, res) =>
+    res.json(await store.setRag(req.params.id, req.body)),
+  );
+  // The RAG engine is not published; the console reaches its usage and purge APIs through here.
+  const ragEngine = async (path, method = "GET") => {
+    if (!ragEngineUrl || !ragAdminKey)
+      throw new Fault(503, "rag_unavailable", "RAG engine is not configured");
+    let response;
+    try {
+      response = await fetchRag(`${ragEngineUrl}${path}`, {
+        method,
+        headers: { Authorization: `Bearer ${ragAdminKey}` },
+        signal: AbortSignal.timeout(5000),
+      });
+    } catch {
+      throw new Fault(503, "rag_unavailable", "RAG engine is unavailable");
+    }
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok)
+      throw new Fault(
+        response.status === 404 ? 404 : 502,
+        "rag_error",
+        body.error?.message ?? "RAG engine request failed",
+      );
+    return body;
+  };
+  app.get("/admin/rag/usage", async (_req, res) =>
+    res.json(await ragEngine("/admin/usage")),
+  );
+  app.delete("/admin/tenants/:id/rag-data", async (req, res) => {
+    if (!validId(req.params.id))
+      throw new Fault(400, "invalid_request", "Invalid tenant ID");
+    res.json(await ragEngine(`/admin/tenants/${req.params.id}`, "DELETE"));
+  });
   app.get("/admin/prices", async (_req, res) => res.json(await store.prices()));
   app.get("/admin/prices/history", async (_req, res) =>
     res.json(await store.prices(false, true)),
@@ -196,6 +237,7 @@ export function createApp(
       },
     });
   });
+  app.get("/customer/rag", (req, res) => res.json(store.ragFor(req.tenant)));
   app.get("/customer/billing", async (req, res) =>
     res.json(await store.billing(req.tenant)),
   );
@@ -405,6 +447,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const app = createApp(store, {
     adminKey: process.env.VENDOR_ADMIN_KEY,
     upstreamUrl: process.env.UPSTREAM_URL || "http://litellm:4000",
+    ragEngineUrl: process.env.RAG_ENGINE_URL,
+    ragAdminKey: process.env.RAG_ADMIN_KEY,
   });
   const server = app.listen(Number(process.env.PORT || 4050), "0.0.0.0");
   for (const signal of ["SIGTERM", "SIGINT"])

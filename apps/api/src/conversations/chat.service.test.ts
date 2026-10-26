@@ -101,6 +101,15 @@ describe('chat streaming lifecycle', () => {
       expect(workspace.context.mock.calls[0][6]).toEqual([product]);
     });
 
+    it('searches the knowledge base when the message asks for it (vendor-managed clients)', async () => {
+      const passage = { id: 'chunk-9', sourceId: 'document:d1', filename: 'policy.pdf', page: 3, content: 'Refunds within 45 days', kind: 'document', score: 0.9 };
+      const knowledge = { retrieve: vi.fn().mockResolvedValue([passage]) };
+      const { workspace, chat } = setup(knowledge);
+      await chat.stream(admin, 'conversation-1', { content: 'refund window?', modelId: 'local-mock', useKnowledge: true, requestId: 'r-2' }, {} as never).catch(() => undefined);
+      expect(knowledge.retrieve).toHaveBeenCalledWith(expect.objectContaining({ query: 'refund window?', requestId: 'r-2' }));
+      expect(workspace.context.mock.calls[0][6]).toEqual([passage]);
+    });
+
     it('fails before persisting anything when the catalog search fails', async () => {
       const knowledge = { retrieve: vi.fn().mockRejectedValue(new Error('The product catalog has not been indexed yet')) };
       const { prisma, workspace, chat } = setup(knowledge);

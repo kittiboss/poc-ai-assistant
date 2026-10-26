@@ -34,5 +34,16 @@
   "embeddingBatch": {
     "size": 8,
     "intervalMs": 15500
+  },
+  "rag": {
+    "enabled": true,
+    "embeddingModels": ["mock-embedding", "gemini-embedding"],
+    "allowedTypes": ["csv", "txt", "md", "pdf"],
+    "maxDocuments": 20,
+    "maxFileMb": 5,
+    "maxTextMb": 10,
+    "maxChunksPerDocument": 500,
+    "maxTotalChunks": 3000,
+    "maxTopK": 8
   }
 }

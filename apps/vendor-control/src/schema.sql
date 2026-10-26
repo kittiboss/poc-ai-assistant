@@ -5,6 +5,8 @@ CREATE TABLE IF NOT EXISTS vendor.tenants (
   balance bigint NOT NULL DEFAULT 0 CHECK (balance >= 0),
   created_at timestamptz NOT NULL DEFAULT now()
 );
+-- Knowledge (RAG) limits, set by the vendor console. Kept out of config, which tenant:create rewrites.
+ALTER TABLE vendor.tenants ADD COLUMN IF NOT EXISTS rag jsonb;
 CREATE TABLE IF NOT EXISTS vendor.prices (
   id bigserial PRIMARY KEY, model text NOT NULL,
   input_rate bigint NOT NULL, output_rate bigint NOT NULL,
