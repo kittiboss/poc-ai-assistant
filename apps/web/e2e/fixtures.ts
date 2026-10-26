@@ -84,6 +84,15 @@ export async function chatMenu(page: Page, m: Messages, id: string, item: string
   await page.getByRole('menuitem', { name: item }).click();
 }
 
+/** The account button at the bottom of the sidebar, or of the menu drawer on a phone. */
+export const accountButton = (page: Page, m: Messages) => page.getByRole('button', { name: m.nav.accountMenu });
+
+/** Runs an item of the account menu: a page, or logging out. */
+export async function accountMenu(page: Page, m: Messages, item: string) {
+  await accountButton(page, m).click();
+  await page.getByRole('menuitem', { name: item }).click();
+}
+
 /** The access token the app holds in sessionStorage (oidc-client-ts). */
 export const accessToken = (page: Page) =>
   page.evaluate(() => {

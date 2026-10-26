@@ -35,12 +35,11 @@
     "openSidebar": "เปิดแถบด้านข้าง",
     "closeSidebar": "ปิดแถบด้านข้าง",
     "tagline": "LOCAL POC",
-    "chat": "แชท",
     "usage": "แดชบอร์ดการใช้งาน",
     "admin": "คอนโซลผู้ดูแลระบบ",
     "settings": "ตั้งค่า",
     "logout": "ออกจากระบบ",
-    "signedInAs": "เข้าสู่ระบบในชื่อ {username}",
+    "accountMenu": "เมนูบัญชี",
     "liveUsage": "โทเค็นแบบเรียลไทม์"
   },
   "charts": {

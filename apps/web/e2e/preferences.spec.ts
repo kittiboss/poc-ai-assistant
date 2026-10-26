@@ -40,7 +40,7 @@ test('switches language in Settings and keeps it after a reload', async ({ page,
   await page.getByLabel(m.language.label).getByText(localeLabels.th).click();
   await expect(page.locator('html')).toHaveAttribute('lang', 'th');
   await expect(page.getByRole('heading', { name: th.settings.title })).toBeVisible();
-  await expect(page.getByRole('link', { name: th.nav.chat })).toBeVisible();
+  await expect(page.getByRole('button', { name: th.nav.accountMenu })).toBeVisible();
 
   await page.reload();
   await expect(page.getByRole('heading', { name: th.settings.title })).toBeVisible();
