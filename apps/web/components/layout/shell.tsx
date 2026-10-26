@@ -1,23 +1,24 @@
 'use client';
-import { Avatar, Drawer, Grid, Tooltip } from 'antd';
-import Link from 'next/link';
+import { Avatar, Drawer, Dropdown, Grid, Tooltip, type MenuProps } from 'antd';
 import {
   BarChart3,
-  Bot,
   Gauge,
   LogOut,
   Menu,
+  MoreVertical,
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
   ShieldCheck,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useRef } from 'react';
 import { flushSync } from 'react-dom';
 import { useAuth } from 'react-oidc-context';
 import { BrandLogo } from '@/components/brand/brand-logo';
 import { useBrand } from '@/components/brand/brand-provider';
+import { ChatSidebar, NewChatButton } from '@/features/chat/chat-sidebar';
 import { useRoles } from '@/lib/auth/use-roles';
 import { cn } from '@/lib/cn';
 import { useUIStore } from '@/stores/ui-store-provider';
@@ -27,26 +28,23 @@ type Section = 'chat' | 'usage' | 'live-usage' | 'admin' | 'settings';
 /** Same width as the desktop sidebar (w-72). */
 const DRAWER_WIDTH = 288;
 
-const iconButton = 'grid h-10 w-10 shrink-0 place-items-center rounded-brand text-fg-secondary hover:bg-fill-tertiary';
+const iconButton =
+  'grid h-10 w-10 shrink-0 place-items-center rounded-brand text-fg-secondary hover:bg-fill-tertiary cursor-pointer';
 
 /**
  * md and up: the sidebar sits beside the page, open by default; the button at its top right folds it
- * into a narrow rail of icons, whose logo opens it again. Below md: the open sidebar comes in a drawer
- * from the menu button in the header. Pages without their own `header` only get the header on small screens.
+ * into a narrow rail, whose logo opens it again. Below md: the open sidebar comes in a drawer from the
+ * menu button in the header. Every page's sidebar has the chat list, so a chat is one click away, and
+ * the other pages and logging out are in the account menu at its bottom. Pages without their own
+ * `header` only get the header on small screens.
  */
 export function Shell({
   children,
   active,
-  sidebar,
-  railActions,
   header,
 }: {
   children: React.ReactNode;
   active: Section;
-  /** The page's part of the open sidebar, between the brand and the menu */
-  sidebar?: React.ReactNode;
-  /** The page's icon buttons in the folded sidebar, in place of `sidebar` */
-  railActions?: React.ReactNode;
   header?: React.ReactNode;
 }) {
   const mobileNavOpen = useUIStore((state) => state.mobileNavOpen);
@@ -78,14 +76,13 @@ export function Shell({
           <div className="flex h-full w-72 flex-col">
             <Navigation
               active={active}
-              sidebar={sidebar}
               onNavigate={() => setMobileNavOpen(false)}
               onClose={() => toggleSidebar(false)}
               closeButtonRef={closeButton}
             />
           </div>
         ) : (
-          <Rail active={active} actions={railActions} onOpen={() => toggleSidebar(true)} openButtonRef={openButton} />
+          <Rail active={active} onOpen={() => toggleSidebar(true)} openButtonRef={openButton} />
         )}
       </aside>
       <Drawer
@@ -100,7 +97,6 @@ export function Shell({
         <div className="flex h-full flex-col bg-sider pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
           <Navigation
             active={active}
-            sidebar={sidebar}
             onNavigate={() => setMobileNavOpen(false)}
             onClose={() => setMobileNavOpen(false)}
           />
@@ -140,13 +136,11 @@ function BrandTitle() {
 /** The open sidebar, beside the page or in the drawer. */
 function Navigation({
   active,
-  sidebar,
   onNavigate,
   onClose,
   closeButtonRef,
 }: {
   active: Section;
-  sidebar?: React.ReactNode;
   onNavigate: () => void;
   onClose: () => void;
   closeButtonRef?: React.Ref<HTMLButtonElement>;
@@ -172,24 +166,21 @@ function Navigation({
           <PanelLeftClose size={20} />
         </button>
       </div>
-      {sidebar || <div className="flex-1" />}
-      <nav className="space-y-1 border-t border-line-secondary p-3">
-        <NavItems active={active} onNavigate={onNavigate} />
-      </nav>
-      <UserProfile />
+      <ChatSidebar />
+      <div className="border-t border-line-secondary p-2">
+        <AccountMenu active={active} onNavigate={onNavigate} />
+      </div>
     </>
   );
 }
 
-/** The folded sidebar (md and up): the page's actions, the menu as icons and the user's avatar. */
+/** The folded sidebar (md and up): New chat and the avatar that opens the account menu. */
 function Rail({
   active,
-  actions,
   onOpen,
   openButtonRef,
 }: {
   active: Section;
-  actions?: React.ReactNode;
   onOpen: () => void;
   openButtonRef: React.Ref<HTMLButtonElement>;
 }) {
@@ -211,16 +202,22 @@ function Rail({
           </button>
         </Tooltip>
       </div>
-      <div className="flex flex-1 flex-col items-center gap-2 py-3">{actions}</div>
-      <nav className="flex flex-col items-center gap-1 py-3">
-        <NavItems active={active} collapsed />
-      </nav>
-      <UserProfile collapsed />
+      <div className="flex flex-1 flex-col items-center gap-2 py-3">
+        <NewChatButton collapsed />
+      </div>
+      <div className="pb-3">
+        <AccountMenu active={active} collapsed />
+      </div>
     </div>
   );
 }
 
-function NavItems({
+/**
+ * The signed-in user, which opens the menu of pages and logging out (chats are in the sidebar). Kept in
+ * one button so more pages never take room from the chat list. Folded, only the avatar shows and the
+ * menu starts with the user.
+ */
+function AccountMenu({
   active,
   collapsed = false,
   onNavigate,
@@ -230,118 +227,71 @@ function NavItems({
   onNavigate?: () => void;
 }) {
   const auth = useAuth();
-  const t = useTranslations('nav');
+  const router = useRouter();
   const roles = useRoles();
-  const link = (section: Section, href: string, icon: React.ReactNode, label: string) => (
-    <NavItem
-      href={href}
-      icon={icon}
-      label={label}
-      selected={active === section}
-      collapsed={collapsed}
-      onClick={onNavigate}
-    />
-  );
-  return (
-    <>
-      {link('chat', '/', <Bot size={17} />, t('chat'))}
-      {link('usage', '/usage', <BarChart3 size={17} />, t('usage'))}
-      {link('live-usage', '/usage/live', <Gauge size={17} />, t('liveUsage'))}
-      {roles.includes('ADMIN') && link('admin', '/admin', <ShieldCheck size={17} />, t('admin'))}
-      {link('settings', '/settings', <Settings size={17} />, t('settings'))}
-      <NavItem
-        icon={<LogOut size={17} />}
-        label={t('logout')}
-        collapsed={collapsed}
-        onClick={() => auth.signoutRedirect()}
-      />
-    </>
-  );
-}
-
-/** A menu link, or a button without `href`. Folded, only its icon shows and the label is a tooltip. */
-function NavItem({
-  href,
-  icon,
-  label,
-  selected = false,
-  collapsed,
-  onClick,
-}: {
-  href?: string;
-  icon: React.ReactNode;
-  label: string;
-  selected?: boolean;
-  collapsed: boolean;
-  onClick?: () => void;
-}) {
-  const className = cn(
-    'flex items-center gap-3 rounded-brand text-sm transition',
-    collapsed ? 'h-10 w-10 justify-center' : 'w-full px-3 py-2',
-    selected ? 'bg-primary-soft font-medium text-primary' : 'text-fg-secondary hover:bg-fill-tertiary',
-  );
-  const content = (
-    <>
-      {icon}
-      {!collapsed && label}
-    </>
-  );
-  const ariaLabel = collapsed ? label : undefined;
-  const item = href ? (
-    <Link href={href} onClick={onClick} aria-label={ariaLabel} className={className}>
-      {content}
-    </Link>
-  ) : (
-    <button type="button" onClick={onClick} aria-label={ariaLabel} className={className}>
-      {content}
-    </button>
-  );
-  return collapsed ? (
-    <Tooltip title={label} placement="right">
-      {item}
-    </Tooltip>
-  ) : (
-    item
-  );
-}
-
-/** The signed-in user, display only for now. Folded, only the avatar shows and the rest is a tooltip. */
-function UserProfile({ collapsed = false }: { collapsed?: boolean }) {
-  const auth = useAuth();
   const t = useTranslations('nav');
   const username = auth.user?.profile.preferred_username ?? '';
   const email = auth.user?.profile.email;
-  const label = t('signedInAs', { username });
-  // No profile pictures yet, so the avatar is the username's first letter.
-  const initial = username.charAt(0).toUpperCase();
 
-  if (collapsed)
-    return (
-      <div className="flex h-16 items-center pt-1 pb-4">
-        <Tooltip
-          placement="right"
-          title={
-            <>
-              <div className="font-semibold">{username}</div>
-              {email && <div className="text-xs">{email}</div>}
-            </>
-          }
-        >
-          <span role="img" aria-label={label} className="flex">
-            <Avatar className="bg-primary font-semibold">{initial}</Avatar>
-          </span>
-        </Tooltip>
-      </div>
-    );
+  const page = (key: Section, href: string, icon: React.ReactNode, label: string) => ({
+    key,
+    icon,
+    label,
+    onClick: () => {
+      onNavigate?.();
+      router.push(href);
+    },
+  });
+  const items: MenuProps['items'] = [
+    ...(collapsed
+      ? [
+          {
+            key: 'user',
+            type: 'group' as const,
+            label: (
+              <>
+                <div className="truncate font-semibold text-fg">{username}</div>
+                {email && <div className="truncate">{email}</div>}
+              </>
+            ),
+          },
+          { type: 'divider' as const },
+        ]
+      : []),
+    page('usage', '/usage', <BarChart3 size={16} />, t('usage')),
+    page('live-usage', '/usage/live', <Gauge size={16} />, t('liveUsage')),
+    ...(roles.includes('ADMIN') ? [page('admin', '/admin', <ShieldCheck size={16} />, t('admin'))] : []),
+    page('settings', '/settings', <Settings size={16} />, t('settings')),
+    { type: 'divider' },
+    { key: 'logout', icon: <LogOut size={16} />, label: t('logout'), onClick: () => auth.signoutRedirect() },
+  ];
+
   return (
-    <div role="group" aria-label={label} className="flex h-16 items-center gap-3 px-4 pt-1 pb-4">
-      <Avatar aria-hidden className="shrink-0 bg-primary font-semibold">
-        {initial}
-      </Avatar>
-      <div className="min-w-0">
-        <div className="truncate text-sm font-semibold">{username}</div>
-        {email && <div className="truncate text-xs text-fg-secondary">{email}</div>}
-      </div>
-    </div>
+    <Dropdown
+      trigger={['click']}
+      placement={collapsed ? 'rightBottom' : 'topLeft'}
+      menu={{ items, selectable: true, selectedKeys: [active] }}
+      // As wide as the button in the open sidebar (18rem less the padding around it).
+      classNames={{ root: collapsed ? 'min-w-60' : 'min-w-68' }}
+    >
+      <button
+        type="button"
+        className={cn(
+          'flex cursor-pointer items-center rounded-brand text-left transition hover:bg-fill-tertiary [&.ant-dropdown-open]:bg-fill-tertiary',
+          collapsed ? 'p-1' : 'w-full gap-3 px-2 py-1.5',
+        )}
+      >
+        {/* No profile pictures yet, so the avatar is the username's first letter. */}
+        <Avatar aria-hidden className="shrink-0 bg-primary font-semibold">
+          {username.charAt(0).toUpperCase()}
+        </Avatar>
+        <span className="sr-only">{t('accountMenu')}</span>
+        <span className={cn('min-w-0 flex-1', collapsed && 'sr-only')}>
+          <span className="block truncate text-sm font-semibold">{username}</span>
+          {email && <span className="block truncate text-xs text-fg-secondary">{email}</span>}
+        </span>
+        {!collapsed && <MoreVertical size={16} className="shrink-0 text-fg-tertiary" />}
+      </button>
+    </Dropdown>
   );
 }

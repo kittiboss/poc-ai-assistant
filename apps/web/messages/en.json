@@ -33,12 +33,11 @@
     "openSidebar": "Open sidebar",
     "closeSidebar": "Close sidebar",
     "tagline": "LOCAL POC",
-    "chat": "Chat",
     "usage": "Usage dashboard",
     "admin": "Admin console",
     "settings": "Settings",
     "logout": "Logout",
-    "signedInAs": "Signed in as {username}",
+    "accountMenu": "Account menu",
     "liveUsage": "Live tokens"
   },
   "charts": {
