@@ -1,4 +1,16 @@
-import { accountButton, accountMenu, accounts, composer, expect, test } from './fixtures';
+import {
+  accountButton,
+  accountMenu,
+  accounts,
+  chatMenu,
+  chatRow,
+  composer,
+  expect,
+  lastReply,
+  MOCK_REPLY,
+  startChat,
+  test,
+} from './fixtures';
 
 // The desktop project only; a phone uses the menu drawer (mobile.spec.ts).
 
@@ -19,24 +31,48 @@ test('the sidebar starts open, folds to a rail and opens again with the keyboard
   await expect(close).toBeFocused();
 });
 
-test('the pages and logging out are in the account menu, not in the sidebar', async ({ page, m }) => {
+test('the account menu has the other pages and logging out, with the current page marked', async ({ page, m }) => {
   const { username, email } = accounts.admin;
-  const sidebar = page.locator('aside');
-  await expect(sidebar.getByRole('link', { name: m.nav.usage })).toHaveCount(0);
+  await page.goto('/usage');
   await expect(accountButton(page, m)).toContainText(username);
   await expect(accountButton(page, m)).toContainText(email);
 
   await accountButton(page, m).click();
-  for (const item of [m.nav.chat, m.nav.usage, m.nav.liveUsage, m.nav.admin, m.nav.settings, m.nav.logout])
-    await expect(page.getByRole('menuitem', { name: item })).toBeVisible();
-  // The current page is marked.
-  await expect(page.getByRole('menuitem', { name: m.nav.chat })).toHaveClass(/ant-dropdown-menu-item-selected/);
+  // Chats are in the sidebar, so there is no "Chat" item.
+  const items = page.getByRole('menu').getByRole('menuitem');
+  await expect(items).toHaveText([m.nav.usage, m.nav.liveUsage, m.nav.admin, m.nav.settings, m.nav.logout]);
+  await expect(items.first()).toHaveClass(/ant-dropdown-menu-item-selected/);
 
   await page.getByRole('menuitem', { name: m.nav.settings }).click();
   await expect(page.getByRole('heading', { name: m.settings.title })).toBeVisible();
 });
 
-test('the rail keeps New chat and the account menu, also on other pages', async ({ page, m }) => {
+test('every page has the chat list; a chat or New chat opens the chat page', async ({ page, m, createdChats }) => {
+  const id = await startChat(page, m, createdChats, 'A chat to open from another page');
+  const sidebar = page.locator('aside');
+  const newChat = sidebar.getByRole('button', { name: m.chat.newChat });
+
+  await accountMenu(page, m, m.nav.settings);
+  await expect(page.getByRole('heading', { name: m.settings.title })).toBeVisible();
+  await expect(newChat).toBeVisible();
+  await expect(sidebar.getByRole('textbox', { name: m.chat.searchLabel })).toBeVisible();
+  await expect(sidebar.getByRole('checkbox', { name: m.chat.showArchived })).toBeVisible();
+  // The chat menu works away from the chat page too.
+  await chatMenu(page, m, id, m.chat.pin);
+  await expect(chatRow(page, id).getByLabel(m.chat.pinned)).toBeVisible();
+
+  await chatRow(page, id).getByRole('link').click();
+  await expect(page).toHaveURL(new RegExp(`/c/${id}$`));
+  await expect(lastReply(page)).toContainText(MOCK_REPLY);
+
+  await accountMenu(page, m, m.nav.usage);
+  await expect(page.getByRole('heading', { name: m.usage.title })).toBeVisible();
+  await newChat.click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(composer(page, m)).toBeVisible();
+});
+
+test('the rail keeps New chat and the account menu on every page', async ({ page, m }) => {
   const sidebar = page.locator('aside');
   const newChat = sidebar.getByRole('button', { name: m.chat.newChat });
   await sidebar.getByRole('button', { name: m.nav.closeSidebar }).click();
@@ -52,12 +88,8 @@ test('the rail keeps New chat and the account menu, also on other pages', async 
 
   await expect(page.getByRole('heading', { name: m.usage.title })).toBeVisible();
   await expect(sidebar).toHaveCSS('width', '64px');
-  await expect(newChat).toHaveCount(0);
-
-  // A client-side navigation has no load event to wait for.
-  await page.goBack({ waitUntil: 'commit' });
+  await newChat.click();
+  await expect(page).toHaveURL(/\/$/);
   await expect(composer(page, m)).toBeVisible();
   await expect(sidebar).toHaveCSS('width', '64px');
-  await accountMenu(page, m, m.nav.liveUsage);
-  await expect(page).toHaveURL(/\/usage\/live$/);
 });

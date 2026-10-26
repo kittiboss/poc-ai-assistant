@@ -16,6 +16,8 @@ export interface UIState {
   /** Model picked above the chat composer; empty means the first available one */
   selectedModelId: string;
   conversationSearch: string;
+  /** "Show archived" in the sidebar's chat list */
+  showArchived: boolean;
   stream: ActiveStream | null;
   /** Last chat error, shown above the composer */
   chatError: string;
@@ -27,6 +29,7 @@ export interface UIActions {
   setSessionExpired: (expired: boolean) => void;
   setSelectedModelId: (id: string) => void;
   setConversationSearch: (search: string) => void;
+  setShowArchived: (show: boolean) => void;
   setStream: (stream: ActiveStream | null) => void;
   setChatError: (error: string) => void;
 }
@@ -40,6 +43,7 @@ export function createUIStore(initial: Partial<UIState> = {}) {
     sessionExpired: false,
     selectedModelId: '',
     conversationSearch: '',
+    showArchived: false,
     stream: null,
     chatError: '',
     ...initial,
@@ -48,6 +52,7 @@ export function createUIStore(initial: Partial<UIState> = {}) {
     setSessionExpired: (sessionExpired) => set({ sessionExpired }),
     setSelectedModelId: (selectedModelId) => set({ selectedModelId }),
     setConversationSearch: (conversationSearch) => set({ conversationSearch }),
+    setShowArchived: (showArchived) => set({ showArchived }),
     setStream: (stream) => set({ stream }),
     setChatError: (chatError) => set({ chatError }),
   }));

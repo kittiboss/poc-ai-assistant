@@ -2,7 +2,6 @@
 import { Avatar, Drawer, Dropdown, Grid, Tooltip, type MenuProps } from 'antd';
 import {
   BarChart3,
-  Bot,
   Gauge,
   LogOut,
   Menu,
@@ -19,6 +18,7 @@ import { flushSync } from 'react-dom';
 import { useAuth } from 'react-oidc-context';
 import { BrandLogo } from '@/components/brand/brand-logo';
 import { useBrand } from '@/components/brand/brand-provider';
+import { ChatSidebar, NewChatButton } from '@/features/chat/chat-sidebar';
 import { useRoles } from '@/lib/auth/use-roles';
 import { cn } from '@/lib/cn';
 import { useUIStore } from '@/stores/ui-store-provider';
@@ -28,27 +28,23 @@ type Section = 'chat' | 'usage' | 'live-usage' | 'admin' | 'settings';
 /** Same width as the desktop sidebar (w-72). */
 const DRAWER_WIDTH = 288;
 
-const iconButton = 'grid h-10 w-10 shrink-0 place-items-center rounded-brand text-fg-secondary hover:bg-fill-tertiary';
+const iconButton =
+  'grid h-10 w-10 shrink-0 place-items-center rounded-brand text-fg-secondary hover:bg-fill-tertiary cursor-pointer';
 
 /**
  * md and up: the sidebar sits beside the page, open by default; the button at its top right folds it
  * into a narrow rail, whose logo opens it again. Below md: the open sidebar comes in a drawer from the
- * menu button in the header. The pages and logging out are in the account menu at the bottom of the
- * sidebar. Pages without their own `header` only get the header on small screens.
+ * menu button in the header. Every page's sidebar has the chat list, so a chat is one click away, and
+ * the other pages and logging out are in the account menu at its bottom. Pages without their own
+ * `header` only get the header on small screens.
  */
 export function Shell({
   children,
   active,
-  sidebar,
-  railActions,
   header,
 }: {
   children: React.ReactNode;
   active: Section;
-  /** The page's part of the open sidebar, between the brand and the account menu */
-  sidebar?: React.ReactNode;
-  /** The page's icon buttons in the folded sidebar, in place of `sidebar` */
-  railActions?: React.ReactNode;
   header?: React.ReactNode;
 }) {
   const mobileNavOpen = useUIStore((state) => state.mobileNavOpen);
@@ -80,14 +76,13 @@ export function Shell({
           <div className="flex h-full w-72 flex-col">
             <Navigation
               active={active}
-              sidebar={sidebar}
               onNavigate={() => setMobileNavOpen(false)}
               onClose={() => toggleSidebar(false)}
               closeButtonRef={closeButton}
             />
           </div>
         ) : (
-          <Rail active={active} actions={railActions} onOpen={() => toggleSidebar(true)} openButtonRef={openButton} />
+          <Rail active={active} onOpen={() => toggleSidebar(true)} openButtonRef={openButton} />
         )}
       </aside>
       <Drawer
@@ -102,7 +97,6 @@ export function Shell({
         <div className="flex h-full flex-col bg-sider pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
           <Navigation
             active={active}
-            sidebar={sidebar}
             onNavigate={() => setMobileNavOpen(false)}
             onClose={() => setMobileNavOpen(false)}
           />
@@ -142,13 +136,11 @@ function BrandTitle() {
 /** The open sidebar, beside the page or in the drawer. */
 function Navigation({
   active,
-  sidebar,
   onNavigate,
   onClose,
   closeButtonRef,
 }: {
   active: Section;
-  sidebar?: React.ReactNode;
   onNavigate: () => void;
   onClose: () => void;
   closeButtonRef?: React.Ref<HTMLButtonElement>;
@@ -174,7 +166,7 @@ function Navigation({
           <PanelLeftClose size={20} />
         </button>
       </div>
-      {sidebar || <div className="flex-1" />}
+      <ChatSidebar />
       <div className="border-t border-line-secondary p-2">
         <AccountMenu active={active} onNavigate={onNavigate} />
       </div>
@@ -182,15 +174,13 @@ function Navigation({
   );
 }
 
-/** The folded sidebar (md and up): the page's actions and the avatar that opens the account menu. */
+/** The folded sidebar (md and up): New chat and the avatar that opens the account menu. */
 function Rail({
   active,
-  actions,
   onOpen,
   openButtonRef,
 }: {
   active: Section;
-  actions?: React.ReactNode;
   onOpen: () => void;
   openButtonRef: React.Ref<HTMLButtonElement>;
 }) {
@@ -212,7 +202,9 @@ function Rail({
           </button>
         </Tooltip>
       </div>
-      <div className="flex flex-1 flex-col items-center gap-2 py-3">{actions}</div>
+      <div className="flex flex-1 flex-col items-center gap-2 py-3">
+        <NewChatButton collapsed />
+      </div>
       <div className="pb-3">
         <AccountMenu active={active} collapsed />
       </div>
@@ -221,8 +213,9 @@ function Rail({
 }
 
 /**
- * The signed-in user, which opens the menu of pages and logging out. Kept in one button so more pages
- * never take room from the chat list. Folded, only the avatar shows and the menu starts with the user.
+ * The signed-in user, which opens the menu of pages and logging out (chats are in the sidebar). Kept in
+ * one button so more pages never take room from the chat list. Folded, only the avatar shows and the
+ * menu starts with the user.
  */
 function AccountMenu({
   active,
@@ -265,7 +258,6 @@ function AccountMenu({
           { type: 'divider' as const },
         ]
       : []),
-    page('chat', '/', <Bot size={16} />, t('chat')),
     page('usage', '/usage', <BarChart3 size={16} />, t('usage')),
     page('live-usage', '/usage/live', <Gauge size={16} />, t('liveUsage')),
     ...(roles.includes('ADMIN') ? [page('admin', '/admin', <ShieldCheck size={16} />, t('admin'))] : []),
@@ -285,7 +277,7 @@ function AccountMenu({
       <button
         type="button"
         className={cn(
-          'flex items-center rounded-brand text-left transition hover:bg-fill-tertiary [&.ant-dropdown-open]:bg-fill-tertiary',
+          'flex cursor-pointer items-center rounded-brand text-left transition hover:bg-fill-tertiary [&.ant-dropdown-open]:bg-fill-tertiary',
           collapsed ? 'p-1' : 'w-full gap-3 px-2 py-1.5',
         )}
       >
