@@ -38,7 +38,7 @@
     "admin": "คอนโซลผู้ดูแลระบบ",
     "settings": "ตั้งค่า",
     "logout": "ออกจากระบบ",
-    "signedInAs": "เข้าสู่ระบบในชื่อ {username}",
+    "accountMenu": "เมนูบัญชี",
     "liveUsage": "โทเค็นแบบเรียลไทม์"
   },
   "charts": {

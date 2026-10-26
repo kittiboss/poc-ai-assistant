@@ -38,7 +38,7 @@
     "admin": "Admin console",
     "settings": "Settings",
     "logout": "Logout",
-    "signedInAs": "Signed in as {username}",
+    "accountMenu": "Account menu",
     "liveUsage": "Live tokens"
   },
   "charts": {

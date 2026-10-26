@@ -1,4 +1,4 @@
-import { chatRow, expect, lastReply, startChat, test } from './fixtures';
+import { accountMenu, chatRow, expect, lastReply, startChat, test } from './fixtures';
 
 // The mobile project only (390 × 844, touch).
 
@@ -11,7 +11,7 @@ test('the menu drawer opens, closes from its button, navigates and closes', asyn
 
   await openMenu.click();
   await expect(drawer).toBeVisible();
-  await drawer.getByRole('link', { name: m.nav.usage }).click();
+  await accountMenu(page, m, m.nav.usage);
   await expect(page).toHaveURL(/\/usage$/);
   await expect(drawer).toBeHidden();
   await expect(page.getByRole('heading', { name: m.usage.title })).toBeVisible();

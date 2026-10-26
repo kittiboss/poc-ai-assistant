@@ -1,4 +1,4 @@
-import { expect, messages, signIn, test } from './fixtures';
+import { accountButton, accountMenu, expect, messages, signIn, test } from './fixtures';
 
 test.describe('signed out', () => {
   test.use({ account: null });
@@ -9,9 +9,9 @@ test.describe('signed out', () => {
 
     // No saved session here, so this goes through the Keycloak login form.
     await signIn(page, 'admin', m);
-    await expect(page.getByRole('group', { name: m.nav.signedInAs.replace('{username}', 'admin') })).toBeVisible();
+    await expect(accountButton(page, m)).toContainText('admin');
 
-    await page.getByRole('button', { name: m.nav.logout }).click();
+    await accountMenu(page, m, m.nav.logout);
     await expect(page.getByRole('button', { name: m.auth.continue })).toBeVisible();
   });
 
@@ -24,7 +24,7 @@ test.describe('signed out', () => {
 });
 
 test('an administrator sees the admin console', async ({ page, m }) => {
-  await page.getByRole('link', { name: m.nav.admin }).click();
+  await accountMenu(page, m, m.nav.admin);
   await expect(page.getByRole('heading', { name: m.admin.title })).toBeVisible();
 });
 
@@ -32,7 +32,8 @@ test.describe('employee', () => {
   test.use({ account: 'employee' });
 
   test('does not see the admin console', async ({ page, m }) => {
-    await expect(page.getByRole('link', { name: m.nav.settings })).toBeVisible();
-    await expect(page.getByRole('link', { name: m.nav.admin })).toHaveCount(0);
+    await accountButton(page, m).click();
+    await expect(page.getByRole('menuitem', { name: m.nav.settings })).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: m.nav.admin })).toHaveCount(0);
   });
 });
