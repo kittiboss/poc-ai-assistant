@@ -13,7 +13,7 @@ export class ModelView {
   @ApiProperty({ description: 'Local models have $0 external API cost.' }) local!: boolean;
   @ApiProperty({ example: 8192 }) contextWindow!: number;
   @ApiProperty({ type: [String], example: ['chat', 'streaming'] }) capabilities!: string[];
-  @ApiProperty({ enum: ['Disabled', 'Not permitted', 'Not configured', 'Daily limit reached', 'Available', 'Unavailable'] }) status!: string;
+  @ApiProperty({ enum: ['Disabled', 'Not permitted', 'Not configured', 'Credit exhausted', 'Daily limit reached', 'Available', 'Unavailable'], description: 'Credit exhausted: the prepaid credit on the platform gateway is used up (vendor-managed deployments).' }) status!: string;
 }
 
 export class AIModelView {

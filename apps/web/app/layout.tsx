@@ -5,6 +5,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { getBrand } from '@/config/brands';
 import { cn } from '@/lib/cn';
+import { runtimeConfigScript } from '@/lib/runtime-config';
 import { brandFontClassNames } from '@/theme/fonts';
 import { isResolvedTheme, isThemeMode, resolveTheme, SYSTEM_THEME_COOKIE, THEME_COOKIE } from '@/theme/theme-mode';
 import { themeInitScript } from '@/theme/theme-script';
@@ -48,6 +49,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     <html lang={locale} className={cn(brandFontClassNames[brand.theme.font], dark && 'dark')} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript(brand.theme.defaultMode) }} />
+        {/* This deployment's API and sign-in settings, read from the server environment (lib/runtime-config.ts). */}
+        <script dangerouslySetInnerHTML={{ __html: runtimeConfigScript() }} />
       </head>
       <body>
         {/* `layer` puts AntD styles in @layer antd, ordered in globals.css */}

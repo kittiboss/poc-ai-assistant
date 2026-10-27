@@ -34,9 +34,9 @@ class CitationView {
   @ApiProperty({ ...NULLABLE_INT, description: 'PDF page, when known.' }) page!: number | null;
   @ApiProperty({ description: 'The retrieved excerpt.' }) content!: string;
   @ApiProperty({ example: 'S1', description: 'The label the reply cites, e.g. [S1].' }) label!: string;
-  @ApiPropertyOptional({ enum: ['product'], description: 'Present for product-catalog retrieval results.' })
-  kind?: 'product';
-  @ApiPropertyOptional({ type: 'number', example: 0.812, description: 'Product vector similarity score from 0 to 1.' })
+  @ApiPropertyOptional({ enum: ['product', 'document'], description: 'product: a product-catalog entry. document: a passage from the central knowledge base.' })
+  kind?: 'product' | 'document';
+  @ApiPropertyOptional({ type: 'number', example: 0.812, description: 'Vector similarity score from 0 to 1 (catalog and knowledge base).' })
   score?: number;
 }
 

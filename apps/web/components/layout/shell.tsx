@@ -2,6 +2,7 @@
 import { Avatar, Drawer, Dropdown, Grid, Tooltip, type MenuProps } from 'antd';
 import {
   BarChart3,
+  BookOpen,
   Gauge,
   LogOut,
   Menu,
@@ -10,6 +11,7 @@ import {
   PanelLeftOpen,
   Settings,
   ShieldCheck,
+  Wallet,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -21,9 +23,10 @@ import { useBrand } from '@/components/brand/brand-provider';
 import { ChatSidebar, NewChatButton } from '@/features/chat/chat-sidebar';
 import { useRoles } from '@/lib/auth/use-roles';
 import { cn } from '@/lib/cn';
+import { runtimeConfig } from '@/lib/runtime-config';
 import { useUIStore } from '@/stores/ui-store-provider';
 
-type Section = 'chat' | 'usage' | 'live-usage' | 'admin' | 'settings';
+type Section = 'chat' | 'usage' | 'live-usage' | 'admin' | 'settings' | 'billing' | 'knowledge';
 
 /** Same width as the desktop sidebar (w-72). */
 const DRAWER_WIDTH = 288;
@@ -261,6 +264,12 @@ function AccountMenu({
     page('usage', '/usage', <BarChart3 size={16} />, t('usage')),
     page('live-usage', '/usage/live', <Gauge size={16} />, t('liveUsage')),
     ...(roles.includes('ADMIN') ? [page('admin', '/admin', <ShieldCheck size={16} />, t('admin'))] : []),
+    ...(roles.includes('ADMIN') && runtimeConfig().vendorManaged
+      ? [
+          page('knowledge', '/knowledge', <BookOpen size={16} />, t('knowledge')),
+          page('billing', '/billing', <Wallet size={16} />, t('billing')),
+        ]
+      : []),
     page('settings', '/settings', <Settings size={16} />, t('settings')),
     { type: 'divider' },
     { key: 'logout', icon: <LogOut size={16} />, label: t('logout'), onClick: () => auth.signoutRedirect() },

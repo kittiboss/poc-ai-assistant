@@ -12,6 +12,12 @@ export const queryKeys = {
   myUsage: ['usage', 'me'] as const,
   liveUsage: ['usage', 'me', 'live'] as const,
   knowledge: ['knowledge', 'status'] as const,
+  /** The central knowledge base (vendor-managed deployments). */
+  knowledgeBase: {
+    all: ['knowledge-base'] as const,
+    overview: ['knowledge-base', 'overview'] as const,
+    documents: ['knowledge-base', 'documents'] as const,
+  },
   admin: {
     all: ['admin'] as const,
     workspace: ['admin', 'workspace'] as const,
@@ -20,6 +26,7 @@ export const queryKeys = {
     pricing: ['admin', 'pricing'] as const,
     users: ['admin', 'users'] as const,
     audit: ['admin', 'audit'] as const,
+    credit: ['admin', 'credit'] as const,
     summary: (filters: object) => ['admin', 'summary', filters] as const,
   },
 };

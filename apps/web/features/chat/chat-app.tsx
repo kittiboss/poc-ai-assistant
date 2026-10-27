@@ -61,12 +61,16 @@ export function ChatApp() {
   const modelId = selectedModelId || modelList.find((model) => model.available)?.id || modelList[0]?.id || '';
   const selectedModel = modelList.find((model) => model.id === modelId);
   const catalogOn = useProductCatalog && Boolean(catalog.data?.available);
+  // Vendor-managed deployments search the platform's central knowledge base instead of the catalog.
+  const knowledgeBase = catalog.data?.source === 'knowledge-base';
   const generating = stream !== null;
   const notFound =
     (activeId !== undefined && !isConversationId(activeId)) ||
     (conversation.error instanceof ApiError && [400, 404].includes(conversation.error.status));
   const loadError = [models.error, conversations.error, notFound ? null : conversation.error].find(Boolean);
   const error = chatError || loadError?.message;
+  // The platform gateway reports every model as out of credit; say why nothing can be sent.
+  const creditExhausted = modelList.some((model) => model.status === 'Credit exhausted');
   const title =
     conversation.data?.title ?? conversations.data?.find((item) => item.id === activeId)?.title ?? t('newConversation');
   const reportError = (cause: unknown) => toast.error((cause as Error).message);
@@ -81,7 +85,7 @@ export function ChatApp() {
   };
   const resend = async (userMessage: Message, prompt: string) => {
     const copy = await branch(userMessage, true);
-    if (copy) await send({ conversationId: copy.id, prompt, modelId, useProductCatalog: catalogOn });
+    if (copy) await send({ conversationId: copy.id, prompt, modelId, useKnowledge: catalogOn });
   };
   const submitFeedback = async (message: Message, rating: Rating, comment: string) => {
     if (!activeId) return;
@@ -186,12 +190,14 @@ export function ChatApp() {
           onChange={(event) => setUseProductCatalog(event.target.checked)}
           title={
             catalog.data?.available
-              ? t('productCatalogReady', { count: catalog.data.indexed })
-              : t('productCatalogUnavailable', { problem: catalog.data?.problem ?? t('productCatalogNotReady') })
+              ? t(knowledgeBase ? 'knowledgeBaseReady' : 'productCatalogReady', { count: catalog.data.indexed })
+              : t(knowledgeBase ? 'knowledgeBaseUnavailable' : 'productCatalogUnavailable', {
+                  problem: catalog.data?.problem ?? t('productCatalogNotReady'),
+                })
           }
           className="shrink-0 whitespace-nowrap"
         >
-          {t('productCatalog')}
+          {t(knowledgeBase ? 'knowledgeBase' : 'productCatalog')}
         </Checkbox>
         {selectedModel && (
           <StatusTag tone={selectedModel.available ? 'success' : 'error'} className="hidden shrink-0 @xl:inline-flex">
@@ -229,7 +235,7 @@ export function ChatApp() {
             {catalogOn && catalog.data?.embeddingModel.local === false && (
               <Alert
                 type="warning"
-                title={t('productCatalogExternal', {
+                title={t(knowledgeBase ? 'knowledgeBaseExternal' : 'productCatalogExternal', {
                   provider: catalog.data.embeddingModel.provider ?? t('productCatalogExternalProvider'),
                   model: catalog.data.embeddingModel.displayName,
                 })}
@@ -238,6 +244,7 @@ export function ChatApp() {
             {selectedModel && !selectedModel.local && (
               <Alert type="warning" title={t('externalNotice', { provider: selectedModel.provider })} />
             )}
+            {creditExhausted && !error && <Alert type="error" title={t('creditExhausted')} />}
             {error && (
               <Alert type="error" title={error} closable={Boolean(chatError)} onClose={() => setChatError('')} />
             )}
@@ -246,9 +253,7 @@ export function ChatApp() {
               generating={generating}
               canSend={Boolean(selectedModel?.available)}
               disabled={notFound}
-              onSend={(prompt) =>
-                void send({ conversationId: activeId, prompt, modelId, useProductCatalog: catalogOn })
-              }
+              onSend={(prompt) => void send({ conversationId: activeId, prompt, modelId, useKnowledge: catalogOn })}
               onStop={() => stream?.abort.abort()}
             />
             <p className="text-center text-[11px] text-fg-secondary">{t('disclaimerSources')}</p>

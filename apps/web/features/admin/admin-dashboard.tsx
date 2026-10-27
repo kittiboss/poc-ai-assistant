@@ -1,8 +1,19 @@
 'use client';
 import { Alert, Button, DatePicker, Progress, Select, Table, type TableColumnsType } from 'antd';
 import dayjs from 'dayjs';
-import { ArrowDownToLine, ArrowUpFromLine, BarChart3, Coins, ShieldAlert, Users, Zap } from 'lucide-react';
+import {
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  BarChart3,
+  BookOpen,
+  Coins,
+  ShieldAlert,
+  Users,
+  Wallet,
+  Zap,
+} from 'lucide-react';
 import { useTranslations } from 'next-intl';
+import Link from 'next/link';
 import { useState } from 'react';
 import { Shell } from '@/components/layout/shell';
 import { SimpleBarChart } from '@/components/ui/charts';
@@ -10,7 +21,8 @@ import { MetricCard } from '@/components/ui/metric-card';
 import { SectionCard } from '@/components/ui/section-card';
 import { StatusTag, usageKindTone } from '@/components/ui/status-tag';
 import { useEnumLabel } from '@/i18n/use-enum-label';
-import type { AdminSummary } from '@/lib/api/types';
+import type { AdminSummary, CreditStatus } from '@/lib/api/types';
+import { runtimeConfig } from '@/lib/runtime-config';
 import { providers, useAdminData, type Filters } from './admin-queries';
 import { AuditLog } from './audit-log';
 import { KnowledgePanel } from './knowledge-panel';
@@ -27,6 +39,7 @@ const noFilters: Filters = { from: '', to: '', provider: '', modelId: '' };
 
 export function AdminDashboard() {
   const t = useTranslations('admin');
+  const vendor = runtimeConfig().vendorManaged;
   const enums = useEnumLabel();
   const { money, number, day } = useAdminFormat();
   const [filters, setFilters] = useState<Filters>(noFilters);
@@ -49,16 +62,16 @@ export function AdminDashboard() {
     },
     { key: 'requests', title: t('breakdown.requests'), render: (_, row) => number(row._count) },
     { key: 'tokens', title: t('breakdown.tokens'), render: (_, row) => number(row._sum.totalTokens) },
-    ...(['actualProviderCost', 'customerCharge', 'simulatedProviderCost', 'simulatedCustomerCharge'] as const).map(
-      (field) => ({
+    ...(['actualProviderCost', 'customerCharge', 'simulatedProviderCost', 'simulatedCustomerCharge'] as const)
+      .filter((field) => !vendor || field === 'simulatedCustomerCharge')
+      .map((field) => ({
         key: field,
         title: t(`breakdown.${field}`),
         className: 'whitespace-nowrap',
         render: (_: unknown, row: ModelBreakdown) => (
           <span className="font-mono text-xs">{money(row._sum[field])}</span>
         ),
-      }),
-    ),
+      })),
   ];
 
   return (
@@ -131,17 +144,23 @@ export function AdminDashboard() {
             label={t('metrics.outputTokens')}
             value={number(summary?.tokens.outputTokens)}
           />
-          <MetricCard
-            icon={<Coins />}
-            label={t('metrics.actualProviderCost')}
-            value={money(costs?.actualProviderCost)}
-          />
-          <MetricCard
-            icon={<BarChart3 />}
-            label={t('metrics.simulatedCost')}
-            value={money(costs?.simulatedProviderCost)}
-          />
+          {!vendor && (
+            <MetricCard
+              icon={<Coins />}
+              label={t('metrics.actualProviderCost')}
+              value={money(costs?.actualProviderCost)}
+            />
+          )}
+          {!vendor && (
+            <MetricCard
+              icon={<BarChart3 />}
+              label={t('metrics.simulatedCost')}
+              value={money(costs?.simulatedProviderCost)}
+            />
+          )}
         </div>
+
+        {data.credit.data?.vendorManaged && <CreditCard status={data.credit.data} />}
 
         {guard && (
           <SectionCard>
@@ -173,34 +192,39 @@ export function AdminDashboard() {
           <SectionCard title={t('charts.byModel')} description={t('charts.byModelNote')}>
             <SimpleBarChart data={summary?.byModel || []} x="displayName" y="_count" label={t('charts.requests')} />
           </SectionCard>
-          <SectionCard title={t('snapshot.title')}>
-            <div className="grid grid-cols-2 gap-4">
-              <ValueTile label={t('snapshot.actualExternalCost')} value={money(costs?.actualProviderCost)} />
-              <ValueTile label={t('snapshot.customerCharge')} value={money(costs?.customerCharge)} />
-              <ValueTile label={t('snapshot.simulatedProviderCost')} value={money(costs?.simulatedProviderCost)} />
-              <ValueTile label={t('snapshot.simulatedCustomerCharge')} value={money(costs?.simulatedCustomerCharge)} />
-              <ValueTile
-                label={t('snapshot.actualMargin')}
-                value={money(Number(costs?.customerCharge || 0) - Number(costs?.actualProviderCost || 0))}
-              />
-              <ValueTile
-                label={t('snapshot.simulatedMargin')}
-                value={money(Number(costs?.simulatedCustomerCharge || 0) - Number(costs?.simulatedProviderCost || 0))}
-              />
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {summary?.byKind.map((kind) => (
-                <StatusTag key={kind.usageKind} tone={usageKindTone(kind.usageKind)}>
-                  {t('snapshot.kind', {
-                    kind: enums.label('usageKind', kind.usageKind),
-                    requests: number(kind._count),
-                    tokens: number(kind._sum.totalTokens),
-                  })}
-                </StatusTag>
-              ))}
-            </div>
-            <p className="mt-4 text-xs text-fg-secondary">{t('snapshot.note')}</p>
-          </SectionCard>
+          {!vendor && (
+            <SectionCard title={t('snapshot.title')}>
+              <div className="grid grid-cols-2 gap-4">
+                <ValueTile label={t('snapshot.actualExternalCost')} value={money(costs?.actualProviderCost)} />
+                <ValueTile label={t('snapshot.customerCharge')} value={money(costs?.customerCharge)} />
+                <ValueTile label={t('snapshot.simulatedProviderCost')} value={money(costs?.simulatedProviderCost)} />
+                <ValueTile
+                  label={t('snapshot.simulatedCustomerCharge')}
+                  value={money(costs?.simulatedCustomerCharge)}
+                />
+                <ValueTile
+                  label={t('snapshot.actualMargin')}
+                  value={money(Number(costs?.customerCharge || 0) - Number(costs?.actualProviderCost || 0))}
+                />
+                <ValueTile
+                  label={t('snapshot.simulatedMargin')}
+                  value={money(Number(costs?.simulatedCustomerCharge || 0) - Number(costs?.simulatedProviderCost || 0))}
+                />
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {summary?.byKind.map((kind) => (
+                  <StatusTag key={kind.usageKind} tone={usageKindTone(kind.usageKind)}>
+                    {t('snapshot.kind', {
+                      kind: enums.label('usageKind', kind.usageKind),
+                      requests: number(kind._count),
+                      tokens: number(kind._sum.totalTokens),
+                    })}
+                  </StatusTag>
+                ))}
+              </div>
+              <p className="mt-4 text-xs text-fg-secondary">{t('snapshot.note')}</p>
+            </SectionCard>
+          )}
         </div>
 
         <SectionCard flush title={t('breakdown.title')} description={t('breakdown.note')}>
@@ -215,13 +239,57 @@ export function AdminDashboard() {
         </SectionCard>
 
         <ModelRegistry models={models} loading={data.models.isPending} />
-        <KnowledgePanel refreshKey={models} />
-        <PricingSection models={models} pricing={data.pricing.data ?? []} loading={data.pricing.isPending} />
+        {vendor ? <KnowledgeBaseLink /> : <KnowledgePanel refreshKey={models} />}
+        {!vendor && (
+          <PricingSection models={models} pricing={data.pricing.data ?? []} loading={data.pricing.isPending} />
+        )}
         <UserPermissions users={data.users.data ?? []} models={models} loading={data.users.isPending} />
         <AuditLog entries={data.audit.data ?? []} loading={data.audit.isPending} />
         <WorkspaceControls models={models} />
       </div>
     </Shell>
+  );
+}
+
+/** The organization's prepaid credit on the platform gateway; AI requests stop when it runs out. */
+function CreditCard({ status }: { status: CreditStatus }) {
+  const t = useTranslations('admin.credit');
+  const { money } = useAdminFormat();
+  const credit = status.credit;
+  const ratio = credit?.limit ? Math.min(1, credit.spent / credit.limit) : 1;
+  return (
+    <SectionCard>
+      <div className="flex flex-wrap items-center gap-4">
+        <Wallet className="text-primary" />
+        <div className="min-w-60 flex-1">
+          <h2 className="font-semibold">{t('title')}</h2>
+          <p className="text-xs text-fg-secondary">{t('description')}</p>
+        </div>
+        {credit ? (
+          <div className="w-64">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="text-xs text-fg-secondary">{t('remaining')}</span>
+              <span className="font-mono text-lg font-semibold">{money(credit.remaining)}</span>
+            </div>
+            <Progress
+              percent={ratio * 100}
+              showInfo={false}
+              size="small"
+              status={credit.exhausted ? 'exception' : 'normal'}
+              strokeColor={
+                credit.exhausted ? undefined : ratio >= 0.8 ? 'var(--app-color-warning)' : 'var(--app-color-primary)'
+              }
+            />
+            <p className="text-[11px] text-fg-secondary">
+              {t('spentOf', { spent: money(credit.spent), limit: money(credit.limit) })}
+            </p>
+          </div>
+        ) : (
+          <p className="text-xs text-fg-secondary">{t('unavailable')}</p>
+        )}
+      </div>
+      {credit?.exhausted && <Alert className="mt-4" type="error" showIcon message={t('exhausted')} />}
+    </SectionCard>
   );
 }
 
@@ -255,5 +323,23 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       <span className="text-xs font-medium text-fg-secondary">{label}</span>
       {children}
     </label>
+  );
+}
+
+/** Vendor-managed deployments keep their documents in the central knowledge base, on its own page. */
+function KnowledgeBaseLink() {
+  const t = useTranslations('admin.knowledge');
+  return (
+    <SectionCard
+      title={t('centralTitle')}
+      description={t('centralDescription')}
+      extra={
+        <Link href="/knowledge">
+          <Button icon={<BookOpen size={16} />}>{t('centralOpen')}</Button>
+        </Link>
+      }
+    >
+      {null}
+    </SectionCard>
   );
 }

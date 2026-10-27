@@ -23,14 +23,17 @@ This repository is an enterprise-shaped POC, not a production security or billin
 
 ## Billing limitations
 
-- Simulation creates no bill, payment, tax, credit, refund, subscription, or accounting record.
+- Simulation creates no real bill, payment, tax invoice, refund or subscription. Vendor-managed mode has a durable **test-credit** ledger, SIM receipts, reservation/settlement and mock top-ups; these are not financial accounting records or provider-invoice reconciliation.
 - Provider usage can be estimated when metadata is absent; production reconciliation must compare provider statements.
 - Cached-token tiers and provider-specific fees are configurable but need provider-specific metadata adapters before authoritative billing.
 - Currency conversion, effective-time approval workflows, account contracts, and invoice-grade rounding policy are not implemented.
 
 ## Platform limitations
 
-- Single-customer/single-installation architecture only; this is intentional.
+- Single-customer/single-installation architecture only; this is intentional. The vendor-managed POC hosts one such installation per customer; there is no shared multi-tenant database.
+- Vendor-managed POC: customer APIs share an internal network with Keycloak and vendor-control (production needs a network per customer). Scripts provision on one Docker host; console registration needs explicit host activation, avoiding a web-accessible Docker socket. Vendor console authentication is a localhost-only Basic Auth secret, not production RBAC/MFA.
+- Central PostgreSQL reservations prevent concurrent overspend of test credit. Missing final usage is conservatively estimated, and crash-orphaned reservations need explicit operator reconciliation. Provider invoice reconciliation, invoice-grade tokenization and transactional outbox durability between tenant records and central ledger are still needed. The tenant's local usage dashboard may omit a cancelled request whose debit exists centrally; the central ledger is authoritative.
+- Central knowledge base (vendor-managed POC): one engine and one database serve every customer. Row-level security plus explicit tenant filters isolate the rows, but there is no per-customer database, encryption key or network, and no backup/restore per tenant. The engine resolves tenants through vendor-control (cached 30 s), so a suspension or limit change takes up to 30 s to apply there. Text extraction runs in each customer API and the engine trusts its extracted sections. There is no OCR, no hybrid keyword search or reranker, no per-document or per-role access (every signed-in user of the organization can retrieve every enabled document), and no charge for storage. Indexing is driven by an in-process loop in each customer API. Running several API replicas needs a distributed lock, otherwise passages may be embedded twice. While a settings change re-indexes, newly uploaded documents become searchable only when the new version completes.
 - Project-document RAG is PostgreSQL full-text/substring retrieval over bounded, locally extracted text. It has no embeddings, OCR, semantic ranking, citation-grounding evaluation, document versioning, or enterprise search connectors.
 - Product-catalog RAG returns the top-k most similar products. Questions over the whole table (counts, totals, "all out-of-stock items", price ranges) need SQL-backed answers (text-to-SQL or structured filters), and ranking would benefit from hybrid keyword search, a reranker, and an evaluation set.
 - The catalog is visible to every signed-in user, including cost price. Add field-level and per-collection access control before mixing data of different sensitivity.

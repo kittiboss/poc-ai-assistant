@@ -29,6 +29,8 @@
     "sessionExpired": "Your session has expired. Sign in again to continue."
   },
   "nav": {
+    "billing": "Test credits & billing",
+    "knowledge": "Knowledge base",
     "openMenu": "Open menu",
     "openSidebar": "Open sidebar",
     "closeSidebar": "Close sidebar",
@@ -52,7 +54,7 @@
     "newConversation": "New conversation",
     "private": "Private to your company account",
     "modelOption": "{name} · {provider} · {location} · {status}",
-    "modelLocal": "Local · $0 external API",
+    "modelLocal": "Local · no external provider",
     "modelExternal": "External",
     "modelBadge": "{location} · {status}",
     "externalNotice": "External model: messages in this conversation are sent to {provider} under that provider’s data terms. Free-tier providers may use them to improve their products — do not send confidential data.",
@@ -63,6 +65,11 @@
     "productCatalogExternal": "Product catalog search sends your message to {provider} ({model}) to find matching products.",
     "productCatalogExternalProvider": "the external embedding provider",
     "productMatch": "product match {score}",
+    "knowledgeBase": "Knowledge base",
+    "knowledgeBaseReady": "Retrieve from {count} indexed passages",
+    "knowledgeBaseUnavailable": "Knowledge base unavailable: {problem}",
+    "knowledgeBaseExternal": "Knowledge base search sends your message to {provider} ({model}) to find matching passages.",
+    "documentMatch": "match {score}",
     "stopped": "Generation stopped. The partial response was preserved.",
     "failed": "Generation failed",
     "failedStatus": "Generation failed ({status})",
@@ -119,7 +126,10 @@
     "archivedToast": "Chat archived",
     "restoredToast": "Chat restored",
     "noMatches": "No chats match your search",
-    "noArchived": "No archived chats"
+    "noArchived": "No archived chats",
+    "creditExhausted": "Your organization's prepaid AI credit is used up. Ask an administrator to add credit.",
+    "rateLimited": "The usage limit for this model was reached. Wait a moment and try again.",
+    "modelNotEntitled": "This model is not included in your organization's plan."
   },
   "usage": {
     "eyebrow": "YOUR ACCOUNT",
@@ -195,7 +205,10 @@
       "upToDate": "The product catalog is already up to date.",
       "runFailed": "Indexing stopped after {embedded} of {pending} products: {error}. Saved batches remain searchable; index again to continue.",
       "runComplete": "Embedded {embedded} products in {batches} requests; removed {removed} deleted passages.",
-      "rowErrors": "CSV validation errors"
+      "rowErrors": "CSV validation errors",
+      "centralTitle": "Knowledge base",
+      "centralDescription": "Documents for chat are managed on the Knowledge base page and kept in the platform's central knowledge base.",
+      "centralOpen": "Open knowledge base"
     },
     "filters": {
       "from": "From",
@@ -440,7 +453,84 @@
         "noComment": "No comment",
         "empty": "No feedback yet"
       }
+    },
+    "credit": {
+      "title": "Prepaid AI credit",
+      "description": "Every AI request, local mock included, is charged to this credit at the platform price list. New requests are refused once it runs out.",
+      "remaining": "Remaining",
+      "spentOf": "{spent} spent of {limit}",
+      "unavailable": "The platform gateway cannot be reached right now.",
+      "exhausted": "Credit is used up: AI requests are refused until the platform adds credit."
     }
+  },
+  "knowledgeBase": {
+    "title": "Knowledge base",
+    "intro": "Documents your assistant can cite in chat. They are kept in the platform's central knowledge base, separate from every other organization.",
+    "adminsOnly": "Organization administrators only",
+    "notVendor": "This deployment does not use the central knowledge base.",
+    "refresh": "Refresh",
+    "unavailable": "The knowledge base cannot be used right now",
+    "indexing": "Indexing {pending} passages…",
+    "reindexing": "Re-indexing (version {version}): {pending} passages left. Chat keeps using the previous index until it finishes.",
+    "documents": "Documents",
+    "text": "Document text",
+    "passages": "Passages",
+    "of": "{used} of {max}",
+    "mbOf": "{used} of {max} MB",
+    "topK": "Passages per question",
+    "settingsTitle": "Retrieval settings",
+    "settingsDescription": "Within your plan: {models} · up to {maxTopK} passages per question.",
+    "embeddingModel": "Embedding model",
+    "local": "Local",
+    "external": "External",
+    "minScore": "Minimum score",
+    "chunkSize": "Chunk size (characters)",
+    "chunkOverlap": "Overlap (characters)",
+    "save": "Save settings",
+    "saved": "Settings saved",
+    "reindexStarted": "Settings saved. Re-indexing all documents.",
+    "confirmReindexTitle": "Re-index all documents?",
+    "confirmReindex": "Changing the embedding model or chunking embeds every document again ({chunks} passages now). Each embedding is charged to your credit.",
+    "confirmExternal": "{model} is an external provider: the text of every document will be sent to it.",
+    "continue": "Continue",
+    "cancel": "Cancel",
+    "sensitiveTitle": "Sensitive information found",
+    "sendAnyway": "Send anyway",
+    "uploadTitle": "Upload a document",
+    "uploadDrop": "Click or drag a file here",
+    "uploading": "Uploading…",
+    "uploadHint": "{types} · up to {size} MB. Text is extracted in this deployment; only the text is stored in the central knowledge base.",
+    "uploaded": "{filename}: {chunks} passages queued for indexing",
+    "tooLarge": "Files can be up to {size} MB on your plan",
+    "documentsTitle": "Documents",
+    "noDocuments": "No documents yet",
+    "columnDocument": "Document",
+    "columnText": "Text",
+    "columnPassages": "Passages",
+    "columnStatus": "Status",
+    "columnChat": "Used in chat",
+    "columnActions": "Actions",
+    "pages": "{count, plural, one {# page} other {# pages}}",
+    "rows": "{count, plural, one {# row} other {# rows}}",
+    "sensitive": "contains sensitive information",
+    "embeddedOf": "{embedded} of {chunks} indexed",
+    "status": {
+      "READY": "Ready",
+      "INDEXING": "Indexing",
+      "PAUSED": "Paused"
+    },
+    "reason": {
+      "CREDIT_EXHAUSTED": "Credit used up; resumes after a top-up",
+      "POLICY": "External providers are paused",
+      "DAILY_LIMIT": "Daily limit reached; resumes tomorrow (UTC)",
+      "RATE_LIMITED": "Provider rate limit; resumes shortly",
+      "MODEL_UNAVAILABLE": "Embedding model unavailable",
+      "ERROR": "Indexing failed"
+    },
+    "retry": "Resume",
+    "delete": "Delete",
+    "confirmDelete": "Delete {filename} and its passages?",
+    "deleted": "Document deleted"
   },
   "settings": {
     "eyebrow": "SETTINGS",
@@ -496,7 +586,8 @@
       "notPermitted": "Not permitted",
       "notConfigured": "Not configured",
       "dailyLimitReached": "Daily limit reached",
-      "unavailable": "Unavailable"
+      "unavailable": "Unavailable",
+      "creditExhausted": "Credit exhausted"
     },
     "location": {
       "LOCAL": "LOCAL",
@@ -511,7 +602,15 @@
       "QUOTA_DELETE": "QUOTA_DELETE",
       "DEPARTMENT_UPDATE": "DEPARTMENT_UPDATE",
       "TEMPLATE_SAVE": "TEMPLATE_SAVE",
-      "RETENTION_PURGE": "RETENTION_PURGE"
+      "RETENTION_PURGE": "RETENTION_PURGE",
+      "KNOWLEDGE_IMPORT": "KNOWLEDGE_IMPORT",
+      "KNOWLEDGE_REINDEX": "KNOWLEDGE_REINDEX",
+      "KNOWLEDGE_DOCUMENT_UPLOAD": "KNOWLEDGE_DOCUMENT_UPLOAD",
+      "KNOWLEDGE_DOCUMENT_ENABLE": "KNOWLEDGE_DOCUMENT_ENABLE",
+      "KNOWLEDGE_DOCUMENT_DISABLE": "KNOWLEDGE_DOCUMENT_DISABLE",
+      "KNOWLEDGE_DOCUMENT_DELETE": "KNOWLEDGE_DOCUMENT_DELETE",
+      "KNOWLEDGE_DOCUMENT_RETRY": "KNOWLEDGE_DOCUMENT_RETRY",
+      "KNOWLEDGE_SETTINGS_UPDATE": "KNOWLEDGE_SETTINGS_UPDATE"
     },
     "entityType": {
       "AIModel": "AIModel",
@@ -521,7 +620,10 @@
       "QuotaPolicy": "QuotaPolicy",
       "User": "User",
       "PromptTemplate": "PromptTemplate",
-      "Conversation": "Conversation"
+      "Conversation": "Conversation",
+      "KnowledgeSource": "KnowledgeSource",
+      "KnowledgeDocument": "KnowledgeDocument",
+      "KnowledgeSettings": "KnowledgeSettings"
     }
   },
   "liveUsage": {

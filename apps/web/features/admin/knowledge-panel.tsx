@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useApi } from '@/components/api/api-provider';
 import { SectionCard } from '@/components/ui/section-card';
 import { StatusTag } from '@/components/ui/status-tag';
-import { API_URL, errorMessage } from '@/lib/api/client';
+import { apiUrl, errorMessage } from '@/lib/api/client';
 import type { IndexRun, KnowledgeImportResult, KnowledgeReindexResult, KnowledgeStatus } from '@/lib/api/types';
 
 /** Imports product CSV data and starts incremental embedding runs for the chat catalog. */
@@ -73,7 +73,7 @@ export function KnowledgePanel({ refreshKey }: { refreshKey?: unknown }) {
       const body = new FormData();
       body.append('file', csv);
       const response = await fetch(
-        new Request(`${API_URL}/admin/knowledge/products/import`, {
+        new Request(`${apiUrl()}/admin/knowledge/products/import`, {
           method: 'POST',
           body,
         }),

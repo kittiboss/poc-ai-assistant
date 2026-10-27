@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { VendorResponseInterceptor } from './common/vendor-response.interceptor';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AdminModule } from './admin/admin.module';
 import { AuthGuard } from './common/auth/auth.guard';
@@ -22,6 +23,7 @@ import { UsageModule } from './usage/usage.module';
     AdminModule,
   ],
   providers: [
+    { provide: APP_INTERCEPTOR, useClass: VendorResponseInterceptor },
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],

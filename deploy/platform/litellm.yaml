@@ -1,0 +1,76 @@
+# Vendor gateway routes. model_name must equal the AIModel id seeded in every customer deployment.
+# Costs are MOCK sale prices in USD per token (per-1M price / 1,000,000), taken from the seeded
+# simulation rate × (1 + markup), so prepaid credit goes down while providers are on free tiers.
+model_list:
+  - model_name: local-mock
+    litellm_params:
+      model: openai/mock-enterprise
+      api_base: os.environ/MOCK_PROVIDER_URL
+      api_key: local-mock-no-secret
+    model_info:
+      # $3.75 / $5.357 per 1M tokens
+      input_cost_per_token: 0.00000375
+      output_cost_per_token: 0.000005357
+  - model_name: mock-embedding
+    litellm_params:
+      model: openai/mock-embedding
+      api_base: os.environ/MOCK_PROVIDER_URL
+      api_key: local-mock-no-secret
+    model_info:
+      mode: embedding
+      # $0.20 per 1M tokens
+      input_cost_per_token: 0.0000002
+      output_cost_per_token: 0
+  # External providers, each through its credential proxy (only that proxy holds the key).
+  - model_name: google-gemini
+    litellm_params:
+      model: os.environ/GEMINI_LITELLM_MODEL
+      api_base: os.environ/GEMINI_PROXY_URL
+      api_key: local-gemini-proxy
+    model_info:
+      # $0.30 / $2.50 per 1M tokens: Google's paid-tier list price (the account itself is on the free tier)
+      input_cost_per_token: 0.0000003
+      output_cost_per_token: 0.0000025
+  - model_name: gemini-embedding
+    litellm_params:
+      model: os.environ/GEMINI_EMBEDDING_LITELLM_MODEL
+      api_base: os.environ/GEMINI_EMBEDDING_PROXY_URL
+      api_key: local-gemini-proxy
+    model_info:
+      mode: embedding
+      # $0.20 per 1M tokens
+      input_cost_per_token: 0.0000002
+      output_cost_per_token: 0
+  - model_name: groq-llama
+    litellm_params:
+      model: os.environ/GROQ_LITELLM_MODEL
+      api_base: os.environ/GROQ_PROXY_URL
+      api_key: local-groq-proxy
+    model_info:
+      # $0.10 / $0.50 per 1M tokens: placeholder until a price is agreed
+      input_cost_per_token: 0.0000001
+      output_cost_per_token: 0.0000005
+  - model_name: openrouter-free
+    litellm_params:
+      model: os.environ/OPENROUTER_LITELLM_MODEL
+      api_base: os.environ/OPENROUTER_PROXY_URL
+      api_key: local-openrouter-proxy
+    model_info:
+      # $0.10 / $0.50 per 1M tokens: placeholder until a price is agreed
+      input_cost_per_token: 0.0000001
+      output_cost_per_token: 0.0000005
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  # Key and budget spend is still tracked; only the per-request log rows (which could hold prompts) are off.
+  disable_spend_logs: true
+  allow_requests_on_db_unavailable: false
+
+litellm_settings:
+  drop_params: true
+  request_timeout: 120
+  set_verbose: false
+  json_logs: true
+  turn_off_message_logging: true
+  redact_user_api_key_info: true
+  redact_messages_in_exceptions: true

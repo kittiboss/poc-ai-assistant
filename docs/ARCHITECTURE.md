@@ -2,7 +2,9 @@
 
 ## Boundaries
 
-One installation represents one enterprise customer. There is no centralized multi-tenant control plane.
+One installation represents one enterprise customer. In the default stack below it holds its own provider
+credentials; the vendor-managed POC ([below](#vendor-managed-deployment)) instead runs one deployment per customer on
+our platform, where a central AI gateway holds every provider credential and bills prepaid credit.
 
 ```text
 ┌──────────────┐       OIDC + PKCE       ┌──────────────┐
@@ -20,6 +22,28 @@ PostgreSQL Valkey                mock provider       Ollama (profile)
 ```
 
 The browser never receives provider credentials and never calls a model provider. `GatewayService` is the only inference boundary used by application logic, so replacing LiteLLM does not require frontend or conversation-domain changes.
+
+## Vendor-managed deployment
+
+We host every customer: one shared platform (`deploy/platform`) and one deployment per customer (`deploy/tenant`, Compose project `tenant-<id>`).
+
+```text
+customer web ─► customer API ──┬─► Keycloak (realm tenant-<id>)  ┐
+   common image    │          ├─► vendor-control + credit ledger │ platform-shared
+              own Postgres    └─► rag-engine ─► rag-db (RLS)     ┘ (internal)
+                                         │            private rag network
+                                         ▼ private gateway network
+                                      LiteLLM (team/key per tenant)
+                                         │
+                              mock · credential proxies ─► external providers
+```
+
+- **No provider credential in a customer deployment.** Its API runs with `MODEL_ACCESS=vendor-gateway`, `LITELLM_URL=http://vendor-control:4050`, and its own virtual key. One LiteLLM team per customer carries model entitlements; the key enforces its model RPM/TPM share. Raw keys are hashed in the vendor registry. Tenant networks cannot bypass the ledger to call LiteLLM/proxies.
+- **Simulated credit.** `apps/vendor-control` owns an append-only PostgreSQL ledger and immutable sale-price versions. Transactional per-tenant reservations prevent concurrent overspend; chat and embeddings settle token usage under the admitted price version. `X-Request-Id` correlates both ledgers. Budget checks are synchronous here, so upstream LiteLLM `max_budget` is unset and its delayed spend is diagnostic only. The customer `/billing` page shows sale prices, balance, test top-ups and SIM receipts; vendor cost and margin stay in the authenticated localhost vendor console. No money is collected. Unknown/interrupted usage is explicitly estimated; stale reservations require operator reconciliation. See [the complete phase 1–2 guide](VENDOR_MANAGED_POC.md).
+- **Central knowledge base.** `apps/rag-engine` stores, chunks and searches every customer's documents in one pgvector database, `rag-db`. Isolation is enforced twice: every query filters by tenant, and PostgreSQL row-level security binds the engine's role (`rag_app`, never a superuser) to the tenant set for each transaction. The tenant comes only from the credential, which the engine resolves through vendor-control's `GET /customer/rag`. That response also carries the vendor's per-customer limits (`vendor.tenants.rag`, edited in the console): embedding models, file types, documents, text, passages and top-K. Customer admins tune their settings within those limits on the `/knowledge` page (embedding model, top-K, minimum score, chunking). A chunking or model change builds a new index version, and search switches to it when it is complete. Files are parsed in the customer's own deployment, so the engine never opens untrusted files. Embedding also happens there, through the same metered path as chat. The engine therefore holds no customer credential, and credit, quotas, the kill switch and usage history all apply to indexing. The customer API's indexer pauses documents with a reason (credit, policy, daily limit, rate limit) and resumes them when the cause clears. See [the central knowledge base guide](VENDOR_MANAGED_POC.md#central-knowledge-base-rag-engine).
+- **Daily share.** LiteLLM has no per-day request limit, so each customer's API keeps enforcing its own `EXTERNAL_DAILY_*` limits, set to its share of the account.
+- **Networks.** Customer APIs reach the platform through `platform-shared`, which contains Keycloak, vendor-control and the RAG engine. `rag-db` sits on a private `rag` network that only the engine joins. LiteLLM, its database, mock and credential proxies sit on the private gateway network. Only proxies have provider egress. Vendor/LiteLLM admin interfaces are published on 127.0.0.1 for the vendor host.
+- **Web at runtime.** The root layout hands the browser this deployment's API URL and Keycloak realm (`apps/web/lib/runtime-config.ts`, from `APP_*` variables), so every customer runs the same web image; the brand is still chosen at build time.
 
 ## Authentication and authorization
 
@@ -54,6 +78,8 @@ Provider cost and customer charge are independent columns. Local models force ac
 Conversation deletion is a soft delete so usage and immutable pricing references remain intact. User lists and ownership reads exclude deleted conversations.
 
 ## Product catalog retrieval
+
+This section describes the single-installation stack. Vendor-managed deployments use the central knowledge base instead (see above); a CSV with the catalog's columns uploaded there keeps the same passage format.
 
 The `products` table follows the supplied `schema.sql` exactly. Each product is rendered to one passage (stock and status spelled out in words so natural questions match them) and stored in `KnowledgeChunk` with a `vector(768)` embedding and an HNSW cosine index (pgvector, built into the `postgres:17-alpine` image so existing volumes keep their collation behaviour). Rows are keyed by source, item and embedding model, with a hash of the exact embedded text, so indexing re-embeds only new or changed products and removes passages of deleted ones.
 
@@ -130,6 +156,7 @@ apps/
   gemini-proxy/           opt-in credential proxy and cost allowlist for Gemini
   groq-proxy/             opt-in credential proxy and cost allowlist for Groq
   openrouter-proxy/       zero-price router enforcement and credential proxy
+  vendor-control/         lightweight simulated credit gateway, Postgres ledger, vendor console
 packages/shared/          pricing and token logic shared by API and web
 infra/postgres/           postgres:17-alpine with pgvector compiled in
 infra/keycloak/           importable development realm

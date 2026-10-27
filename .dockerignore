@@ -4,6 +4,8 @@ node_modules
 **/.next
 .git
 .env
+**/.env
+deploy/tenants/*.env
 coverage
 *.log
 .DS_Store

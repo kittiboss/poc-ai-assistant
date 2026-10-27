@@ -10,7 +10,7 @@ import Big from "big.js";
 import type { AuthUser } from "../common/auth/auth.decorators";
 import { PrismaService } from "../common/prisma/prisma.service";
 import type { GatewayUsage } from "../gateway/gateway.service";
-import { EXTERNAL_PROVIDERS } from "../models/model-policies";
+import { EXTERNAL_PROVIDERS, vendorGateway } from "../models/model-policies";
 import { PricingService } from "../pricing/pricing.service";
 import { UsersService } from "../users/users.service";
 import {
@@ -99,10 +99,11 @@ export class UsageService {
         usageKind: kind,
         currency: pricing.currency,
         actualProviderCost: price.actualProviderCost,
-        customerCharge: price.customerCharge,
+        customerCharge: vendorGateway() ? "0" : price.customerCharge,
         simulatedProviderCost: price.simulatedProviderCost,
-        simulatedCustomerCharge: price.simulatedCustomerCharge,
+        simulatedCustomerCharge: vendorGateway() ? args.usage?.billing?.charge ?? "0" : price.simulatedCustomerCharge,
         pricingSnapshot: {
+          ...(args.usage?.billing ? { gatewayBilling: args.usage.billing } : {}),
           version: pricing.version,
           strategy: pricing.strategy,
           providerInputRate,

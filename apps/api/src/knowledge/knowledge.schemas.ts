@@ -52,6 +52,12 @@ export class KnowledgeStatusView {
     description: "Current or most recent indexing run since the API started.",
   })
   lastRun!: IndexRunView | null;
+  @ApiProperty({
+    enum: ["catalog", "knowledge-base"],
+    description:
+      "catalog: this installation's product catalog. knowledge-base: the platform's central knowledge base (vendor-managed); products then counts documents and indexed/stale count passages.",
+  })
+  source!: "catalog" | "knowledge-base";
 }
 
 export class ImportResultView {

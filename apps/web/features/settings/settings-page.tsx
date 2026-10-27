@@ -3,7 +3,7 @@ import { Card } from 'antd';
 import { KeyRound, Languages, Server, ShieldCheck, SlidersHorizontal, SunMoon, User } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useAuth } from 'react-oidc-context';
-import { API_URL } from '@/lib/api/client';
+import { apiUrl } from '@/lib/api/client';
 import { useRoles } from '@/lib/auth/use-roles';
 import { LanguageSwitcher } from '@/components/layout/language-switcher';
 import { Shell } from '@/components/layout/shell';
@@ -66,7 +66,7 @@ export function SettingsPage() {
               <p>
                 <a
                   className="font-medium text-primary underline"
-                  href={`${API_URL}/docs`}
+                  href={`${apiUrl()}/docs`}
                   target="_blank"
                   rel="noreferrer"
                 >

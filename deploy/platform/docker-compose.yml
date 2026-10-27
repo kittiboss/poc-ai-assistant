@@ -1,0 +1,301 @@
+# Vendor platform: the services we run once for every customer deployment.
+# Start with `npm run platform:up`; secrets come from deploy/platform/.env (created by the script).
+name: platform
+
+services:
+  # One Keycloak for every customer, one realm per customer (created by `npm run tenant:create`).
+  keycloak:
+    # Keycloak 24 uses Java 17 and remains compatible with older Apple ARM Docker
+    # virtualization where the Java 21 image can fail with SIGILL.
+    image: quay.io/keycloak/keycloak:24.0.5
+    command: ["start-dev", "--health-enabled=true"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?Run npm run platform:up to create deploy/platform/.env}
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?Run npm run platform:up to create deploy/platform/.env}
+      KC_HTTP_ENABLED: "true"
+      KC_HOSTNAME_STRICT: "false"
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - keycloak-data:/opt/keycloak/data
+    # 8180, not 8080, so the platform can run next to the single-installation dev stack.
+    ports:
+      - "${KEYCLOAK_PORT:-8180}:8080"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080; printf \"GET /health/ready HTTP/1.1\\r\\nhost: localhost\\r\\nConnection: close\\r\\n\\r\\n\" >&3; grep -q \"200 OK\" <&3'",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    networks: [edge, shared]
+    restart: unless-stopped
+
+  # LiteLLM's own database: virtual keys, budgets and spend per customer.
+  gateway-db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: litellm
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: ${GATEWAY_DB_PASSWORD:?Run npm run platform:up to create deploy/platform/.env}
+    volumes:
+      - gateway-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U litellm -d litellm"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [gateway]
+    restart: unless-stopped
+
+  mock-provider:
+    image: enterprise-ai/mock-provider:local
+    build:
+      context: ../..
+      dockerfile: apps/mock-provider/Dockerfile
+    environment:
+      PORT: 4010
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4010/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [gateway]
+    restart: unless-stopped
+
+  # Credential proxies: the only containers with provider keys and internet egress. Each starts only
+  # with its profile (npm run platform:up enables a profile when its key is in deploy/platform/.env).
+  gemini-proxy:
+    image: enterprise-ai/gemini-proxy:local
+    profiles: [gemini]
+    build:
+      context: ../..
+      dockerfile: apps/gemini-proxy/Dockerfile
+    environment:
+      PORT: 4020
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      GEMINI_EMBEDDING_MODEL: ${GEMINI_EMBEDDING_MODEL:-gemini-embedding-2}
+      GEMINI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-1024}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4020/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [gateway, egress]
+    restart: unless-stopped
+
+  groq-proxy:
+    image: enterprise-ai/groq-proxy:local
+    profiles: [groq]
+    build:
+      context: ../..
+      dockerfile: apps/groq-proxy/Dockerfile
+    environment:
+      PORT: 4030
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-20b}
+      # Keep false until Groq Console → Settings → Billing shows the organization is on Free tier.
+      GROQ_FREE_TIER_CONFIRMED: ${GROQ_FREE_TIER_CONFIRMED:-false}
+      GROQ_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-1024}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4030/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [gateway, egress]
+    restart: unless-stopped
+
+  openrouter-proxy:
+    image: enterprise-ai/openrouter-proxy:local
+    profiles: [openrouter]
+    build:
+      context: ../..
+      dockerfile: apps/openrouter-proxy/Dockerfile
+    environment:
+      PORT: 4040
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-openrouter/free}
+      OPENROUTER_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-1024}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4040/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [gateway, egress]
+    restart: unless-stopped
+
+  # Private upstream inference router. Customer deployments go through vendor-control below;
+  # LiteLLM enforces model/rate entitlements while the central ledger enforces simulated credit.
+  litellm:
+    # Newer images use CPU instructions unavailable in this machine's older
+    # Apple Docker virtualization, so keep the last verified compatible pin.
+    image: ghcr.io/berriai/litellm:main-v1.72.6-stable
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    environment:
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:?Run npm run platform:up to create deploy/platform/.env}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY:?Run npm run platform:up to create deploy/platform/.env}
+      DATABASE_URL: postgresql://litellm:${GATEWAY_DB_PASSWORD}@gateway-db:5432/litellm
+      MOCK_PROVIDER_URL: http://mock-provider:4010/v1
+      # Routes for providers whose proxy is not running simply fail; customer keys only list running ones.
+      GEMINI_PROXY_URL: http://gemini-proxy:4020/v1beta/models/${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      GEMINI_LITELLM_MODEL: gemini/${GEMINI_MODEL:-gemini-3.5-flash-lite}
+      GEMINI_EMBEDDING_PROXY_URL: http://gemini-proxy:4020/v1beta/models/${GEMINI_EMBEDDING_MODEL:-gemini-embedding-2}
+      GEMINI_EMBEDDING_LITELLM_MODEL: gemini/${GEMINI_EMBEDDING_MODEL:-gemini-embedding-2}
+      GROQ_PROXY_URL: http://groq-proxy:4030/openai/v1
+      GROQ_LITELLM_MODEL: openai/${GROQ_MODEL:-openai/gpt-oss-20b}
+      OPENROUTER_PROXY_URL: http://openrouter-proxy:4040/api/v1
+      OPENROUTER_LITELLM_MODEL: openai/${OPENROUTER_MODEL:-openrouter/free}
+      # Use the bundled price map instead of fetching it from GitHub at startup.
+      LITELLM_LOCAL_MODEL_COST_MAP: "True"
+    volumes:
+      - ./litellm.yaml:/app/config.yaml:ro
+    # Admin API for the platform scripts, on this machine only.
+    ports:
+      - "127.0.0.1:4000:4000"
+    depends_on:
+      gateway-db:
+        condition: service_healthy
+      mock-provider:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:4000/health/readiness', timeout=2)",
+        ]
+      interval: 5s
+      timeout: 4s
+      retries: 40
+      start_period: 30s
+    networks: [gateway, admin]
+    restart: unless-stopped
+
+  # Authoritative simulated credit ledger and vendor console. Tenant keys cannot bypass it:
+  # LiteLLM and credential proxies are on the private gateway network, not platform-shared.
+  vendor-control:
+    image: enterprise-ai/vendor-control:local
+    build:
+      context: ../..
+      dockerfile: apps/vendor-control/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://litellm:${GATEWAY_DB_PASSWORD}@gateway-db:5432/litellm
+      VENDOR_ADMIN_KEY: ${VENDOR_ADMIN_KEY:?Run npm run platform:up to initialize vendor secrets}
+      UPSTREAM_URL: http://litellm:4000
+      PORT: 4050
+      # Console usage totals and tenant purge on the RAG engine.
+      RAG_ENGINE_URL: http://rag-engine:4060
+      RAG_ADMIN_KEY: ${RAG_ADMIN_KEY:?Run npm run platform:up to initialize RAG secrets}
+    ports:
+      - "127.0.0.1:4050:4050"
+    depends_on:
+      gateway-db:
+        condition: service_healthy
+      litellm:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4050/health/readiness').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    networks: [gateway, shared, admin]
+    restart: unless-stopped
+
+  # Knowledge of every customer, isolated by tenant with row-level security (pgvector).
+  rag-db:
+    image: enterprise-ai/postgres:local
+    command: ["postgres", "-c", "shared_buffers=32MB", "-c", "max_connections=20", "-c", "maintenance_work_mem=64MB"]
+    environment:
+      POSTGRES_DB: rag
+      POSTGRES_USER: rag
+      POSTGRES_PASSWORD: ${RAG_DB_PASSWORD:?Run npm run platform:up to initialize RAG secrets}
+    volumes:
+      - rag-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag -d rag"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 256m
+    networks: [rag]
+    restart: unless-stopped
+
+  # Central RAG engine: stores, chunks and searches each customer's documents within the vendor's
+  # limits. Customer APIs embed text through vendor-control themselves, so it holds no credential.
+  rag-engine:
+    image: enterprise-ai/rag-engine:local
+    build:
+      context: ../..
+      dockerfile: apps/rag-engine/Dockerfile
+    environment:
+      # Owner connection: applies the schema at start, then the engine signs in as rag_app.
+      DATABASE_URL: postgresql://rag:${RAG_DB_PASSWORD}@rag-db:5432/rag
+      RAG_APP_DB_PASSWORD: ${RAG_APP_DB_PASSWORD:?Run npm run platform:up to initialize RAG secrets}
+      RAG_ADMIN_KEY: ${RAG_ADMIN_KEY}
+      VENDOR_CONTROL_URL: http://vendor-control:4050
+      PORT: 4060
+    depends_on:
+      rag-db:
+        condition: service_healthy
+      vendor-control:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4060/health/readiness').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    mem_limit: 192m
+    networks: [rag, shared]
+    restart: unless-stopped
+
+volumes:
+  keycloak-data:
+  gateway-db-data:
+  rag-db-data:
+
+networks:
+  edge:
+  # Publishes the LiteLLM admin port on 127.0.0.1 (a port cannot be published from internal networks only).
+  admin:
+  # Provider egress for the credential proxies only.
+  egress:
+  # Gateway, its database, the mock and the credential proxies. Customer deployments never join it.
+  gateway:
+    internal: true
+  # The RAG engine and its database. Customer deployments never join it.
+  rag:
+    internal: true
+  # The only network customer deployments join: Keycloak, vendor-control and the RAG engine.
+  shared:
+    name: platform-shared
+    internal: true

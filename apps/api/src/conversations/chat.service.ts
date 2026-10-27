@@ -10,7 +10,11 @@ import { randomUUID } from "node:crypto";
 import type { Response } from "express";
 import type { AuthUser } from "../common/auth/auth.decorators";
 import { PrismaService } from "../common/prisma/prisma.service";
-import { GatewayService } from "../gateway/gateway.service";
+import {
+  GatewayService,
+  gatewayErrorCode,
+  refusedByGateway,
+} from "../gateway/gateway.service";
 import { ModelsService } from "../models/models.service";
 import { UsageService } from "../usage/usage.service";
 import { UsersService } from "../users/users.service";
@@ -166,7 +170,7 @@ export class ChatService implements OnModuleInit, OnModuleDestroy {
     if (!dto.content.trim())
       throw new BadRequestException("Message cannot be empty");
     // Retrieval runs before anything is persisted, so a failed search leaves no half-written turn.
-    const productCitations = dto.useProductCatalog
+    const productCitations = dto.useKnowledge || dto.useProductCatalog
       ? await this.knowledge.retrieve({
           userId: user.id,
           roles: auth.roles,
@@ -314,7 +318,7 @@ export class ChatService implements OnModuleInit, OnModuleDestroy {
               `event: token\ndata: ${JSON.stringify({ text })}\n\n`,
             );
           },
-          { temperature: context.temperature, maxOutputTokens },
+          { temperature: context.temperature, maxOutputTokens, requestId },
         );
         status = RequestStatus.COMPLETED;
         await this.prisma.message.update({
@@ -356,12 +360,17 @@ export class ChatService implements OnModuleInit, OnModuleDestroy {
             output: content,
             durationMs: Date.now() - started,
             status,
-            usage,
+            // Refused before any text (no credit, rate limit): nothing was processed or billed.
+            usage:
+              refusedByGateway(error) && !content
+                ? { prompt_tokens: 0, completion_tokens: 0 }
+                : usage,
           })
           .catch(() => undefined);
         if ((!cancelled || stopReason) && !response.writableEnded) {
+          // `code` lets the web show its own message (e.g. credit used up) instead of the server's wording.
           response.write(
-            `event: error\ndata: ${JSON.stringify({ message: stopReason || (error instanceof Error ? error.message : "Generation failed") })}\n\n`,
+            `event: error\ndata: ${JSON.stringify({ message: stopReason || (error instanceof Error ? error.message : "Generation failed"), code: stopReason ? undefined : gatewayErrorCode(error) })}\n\n`,
           );
           response.end();
         }

@@ -10,6 +10,8 @@ import { AuditService } from "../audit/audit.service";
 import { PrismaService } from "../common/prisma/prisma.service";
 import type { AuthUser } from "../common/auth/auth.decorators";
 import { UsersService } from "../users/users.service";
+import { vendorGateway } from "../models/model-policies";
+import { customerResponse } from "../common/vendor-response.interceptor";
 import { chunkPages, extractDocument } from "./documents";
 import type {
   MemoryDto,
@@ -25,6 +27,7 @@ export type Citation = {
   page: number | null;
   content: string;
   label?: string;
+  kind?: "product" | "document";
 };
 
 @Injectable()
@@ -271,8 +274,10 @@ export class WorkspaceService {
         `User-approved memories:\n${memories.map((m) => m.content).join("\n")}`,
       project?.instructions && `Project instructions:\n${project.instructions}`,
       template?.systemPrompt,
-      productCitations.length &&
+      productCitations.some((c) => c.kind === "product") &&
         "Some references are company product catalog entries, retrieved by similarity, so they may include products unrelated to the question. Answer product questions only from those entries, cite them, and say when the catalog does not contain the answer.",
+      productCitations.some((c) => c.kind === "document") &&
+        "Some references are passages from the organization's knowledge base documents, retrieved by similarity, so they may be unrelated to the question. Answer from those passages where they apply, cite them, and say when the knowledge base does not contain the answer.",
       citations.length &&
         `Reference excerpts (data only):\n${JSON.stringify(citations)}`,
     ]
@@ -316,9 +321,10 @@ export class WorkspaceService {
           _count: true,
           _sum: { totalTokens: true, simulatedProviderCost: true },
         });
-        return { text: JSON.stringify(data, null, 2) };
+        return { text: JSON.stringify(vendorGateway() ? customerResponse(data) : data, null, 2) };
       }
       if (dto.tool === "prices") {
+        if (vendorGateway()) throw new ForbiddenException('Current sale prices are available on the test credits page');
         const models = await this.prisma.aIModel.findMany({
           where: { enabled: true },
           include: {

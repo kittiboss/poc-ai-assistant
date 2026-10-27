@@ -16,7 +16,7 @@ import { randomUUID } from "node:crypto";
 import { AuditService } from "../audit/audit.service";
 import type { AuthUser } from "../common/auth/auth.decorators";
 import { PrismaService } from "../common/prisma/prisma.service";
-import { GatewayService } from "../gateway/gateway.service";
+import { GatewayService, refusedByGateway } from "../gateway/gateway.service";
 import {
   credentialFor,
   externalProviderAllowed,
@@ -33,6 +33,11 @@ import {
   queryInput,
   vectorLiteral,
 } from "./embedding-text";
+import {
+  RagEngineClient,
+  type EngineConfig,
+  type EngineSearch,
+} from "./rag-engine.client";
 
 export const PRODUCT_SOURCE = "products";
 /**
@@ -44,7 +49,7 @@ export const PRODUCT_SOURCE = "products";
  */
 const MAX_EMBEDDING_BATCH = 100;
 const RATE_LIMIT_RETRIES = 2;
-const RATE_LIMIT_BACKOFF_MS = 61_000;
+export const RATE_LIMIT_BACKOFF_MS = 61_000;
 
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms).unref());
@@ -71,8 +76,14 @@ export type ProductCitation = {
   kind: "product";
   score: number;
 };
+/** A passage from the central knowledge base (vendor-managed deployments). */
+export type DocumentCitation = Omit<ProductCitation, "page" | "kind"> & {
+  page: number | null;
+  kind: "document";
+};
+export type KnowledgeCitation = ProductCitation | DocumentCitation;
 
-type EmbeddingCall = {
+export type EmbeddingCall = {
   requestId: string;
   userId: string;
   roles: string[];
@@ -97,7 +108,20 @@ export class KnowledgeService {
     private readonly usage: UsageService,
     private readonly governance: GovernanceService,
     private readonly audit: AuditService,
+    private readonly engine?: RagEngineClient,
   ) {}
+
+  /** Vendor-managed deployments keep their knowledge in the platform's central RAG engine. */
+  central() {
+    return Boolean(this.engine?.enabled());
+  }
+
+  private catalogOnly() {
+    if (this.central())
+      throw new ConflictException(
+        "This deployment uses the central knowledge base: upload the catalog CSV on the Knowledge base page",
+      );
+  }
 
   embeddingModelId() {
     return process.env.RAG_EMBEDDING_MODEL || "mock-embedding";
@@ -132,9 +156,8 @@ export class KnowledgeService {
       : 5;
   }
 
-  /** Resolves the configured embedding model without calling any provider; `problem` explains why it cannot be used. */
-  async embeddingModel() {
-    const id = this.embeddingModelId();
+  /** Resolves an embedding model (by default the configured one) without calling any provider; `problem` explains why it cannot be used. */
+  async embeddingModel(id = this.embeddingModelId()) {
     const model = await this.prisma.aIModel.findUnique({ where: { id } });
     const problem = !model
       ? `embedding model ${id} is not in the registry`
@@ -153,6 +176,7 @@ export class KnowledgeService {
   }
 
   async status() {
+    if (this.central()) return this.centralStatus();
     const { id, model, problem } = await this.embeddingModel();
     const plan = await this.plan(
       id,
@@ -180,11 +204,46 @@ export class KnowledgeService {
       orphaned: plan.orphaned.length,
       indexing: this.indexing,
       lastRun: this.run,
+      source: "catalog" as const,
+    };
+  }
+
+  /** The same status shape for chat, from the central engine: documents instead of products. */
+  private async centralStatus() {
+    const config = await this.engine!.request<EngineConfig>("/v1/config");
+    const modelId = config.active?.model ?? config.settings.embeddingModel;
+    const { model, problem: modelProblem } = await this.embeddingModel(modelId);
+    const problem =
+      config.problem ??
+      modelProblem ??
+      (!config.active || !config.usage.documents
+        ? "no documents have been indexed yet"
+        : null);
+    return {
+      ready: !config.problem && !modelProblem,
+      available: !problem,
+      problem,
+      embeddingModel: model
+        ? {
+            id: model.id,
+            displayName: model.displayName,
+            provider: model.provider,
+            local: model.local,
+          }
+        : { id: modelId, displayName: modelId, provider: null, local: null },
+      products: config.usage.documents,
+      indexed: config.usage.chunks - config.usage.pendingChunks,
+      stale: config.usage.pendingChunks,
+      orphaned: 0,
+      indexing: config.usage.pendingChunks > 0,
+      lastRun: null,
+      source: "knowledge-base" as const,
     };
   }
 
   /** Upserts the catalog from CSV. Embedding is a separate, explicit step because it may call a provider. */
   async importProducts(auth: AuthUser, csv: string) {
+    this.catalogOnly();
     let products;
     try {
       products = parseProductCsv(csv);
@@ -250,6 +309,7 @@ export class KnowledgeService {
    * free-tier quota); progress and the outcome are reported by status().
    */
   async reindex(auth: AuthUser) {
+    this.catalogOnly();
     if (this.indexing)
       throw new ConflictException("Catalog indexing is already running");
     const { id, model, problem } = await this.embeddingModel();
@@ -374,7 +434,8 @@ export class KnowledgeService {
     conversationId: string;
     requestId: string;
     acknowledgeSensitive?: boolean;
-  }): Promise<ProductCitation[]> {
+  }): Promise<KnowledgeCitation[]> {
+    if (this.central()) return this.retrieveCentral(args);
     const { id, model, problem } = await this.embeddingModel();
     if (!model || problem)
       throw new BadRequestException(
@@ -436,6 +497,62 @@ export class KnowledgeService {
     }));
   }
 
+  /**
+   * Central knowledge base: the query is embedded here, through this deployment's quotas and
+   * metered gateway path, with the model the active index was built with; the engine searches
+   * only this tenant's documents.
+   */
+  private async retrieveCentral(args: Parameters<KnowledgeService["retrieve"]>[0]) {
+    const config = await this.engine!.request<EngineConfig>("/v1/config");
+    const unavailable = (why: string) =>
+      new BadRequestException(
+        `The knowledge base is unavailable: ${why}. Turn off "Knowledge base" to chat without it.`,
+      );
+    if (config.problem) throw unavailable(config.problem);
+    if (!config.active)
+      throw new BadRequestException(
+        'The knowledge base has no indexed documents yet. Ask an administrator to upload documents, or turn off "Knowledge base".',
+      );
+    const { model, problem } = await this.embeddingModel(config.active.model);
+    if (!model || problem) throw unavailable(problem ?? "no embedding model");
+    if (!model.local)
+      await this.governance.checkSensitive(args.query, args.acknowledgeSensitive);
+    const [vector] = await this.embed({
+      requestId: `${args.requestId}:retrieval`,
+      userId: args.userId,
+      roles: args.roles,
+      conversationId: args.conversationId,
+      model,
+      texts: [
+        queryInput(args.query, model.capabilities.includes(TASK_PREFIX_CAPABILITY)),
+      ],
+    });
+    const result = await this.engine!.request<EngineSearch>("/v1/search", {
+      method: "POST",
+      body: { model: model.id, vector },
+    });
+    return result.citations.map(
+      (citation): DocumentCitation => ({
+        id: citation.chunkId,
+        sourceId: `document:${citation.documentId}`,
+        // A CSV row's own title (e.g. a product) says more than the file name alone.
+        filename:
+          citation.title && citation.title !== citation.filename
+            ? `${citation.filename} · ${citation.title}`
+            : citation.filename,
+        page: citation.page,
+        content: citation.content,
+        kind: "document",
+        score: citation.score,
+      }),
+    );
+  }
+
+  /** Embeds texts through the same admission and metering as chat (used by central indexing). */
+  embedTexts(call: EmbeddingCall) {
+    return this.embed(call);
+  }
+
   /** Every embedding call is admitted, metered and released exactly like a chat request. */
   private async embed(call: EmbeddingCall) {
     const input = call.texts.join("\n");
@@ -449,7 +566,7 @@ export class KnowledgeService {
       outputTokens: 0,
     });
     const started = Date.now();
-    // Providers report no token counts for embeddings, so usage is ESTIMATED (or SYNTHETIC for the mock).
+    let gatewayUsage: import('../gateway/gateway.service').GatewayUsage | undefined;
     const record = (status: RequestStatus, refused = false) =>
       this.usage.record({
         requestId: call.requestId,
@@ -461,10 +578,10 @@ export class KnowledgeService {
         output: "",
         durationMs: Date.now() - started,
         status,
-        // A rate-limited call was refused by the provider, so it processed no tokens.
+        // A refused call (rate limit, no credit) processed no tokens.
         ...(refused
           ? { usage: { prompt_tokens: 0, completion_tokens: 0 } }
-          : {}),
+          : { usage: gatewayUsage }),
       });
     const isRateLimit = (error: unknown) =>
       error instanceof HttpException &&
@@ -472,12 +589,15 @@ export class KnowledgeService {
     try {
       for (let attempt = 0; ; attempt++) {
         try {
-          const { vectors } = await this.gateway.embed(
+          const { vectors, usage } = await this.gateway.embed(
             call.model.id,
             call.texts,
             EMBEDDING_DIMENSIONS,
             call.model.capabilities.includes(OUTPUT_DIMENSIONS_CAPABILITY),
+            undefined,
+            attempt ? `${call.requestId}:retry${attempt}` : call.requestId,
           );
+          gatewayUsage = usage;
           await record(RequestStatus.COMPLETED);
           return vectors;
         } catch (error) {
@@ -494,7 +614,7 @@ export class KnowledgeService {
         }
       }
     } catch (error) {
-      await record(RequestStatus.ERROR, isRateLimit(error)).catch(
+      await record(RequestStatus.ERROR, refusedByGateway(error)).catch(
         () => undefined,
       );
       throw error;

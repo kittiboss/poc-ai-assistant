@@ -1,5 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsDateString, IsIn, IsOptional, IsString, Length } from 'class-validator';
+import { IsBoolean, IsDateString, IsIn, IsOptional, IsString, Length, Matches } from 'class-validator';
+
+export class TestCreditDto {
+  @ApiProperty({ example: '2.00', description: 'Simulated USD only; no payment is collected.' })
+  @IsString() @Matches(/^\d{1,5}(\.\d{1,9})?$/) amount!: string;
+  @ApiProperty({ description: 'Unique idempotency key, reused when retrying the same top-up.' })
+  @IsString() @Matches(/^[a-zA-Z0-9:_-]{1,100}$/) reference!: string;
+}
 import { PROVIDERS } from '../models/models.dto';
 
 export class UpdatePermissionDto {

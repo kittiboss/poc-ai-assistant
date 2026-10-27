@@ -23,10 +23,22 @@ export function externalProviderAllowed(
   );
 }
 
+/**
+ * Vendor-managed deployment: the platform's gateway holds every provider credential and this
+ * deployment only has its organization's gateway key, so the gateway decides which models it may use.
+ */
+export function vendorGateway(env: NodeJS.ProcessEnv = process.env) {
+  return env.MODEL_ACCESS === "vendor-gateway";
+}
+
+export const VENDOR_GATEWAY_CREDENTIAL = "vendor-gateway";
+
 export function credentialFor(
   provider: Provider | string,
   env: NodeJS.ProcessEnv = process.env,
 ) {
+  if (vendorGateway(env) && isExternalProvider(provider))
+    return VENDOR_GATEWAY_CREDENTIAL;
   return provider === "OPENAI"
     ? env.OPENAI_API_KEY
     : provider === "ANTHROPIC"

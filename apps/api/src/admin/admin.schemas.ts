@@ -53,6 +53,19 @@ class ExternalGuardrail {
   @ApiProperty({ type: () => ExternalUsage, description: 'EXTERNAL_DAILY_REQUEST_LIMIT / EXTERNAL_DAILY_TOKEN_LIMIT.' }) limits!: ExternalUsage;
 }
 
+class GatewayCreditView {
+  @ApiProperty({ enum: ['USD'], example: 'USD' }) currency!: 'USD';
+  @ApiProperty({ type: Number, example: 5, description: 'Prepaid credit added so far.' }) limit!: number;
+  @ApiProperty({ type: Number, example: 0.42 }) spent!: number;
+  @ApiProperty({ type: Number, example: 4.58, description: 'Never below 0; the last request may overshoot the limit slightly.' }) remaining!: number;
+  @ApiProperty({ description: 'New AI requests are refused until credit is added.' }) exhausted!: boolean;
+}
+
+export class CreditStatusView {
+  @ApiProperty({ description: 'MODEL_ACCESS=vendor-gateway: AI usage is billed to prepaid credit on the platform gateway.' }) vendorManaged!: boolean;
+  @ApiProperty({ type: () => GatewayCreditView, nullable: true, description: 'Null outside vendor mode, or while the gateway cannot be reached.' }) credit!: GatewayCreditView | null;
+}
+
 export class AdminSummary {
   @ApiProperty({ description: 'All users known to the installation (unfiltered).' }) users!: number;
   @ApiProperty({ description: 'Users with usage in the filtered range.' }) activeUsers!: number;

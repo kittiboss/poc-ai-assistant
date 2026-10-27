@@ -15,10 +15,12 @@ import { useEnumLabel } from '@/i18n/use-enum-label';
 import { queryKeys } from '@/lib/api/query-keys';
 import type { MyUsage } from '@/lib/api/types';
 import { download } from '@/lib/download';
+import { runtimeConfig } from '@/lib/runtime-config';
 
 type UsageRecord = MyUsage['records'][number];
 
 export function UsageDashboard() {
+  const vendor = runtimeConfig().vendorManaged;
   const { client, unwrap, request } = useApi();
   const { message: toast } = App.useApp();
   const t = useTranslations('usage');
@@ -123,8 +125,12 @@ export function UsageDashboard() {
           <MetricCard icon={<ArrowDownToLine />} label={t('inputTokens')} value={number(totals.inputTokens)} />
           <MetricCard icon={<ArrowUpFromLine />} label={t('outputTokens')} value={number(totals.outputTokens)} />
           <MetricCard icon={<Hash />} label={t('totalTokens')} value={number(totals.totalTokens)} />
-          <MetricCard icon={<Database />} label={t('actualCost')} value={money(totals.actualProviderCost)} />
-          <MetricCard icon={<Coins />} label={t('simulatedCost')} value={money(totals.simulatedProviderCost)} />
+          {!vendor && (
+            <MetricCard icon={<Database />} label={t('actualCost')} value={money(totals.actualProviderCost)} />
+          )}
+          {!vendor && (
+            <MetricCard icon={<Coins />} label={t('simulatedCost')} value={money(totals.simulatedProviderCost)} />
+          )}
         </div>
         <div className="grid gap-6 lg:grid-cols-3">
           <SectionCard className="lg:col-span-2" title={t('tokensByModel')} description={t('tokensByModelNote')}>
@@ -138,17 +144,21 @@ export function UsageDashboard() {
           </SectionCard>
           <SectionCard title={t('costClassification')}>
             <div className="space-y-4">
-              <Cost
-                label={t('actualProviderCost')}
-                value={money(totals.actualProviderCost)}
-                note={t('actualProviderCostNote')}
-              />
+              {!vendor && (
+                <Cost
+                  label={t('actualProviderCost')}
+                  value={money(totals.actualProviderCost)}
+                  note={t('actualProviderCostNote')}
+                />
+              )}
               <Cost label={t('customerCharge')} value={money(totals.customerCharge)} note={t('customerChargeNote')} />
-              <Cost
-                label={t('simulatedProviderCost')}
-                value={money(totals.simulatedProviderCost)}
-                note={t('simulatedProviderCostNote')}
-              />
+              {!vendor && (
+                <Cost
+                  label={t('simulatedProviderCost')}
+                  value={money(totals.simulatedProviderCost)}
+                  note={t('simulatedProviderCostNote')}
+                />
+              )}
               <Cost
                 label={t('simulatedCustomerCharge')}
                 value={money(totals.simulatedCustomerCharge)}
@@ -160,7 +170,11 @@ export function UsageDashboard() {
         <SectionCard flush title={t('history')} description={t('historyNote')}>
           <Table<UsageRecord>
             rowKey="id"
-            columns={columns}
+            columns={
+              vendor
+                ? columns.filter((column) => !['actualCost', 'simulatedCost'].includes(String(column.key)))
+                : columns
+            }
             dataSource={data?.records}
             loading={isPending}
             pagination={{ pageSize: 10, hideOnSinglePage: true, showSizeChanger: false }}
