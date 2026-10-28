@@ -9,5 +9,7 @@ const config: NextConfig = {
   poweredByHeader: false,
   // The development-only indicator would cover the account menu at the bottom of the sidebar.
   devIndicators: { position: 'bottom-right' },
+  // Only nudge coding agents about Next.js security upgrades.
+  experimental: { agentUpgrade: 'security' },
 };
 export default withNextIntl(config);
