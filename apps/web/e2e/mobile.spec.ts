@@ -17,6 +17,18 @@ test('the menu drawer opens, closes from its button, navigates and closes', asyn
   await expect(page.getByRole('heading', { name: m.usage.title })).toBeVisible();
 });
 
+test('the admin overview filters open in a drawer on a phone', async ({ page, m }) => {
+  const f = m.admin.filters;
+  await page.goto('/admin');
+  await page.getByRole('button', { name: f.button, exact: true }).click();
+  const drawer = page.getByRole('dialog', { name: f.title });
+  await drawer.getByText(f.ranges['7d']).click();
+  await expect(page).toHaveURL(/\/admin\?range=7d$/);
+  await drawer.getByRole('button', { name: f.done }).click();
+  await expect(drawer).toBeHidden();
+  await expect(page.getByRole('button', { name: f.buttonCount.replace('{count}', '1') })).toBeVisible();
+});
+
 test('chats on a phone: send, reply and the chat menu without hover', async ({ page, m, createdChats }) => {
   const id = await startChat(page, m, createdChats, 'Explain Docker Compose on a phone');
   await expect(lastReply(page)).toBeInViewport();

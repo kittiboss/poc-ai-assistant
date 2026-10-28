@@ -1,58 +1,42 @@
 'use client';
-import { Alert, Button, DatePicker, Progress, Select, Table, type TableColumnsType } from 'antd';
-import dayjs from 'dayjs';
-import {
-  ArrowDownToLine,
-  ArrowUpFromLine,
-  BarChart3,
-  BookOpen,
-  Coins,
-  ShieldAlert,
-  Users,
-  Wallet,
-  Zap,
-} from 'lucide-react';
+import { Alert, Progress, Table, type TableColumnsType } from 'antd';
+import { ArrowDownToLine, ArrowUpFromLine, BarChart3, Coins, ShieldAlert, Users, Wallet, Zap } from 'lucide-react';
 import { useTranslations } from 'next-intl';
-import Link from 'next/link';
-import { useState } from 'react';
-import { Shell } from '@/components/layout/shell';
 import { SimpleBarChart } from '@/components/ui/charts';
 import { MetricCard } from '@/components/ui/metric-card';
 import { SectionCard } from '@/components/ui/section-card';
 import { StatusTag, usageKindTone } from '@/components/ui/status-tag';
 import { useEnumLabel } from '@/i18n/use-enum-label';
 import type { AdminSummary, CreditStatus } from '@/lib/api/types';
+import { cn } from '@/lib/cn';
 import { runtimeConfig } from '@/lib/runtime-config';
-import { providers, useAdminData, type Filters } from './admin-queries';
-import { AuditLog } from './audit-log';
-import { KnowledgePanel } from './knowledge-panel';
-import { ModelRegistry } from './model-registry';
-import { PricingSection } from './pricing-section';
+import { FilterBar, useAdminFilters } from './admin-filters';
+import { useAdminCredit, useAdminModels, useAdminSummary } from './admin-queries';
 import { useAdminFormat } from './use-admin-format';
-import { UserPermissions } from './user-permissions';
 import { ValueTile } from './value-tile';
-import { WorkspaceControls } from './workspace-controls';
 
 type ModelBreakdown = AdminSummary['byModel'][number];
 
-const noFilters: Filters = { from: '', to: '', provider: '', modelId: '' };
-
-export function AdminDashboard() {
+/**
+ * What is happening right now, then the usage report. The filters sit between the two and apply to
+ * everything below them.
+ */
+export function OverviewTab() {
   const t = useTranslations('admin');
   const vendor = runtimeConfig().vendorManaged;
   const enums = useEnumLabel();
   const { money, number, day } = useAdminFormat();
-  const [filters, setFilters] = useState<Filters>(noFilters);
+  const filters = useAdminFilters();
   // The summary query follows the filters, so changing them is enough to reload it.
-  const data = useAdminData(filters);
-  const summary = data.summary.data;
-  const models = data.models.data ?? [];
-  const loadError = Object.values(data).find((query) => query.error)?.error?.message;
+  const summaryQuery = useAdminSummary(filters.filters);
+  const modelsQuery = useAdminModels();
+  const credit = useAdminCredit();
+  const summary = summaryQuery.data;
+  const loadError = [summaryQuery, modelsQuery, credit].find((query) => query.error)?.error?.message;
+  // Today's external-provider ceiling comes with the summary but does not depend on its filters.
   const guard = summary?.externalToday;
+  const creditStatus = credit.data?.vendorManaged ? credit.data : undefined;
   const costs = summary?.costs;
-  // Like AntD's RangePicker, a reversed pair is swapped instead of refused. YYYY-MM-DD sorts as text.
-  const setDates = (from: string, to: string) =>
-    setFilters({ ...filters, ...(from && to && from > to ? { from: to, to: from } : { from, to }) });
 
   const breakdownColumns: TableColumnsType<ModelBreakdown> = [
     {
@@ -75,64 +59,38 @@ export function AdminDashboard() {
   ];
 
   return (
-    <Shell active="admin">
-      <div className="mx-auto max-w-7xl space-y-7 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:p-8">
-        <div>
-          <p className="text-sm font-medium text-primary">{t('eyebrow')}</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight">{t('title')}</h1>
-          <p className="mt-2 text-sm text-fg-secondary">{t('intro')}</p>
-        </div>
-        {loadError && <Alert type="error" showIcon title={loadError} />}
+    <>
+      {loadError && <Alert type="error" showIcon title={loadError} />}
 
-        <SectionCard>
-          <div className="flex flex-wrap items-end gap-3">
-            <Field label={t('filters.from')}>
-              <DatePicker
-                value={filters.from ? dayjs(filters.from) : null}
-                onChange={(date) => setDates(date?.format('YYYY-MM-DD') ?? '', filters.to)}
-              />
-            </Field>
-            <Field label={t('filters.to')}>
-              <DatePicker
-                value={filters.to ? dayjs(filters.to) : null}
-                onChange={(date) => setDates(filters.from, date?.format('YYYY-MM-DD') ?? '')}
-              />
-            </Field>
-            <Field label={t('filters.provider')}>
-              <Select
-                className="min-w-44"
-                value={filters.provider}
-                onChange={(provider) => setFilters({ ...filters, provider })}
-                options={[
-                  { value: '', label: t('filters.allProviders') },
-                  ...providers.map((provider) => ({ value: provider, label: provider })),
-                ]}
-              />
-            </Field>
-            <Field label={t('filters.model')}>
-              <Select
-                className="min-w-44"
-                value={filters.modelId}
-                onChange={(modelId) => setFilters({ ...filters, modelId })}
-                options={[
-                  { value: '', label: t('filters.allModels') },
-                  ...models.map((model) => ({ value: model.id, label: model.displayName })),
-                ]}
-              />
-            </Field>
-            <Button type="text" onClick={() => setFilters(noFilters)}>
-              {t('filters.reset')}
-            </Button>
-            <p className="ml-auto text-xs text-fg-secondary">{t('filters.note')}</p>
+      {(creditStatus || guard) && (
+        <section aria-labelledby="admin-status" className="space-y-3">
+          <h2 id="admin-status" className="text-sm font-semibold">
+            {t('status.title')} <span className="font-normal text-fg-secondary">· {t('status.note')}</span>
+          </h2>
+          <div className={cn('grid gap-4', creditStatus && guard && 'xl:grid-cols-2')}>
+            {creditStatus && <CreditCard status={creditStatus} />}
+            {guard && (
+              <SectionCard>
+                <div className="flex flex-wrap items-center gap-4">
+                  <ShieldAlert className="text-warning" />
+                  <div className="min-w-60 flex-1">
+                    <h3 className="font-semibold">{t('guard.title')}</h3>
+                    <p className="text-xs text-fg-secondary">{t('guard.description')}</p>
+                  </div>
+                  <GuardMeter label={t('guard.requests')} used={guard.used.requests} limit={guard.limits.requests} />
+                  <GuardMeter label={t('guard.tokens')} used={guard.used.tokens} limit={guard.limits.tokens} />
+                </div>
+              </SectionCard>
+            )}
           </div>
-        </SectionCard>
+        </section>
+      )}
+
+      <section aria-label={t('report')} className="space-y-6">
+        <FilterBar filters={filters} models={modelsQuery.data ?? []} />
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          <MetricCard
-            icon={<Users />}
-            label={t('metrics.users', { active: number(summary?.activeUsers) })}
-            value={number(summary?.users)}
-          />
+          <MetricCard icon={<Users />} label={t('metrics.activeUsers')} value={number(summary?.activeUsers)} />
           <MetricCard icon={<Zap />} label={t('metrics.requests')} value={number(summary?.requests)} />
           <MetricCard
             icon={<ArrowDownToLine />}
@@ -159,22 +117,6 @@ export function AdminDashboard() {
             />
           )}
         </div>
-
-        {data.credit.data?.vendorManaged && <CreditCard status={data.credit.data} />}
-
-        {guard && (
-          <SectionCard>
-            <div className="flex flex-wrap items-center gap-4">
-              <ShieldAlert className="text-warning" />
-              <div className="min-w-60 flex-1">
-                <h2 className="font-semibold">{t('guard.title')}</h2>
-                <p className="text-xs text-fg-secondary">{t('guard.description')}</p>
-              </div>
-              <GuardMeter label={t('guard.requests')} used={guard.used.requests} limit={guard.limits.requests} />
-              <GuardMeter label={t('guard.tokens')} used={guard.used.tokens} limit={guard.limits.tokens} />
-            </div>
-          </SectionCard>
-        )}
 
         <div className="grid gap-6 lg:grid-cols-2">
           <SectionCard title={t('charts.perDay')} description={t('charts.perDayNote')}>
@@ -232,22 +174,13 @@ export function AdminDashboard() {
             rowKey="modelId"
             columns={breakdownColumns}
             dataSource={summary?.byModel}
-            loading={data.summary.isPending}
+            loading={summaryQuery.isPending}
             pagination={false}
             scroll={{ x: 'max-content' }}
           />
         </SectionCard>
-
-        <ModelRegistry models={models} loading={data.models.isPending} />
-        {vendor ? <KnowledgeBaseLink /> : <KnowledgePanel refreshKey={models} />}
-        {!vendor && (
-          <PricingSection models={models} pricing={data.pricing.data ?? []} loading={data.pricing.isPending} />
-        )}
-        <UserPermissions users={data.users.data ?? []} models={models} loading={data.users.isPending} />
-        <AuditLog entries={data.audit.data ?? []} loading={data.audit.isPending} />
-        <WorkspaceControls models={models} />
-      </div>
-    </Shell>
+      </section>
+    </>
   );
 }
 
@@ -262,7 +195,7 @@ function CreditCard({ status }: { status: CreditStatus }) {
       <div className="flex flex-wrap items-center gap-4">
         <Wallet className="text-primary" />
         <div className="min-w-60 flex-1">
-          <h2 className="font-semibold">{t('title')}</h2>
+          <h3 className="font-semibold">{t('title')}</h3>
           <p className="text-xs text-fg-secondary">{t('description')}</p>
         </div>
         {credit ? (
@@ -314,32 +247,5 @@ function GuardMeter({ label, used, limit }: { label: string; used: number; limit
       />
       {ratio >= 1 && <p className="text-[11px] text-error">{t('reached')}</p>}
     </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="flex flex-col gap-1">
-      <span className="text-xs font-medium text-fg-secondary">{label}</span>
-      {children}
-    </label>
-  );
-}
-
-/** Vendor-managed deployments keep their documents in the central knowledge base, on its own page. */
-function KnowledgeBaseLink() {
-  const t = useTranslations('admin.knowledge');
-  return (
-    <SectionCard
-      title={t('centralTitle')}
-      description={t('centralDescription')}
-      extra={
-        <Link href="/knowledge">
-          <Button icon={<BookOpen size={16} />}>{t('centralOpen')}</Button>
-        </Link>
-      }
-    >
-      {null}
-    </SectionCard>
   );
 }
