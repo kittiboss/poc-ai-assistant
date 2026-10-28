@@ -73,12 +73,14 @@ export function OverviewTab() {
               <SectionCard>
                 <div className="flex flex-wrap items-center gap-4">
                   <ShieldAlert className="text-warning" />
-                  <div className="min-w-60 flex-1">
+                  <div className="min-w-12 flex-1 min-[368px]:min-w-28 sm:min-w-60">
                     <h3 className="font-semibold">{t('guard.title')}</h3>
                     <p className="text-xs text-fg-secondary">{t('guard.description')}</p>
                   </div>
-                  <GuardMeter label={t('guard.requests')} used={guard.used.requests} limit={guard.limits.requests} />
-                  <GuardMeter label={t('guard.tokens')} used={guard.used.tokens} limit={guard.limits.tokens} />
+                  <div className="flex flex-wrap items-center gap-4">
+                    <GuardMeter label={t('guard.requests')} used={guard.used.requests} limit={guard.limits.requests} />
+                    <GuardMeter label={t('guard.tokens')} used={guard.used.tokens} limit={guard.limits.tokens} />
+                  </div>
                 </div>
               </SectionCard>
             )}
@@ -194,12 +196,12 @@ function CreditCard({ status }: { status: CreditStatus }) {
     <SectionCard>
       <div className="flex flex-wrap items-center gap-4">
         <Wallet className="text-primary" />
-        <div className="min-w-60 flex-1">
+        <div className="min-w-48 flex-1 min-[368px]:min-w-64 sm:min-w-96">
           <h3 className="font-semibold">{t('title')}</h3>
           <p className="text-xs text-fg-secondary">{t('description')}</p>
         </div>
         {credit ? (
-          <div className="w-64">
+          <div className="w-48 min-[368px]:w-64">
             <div className="flex items-baseline justify-between gap-2">
               <span className="text-xs text-fg-secondary">{t('remaining')}</span>
               <span className="font-mono text-lg font-semibold">{money(credit.remaining)}</span>
