@@ -1,4 +1,4 @@
-import { accountMenu, chatRow, expect, lastReply, startChat, test } from './fixtures';
+import { accountMenu, chatRow, chosenModel, expect, lastReply, modelField, startChat, test } from './fixtures';
 
 // The mobile project only (390 × 844, touch).
 
@@ -27,6 +27,22 @@ test('the admin overview filters open in a drawer on a phone', async ({ page, m 
   await drawer.getByRole('button', { name: f.done }).click();
   await expect(drawer).toBeHidden();
   await expect(page.getByRole('button', { name: f.buttonCount.replace('{count}', '1') })).toBeVisible();
+});
+
+test('the model list opens in a drawer on a phone', async ({ page, m }) => {
+  // The first available model is chosen: the mock.
+  await expect(chosenModel(page, m)).toHaveText('Local Mock');
+  await modelField(page, m).click();
+  const drawer = page.getByRole('dialog', { name: m.chat.chatModel });
+  const mock = drawer.getByRole('button', { name: /^Local Mock/ });
+  await expect(mock).toHaveAttribute('aria-current', 'true');
+  await expect(mock).toContainText(m.enums.modelStatus.available);
+  // The drawer replaces the dropdown list.
+  await expect(page.getByRole('listbox')).toHaveCount(0);
+
+  await mock.click();
+  await expect(drawer).toBeHidden();
+  await expect(chosenModel(page, m)).toHaveText('Local Mock');
 });
 
 test('chats on a phone: send, reply and the chat menu without hover', async ({ page, m, createdChats }) => {
