@@ -21,6 +21,15 @@ const coded = (status: HttpStatus, code: string, message: string) => new HttpExc
  * `type` is LiteLLM's `error.type`: the platform gateway reports a spent budget as a 400, so the status alone is not enough.
  */
 export function gatewayError(status: number, type?: string) {
+  const error = clientError(status, type);
+  // The platform gateway answers `upstream_rejected` when the provider refused the call: no tokens, no credit.
+  if (type === 'upstream_rejected') providerRefusals.add(error);
+  return error;
+}
+
+const providerRefusals = new WeakSet<HttpException>();
+
+function clientError(status: number, type?: string) {
   if (type === 'budget_exceeded') return coded(HttpStatus.PAYMENT_REQUIRED, GatewayErrorCode.creditExhausted, "Your organization's prepaid AI credit is used up. Ask an administrator to add credit.");
   if (type === 'key_model_access_denied') return coded(HttpStatus.FORBIDDEN, GatewayErrorCode.modelNotEntitled, "This model is not included in your organization's plan.");
   if (status === 429) return coded(HttpStatus.TOO_MANY_REQUESTS, GatewayErrorCode.rateLimited, 'The AI provider rate limit or free-tier quota was reached. Wait a moment and try again.');
@@ -39,7 +48,8 @@ export function gatewayErrorCode(error: unknown): string | undefined {
 
 /** The gateway or the provider refused the call before doing any work, so it processed no tokens. */
 export const refusedByGateway = (error: unknown) =>
-  gatewayErrorCode(error) !== undefined || (error instanceof HttpException && error.getStatus() === HttpStatus.TOO_MANY_REQUESTS);
+  gatewayErrorCode(error) !== undefined ||
+  (error instanceof HttpException && (error.getStatus() === HttpStatus.TOO_MANY_REQUESTS || providerRefusals.has(error)));
 
 const errorType = (detail: string) => {
   try {
