@@ -2,7 +2,7 @@
 import { runtimeConfig } from '@/lib/runtime-config';
 
 import { Actions, Bubble, type ActionsProps } from '@ant-design/x';
-import { Button, Collapse, Tooltip } from 'antd';
+import { Button, Tooltip } from 'antd';
 import { Download, GitBranch, LoaderCircle, Pencil, RefreshCw, ThumbsDown, ThumbsUp } from 'lucide-react';
 import { useFormatter, useTranslations } from 'next-intl';
 import { memo } from 'react';
@@ -184,19 +184,6 @@ export const MessageBubble = memo(function MessageBubble({
             >
               {t('downloadFile', { filename })}
             </Button>
-          )}
-          {message.citations.length > 0 && (
-            <div className="mt-4">
-              <p className="mb-2 text-xs font-semibold text-fg-secondary">{t('sources')}</p>
-              <Collapse
-                size="small"
-                items={message.citations.map((source) => ({
-                  key: source.id,
-                  label: `[${source.label}] ${source.filename}${source.page ? ` · ${t('sourcePage', { page: source.page })}` : ''}${source.kind && source.score !== undefined ? ` · ${t(source.kind === 'product' ? 'productMatch' : 'documentMatch', { score: format.number(source.score, { maximumFractionDigits: 3 }) })}` : ''}`,
-                  children: <p className="text-xs whitespace-pre-wrap text-fg-secondary">{source.content}</p>,
-                }))}
-              />
-            </div>
           )}
         </>
       )}
