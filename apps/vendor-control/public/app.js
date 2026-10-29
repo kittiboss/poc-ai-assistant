@@ -64,6 +64,49 @@ async function history(id) {
       `${r.charge === null ? "Pending" : dollars(r.charge)} / v${r.price_id}`,
     ]);
 }
+/** A native progress bar with its numbers: amber from 80% of the limit, red at it. */
+function meter(used, limit, note = "") {
+  const wrap = document.createElement("div");
+  wrap.className = "meter";
+  const bar = document.createElement("progress");
+  bar.max = Math.max(limit, 1);
+  bar.value = Math.min(used, bar.max);
+  const share = limit ? used / limit : 1;
+  if (share >= 1) bar.className = "full";
+  else if (share >= 0.8) bar.className = "high";
+  const text = document.createElement("span");
+  text.textContent = `${used.toLocaleString()} / ${limit.toLocaleString()}${note}`;
+  wrap.append(bar, text);
+  return wrap;
+}
+function renderUsage(data) {
+  $("usage").replaceChildren();
+  if (!data) return;
+  $("usage-reset").textContent = new Date(data.resetsAt).toLocaleString();
+  for (const t of data.tenants) {
+    const limits = t.limits;
+    row($("usage"), [
+      `${t.name} (${t.tenant})`,
+      "All external models · shared daily limit",
+      limits ? meter(t.external.requests, limits.requests) : t.external.requests,
+      limits ? meter(t.external.tokens, limits.tokens) : t.external.tokens,
+    ]);
+    // An external model's bar is its share of that shared limit; local models have none.
+    for (const m of t.models) {
+      const running = m.running ? ` · ${m.running} running` : "";
+      row($("usage"), [
+        "",
+        m.external ? m.model : `${m.model} · local`,
+        m.external && limits
+          ? meter(m.requests, limits.requests, running)
+          : `${m.requests}${running}`,
+        m.external && limits
+          ? meter(m.tokens, limits.tokens)
+          : m.tokens.toLocaleString(),
+      ]);
+    }
+  }
+}
 let ragTenants = [];
 /** Fill the limits form with the selected tenant's current limits. */
 function showRag() {
@@ -113,13 +156,15 @@ function renderRag(tenants, usage) {
   if (!$("rag-limits").contains(document.activeElement)) showRag();
 }
 async function refresh() {
-  const [tenants, prices, versions, ragUsage] = await Promise.all([
+  const [tenants, prices, versions, ragUsage, usage] = await Promise.all([
     api("/tenants"),
     api("/prices"),
     api("/prices/history"),
     // Usage comes from the RAG engine; limits still show while it is down.
     api("/rag/usage").catch(() => null),
+    api("/usage/today").catch(() => null),
   ]);
+  renderUsage(usage);
   renderRag(tenants, ragUsage);
   $("price-history").replaceChildren();
   for (const p of versions)

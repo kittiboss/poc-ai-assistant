@@ -83,6 +83,9 @@ export function createApp(
   app.get("/admin/tenants", async (_req, res) =>
     res.json(await store.tenants()),
   );
+  app.get("/admin/usage/today", async (_req, res) =>
+    res.json(await store.usageToday()),
+  );
   app.post("/admin/tenants", async (req, res) => {
     const { id, name, webPort = 3400 } = req.body;
     if (

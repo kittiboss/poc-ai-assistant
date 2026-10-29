@@ -10,7 +10,11 @@ import Big from "big.js";
 import type { AuthUser } from "../common/auth/auth.decorators";
 import { PrismaService } from "../common/prisma/prisma.service";
 import type { GatewayUsage } from "../gateway/gateway.service";
-import { EXTERNAL_PROVIDERS, vendorGateway } from "../models/model-policies";
+import {
+  EXTERNAL_PROVIDERS,
+  isExternalProvider,
+  vendorGateway,
+} from "../models/model-policies";
 import { PricingService } from "../pricing/pricing.service";
 import { UsersService } from "../users/users.service";
 import {
@@ -211,6 +215,97 @@ export class UsageService {
         reservedTokens: active._sum.tokens || 0,
       },
       recent,
+    };
+  }
+
+  /**
+   * Today's use of each model against its daily limits, counted the way admission
+   * (GovernanceService.reserve) counts it: completed records plus active reservations, installation-wide.
+   */
+  async modelsToday(now = new Date()) {
+    const today = startOfUtcDay(now);
+    const active = { expiresAt: { gt: now } };
+    const external = { in: [...EXTERNAL_PROVIDERS] as Provider[] };
+    const [models, used, reserved, policies, externalUsed, externalReserved] =
+      await Promise.all([
+        this.prisma.aIModel.findMany({
+          select: {
+            id: true,
+            displayName: true,
+            provider: true,
+            local: true,
+            enabled: true,
+          },
+          orderBy: [{ local: "desc" }, { displayName: "asc" }],
+        }),
+        this.prisma.usageRecord.groupBy({
+          by: ["modelId"],
+          where: { createdAt: { gte: today } },
+          _count: true,
+          _sum: { totalTokens: true },
+        }),
+        this.prisma.usageReservation.groupBy({
+          by: ["modelId"],
+          where: active,
+          _count: true,
+          _sum: { tokens: true },
+        }),
+        this.prisma.quotaPolicy.findMany({ where: { scope: "MODEL" } }),
+        this.prisma.usageRecord.aggregate({
+          where: { createdAt: { gte: today }, provider: external },
+          _count: true,
+          _sum: { totalTokens: true },
+        }),
+        this.prisma.usageReservation.aggregate({
+          where: { ...active, external: true },
+          _count: true,
+          _sum: { tokens: true },
+        }),
+      ]);
+    const usedBy = new Map(used.map((row) => [row.modelId, row]));
+    const reservedBy = new Map(reserved.map((row) => [row.modelId, row]));
+    const policyFor = new Map(policies.map((policy) => [policy.subject, policy]));
+    const limits = externalDailyLimits();
+    return {
+      updatedAt: now,
+      pollAfterMs: 5000,
+      resetsAt: new Date(today.getTime() + 86_400_000),
+      external: {
+        requests: {
+          used: externalUsed._count,
+          reserved: externalReserved._count,
+          limit: limits.requests,
+        },
+        tokens: {
+          used: externalUsed._sum.totalTokens || 0,
+          reserved: externalReserved._sum.tokens || 0,
+          limit: limits.tokens,
+        },
+      },
+      models: models
+        .filter((model) => model.enabled || usedBy.has(model.id))
+        .map((model) => {
+          const done = usedBy.get(model.id);
+          const held = reservedBy.get(model.id);
+          const policy = policyFor.get(model.id);
+          return {
+            modelId: model.id,
+            displayName: model.displayName,
+            provider: model.provider,
+            local: model.local,
+            external: isExternalProvider(model.provider),
+            requests: {
+              used: done?._count ?? 0,
+              reserved: held?._count ?? 0,
+              limit: policy?.dailyRequests ?? null,
+            },
+            tokens: {
+              used: done?._sum.totalTokens || 0,
+              reserved: held?._sum.tokens || 0,
+              limit: policy?.dailyTokens ?? null,
+            },
+          };
+        }),
     };
   }
 

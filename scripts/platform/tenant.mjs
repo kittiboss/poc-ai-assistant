@@ -97,6 +97,111 @@ function realmFor(config, web, api) {
   return realm;
 }
 
+const APP_ROLES = ["ADMIN", "USER"];
+const LEGACY_USERS = new Set(["admin", "employee1", "employee2"]);
+/** Each sign-in's password is kept in <id>.env under a name derived from its username. */
+const passwordVar = (username) =>
+  `${username.toUpperCase().replace(/[^A-Z0-9]+/g, "_")}_PASSWORD`;
+
+/** The realm's sign-ins: tenant-admin plus the optional "users" list in <id>.json. */
+function realmAccounts(config) {
+  const list = [
+    {
+      username: "tenant-admin",
+      lastName: "Administrator",
+      email: `admin@${config.id}.example.test`,
+      roles: APP_ROLES,
+    },
+    ...(config.users ?? []).map((user) => ({
+      username: user.username,
+      lastName: user.name ?? user.username,
+      email: `${user.username}@${config.id}.example.test`,
+      roles: user.roles ?? ["USER"],
+    })),
+  ];
+  const vars = new Set();
+  for (const user of list) {
+    if (
+      !/^[a-z0-9][a-z0-9._-]{0,39}$/.test(user.username ?? "") ||
+      LEGACY_USERS.has(user.username) ||
+      vars.has(passwordVar(user.username))
+    )
+      throw new Error(
+        `deploy/tenants/${config.id}.json: invalid or duplicate username ${user.username}`,
+      );
+    if (
+      !Array.isArray(user.roles) ||
+      !user.roles.length ||
+      user.roles.some((role) => !APP_ROLES.includes(role))
+    )
+      throw new Error(
+        `deploy/tenants/${config.id}.json: roles of ${user.username} must be a list of ${APP_ROLES.join(", ")}`,
+      );
+    vars.add(passwordVar(user.username));
+  }
+  return list;
+}
+
+/** Creates missing sign-ins and keeps their app roles as configured. Existing passwords are left alone. */
+async function syncAccounts(admin, realmPath, config, accounts, passwords) {
+  const roles = new Map(
+    await Promise.all(
+      APP_ROLES.map(async (role) => [
+        role,
+        await (await admin(`${realmPath}/roles/${role}`)).json(),
+      ]),
+    ),
+  );
+  const find = async (username) =>
+    (
+      await (
+        await admin(
+          `${realmPath}/users?username=${encodeURIComponent(username)}&exact=true`,
+        )
+      ).json()
+    )[0];
+  for (const account of accounts) {
+    let user = await find(account.username);
+    if (!user) {
+      const response = await admin(`${realmPath}/users`, {
+        method: "POST",
+        body: {
+          username: account.username,
+          enabled: true,
+          firstName: config.name,
+          lastName: account.lastName,
+          email: account.email,
+          emailVerified: true,
+          credentials: [
+            {
+              type: "password",
+              value: passwords[passwordVar(account.username)],
+              temporary: false,
+            },
+          ],
+        },
+      });
+      if (!response.ok) throw new Error(`Cannot create ${account.username}`);
+      user = await find(account.username);
+    }
+    const mappings = `${realmPath}/users/${user.id}/role-mappings/realm`;
+    const current = await (await admin(mappings)).json();
+    const extra = current.filter(
+      (role) =>
+        APP_ROLES.includes(role.name) && !account.roles.includes(role.name),
+    );
+    const added = await admin(mappings, {
+      method: "POST",
+      body: account.roles.map((role) => roles.get(role)),
+    });
+    const removed = extra.length
+      ? await admin(mappings, { method: "DELETE", body: extra })
+      : { ok: true };
+    if (!added.ok || !removed.ok)
+      throw new Error(`Cannot assign the roles of ${account.username}`);
+  }
+}
+
 async function create(tenant) {
   if (!id) usage();
   if (!existsSync(settingsFile(tenant))) {
@@ -106,6 +211,7 @@ async function create(tenant) {
   const config = settings(tenant);
   const platformEnv = readPlatformEnv();
   const existing = readEnvFile(envFile(tenant));
+  const accounts = realmAccounts(config);
   const web = `http://localhost:${config.webPort}`;
   const api = `http://localhost:${config.apiPort}`;
   const models = allowedModels(config, platformEnv);
@@ -163,20 +269,27 @@ async function create(tenant) {
     key = created.key;
   }
   // Save generated credentials before external provisioning steps, so interrupted setup is resumable.
-  const adminPassword = existing?.TENANT_ADMIN_PASSWORD ?? secret(16);
+  const passwords = Object.fromEntries(
+    accounts.map(({ username }) => [
+      passwordVar(username),
+      existing?.[passwordVar(username)] ?? secret(16),
+    ]),
+  );
   writeEnvFile(
     envFile(tenant),
     {
       ...existing,
       LITELLM_API_KEY: key,
-      TENANT_ADMIN_PASSWORD: adminPassword,
+      ...passwords,
       VENDOR_MIGRATION_OPENING_USD: openingCredit,
     },
     "Tenant provisioning secrets. Never commit.",
   );
+  // The customer's staff list stays out of vendor-control.
+  const { users: _staff, ...vendorConfig } = config;
   await vendor("/admin/register", {
     method: "POST",
-    body: { config: { ...config, models }, key, openingCredit },
+    body: { config: { ...vendorConfig, models }, key, openingCredit },
   });
 
   const admin = await keycloakAdmin(platformEnv);
@@ -196,52 +309,21 @@ async function create(tenant) {
   const usersResponse = await admin(`${realmPath}/users?max=1000`);
   if (!usersResponse.ok) throw new Error("Cannot list tenant realm users");
   const realmUsers = await usersResponse.json();
-  for (const user of realmUsers.filter((u) =>
-    ["admin", "employee1", "employee2"].includes(u.username),
-  )) {
+  for (const user of realmUsers.filter((u) => LEGACY_USERS.has(u.username))) {
     const response = await admin(`${realmPath}/users/${user.id}`, {
       method: "PUT",
       body: { enabled: false },
     });
     if (!response.ok) throw new Error("Cannot disable inherited demo account");
   }
-  if (!realmUsers.some((u) => u.username === "tenant-admin")) {
-    const response = await admin(`${realmPath}/users`, {
-      method: "POST",
-      body: {
-        username: "tenant-admin",
-        enabled: true,
-        firstName: config.name,
-        lastName: "Administrator",
-        email: `admin@${tenant}.example.test`,
-        emailVerified: true,
-        credentials: [
-          { type: "password", value: adminPassword, temporary: false },
-        ],
-      },
-    });
-    if (!response.ok) throw new Error("Cannot create tenant administrator");
-  }
-  const users = await (
-    await admin(`${realmPath}/users?username=tenant-admin&exact=true`)
-  ).json();
-  const roles = await Promise.all(
-    ["ADMIN", "USER"].map(async (role) =>
-      (await admin(`${realmPath}/roles/${role}`)).json(),
-    ),
-  );
-  const mapping = await admin(
-    `${realmPath}/users/${users[0].id}/role-mappings/realm`,
-    { method: "POST", body: roles },
-  );
-  if (!mapping.ok) throw new Error("Cannot assign administrator roles");
+  await syncAccounts(admin, realmPath, config, accounts, passwords);
 
   writeEnvFile(
     envFile(tenant),
     {
       ...existing,
       TENANT_DB_PASSWORD: existing?.TENANT_DB_PASSWORD ?? secret(16),
-      TENANT_ADMIN_PASSWORD: adminPassword,
+      ...passwords,
       VENDOR_MIGRATION_OPENING_USD: openingCredit,
       LITELLM_API_KEY: key,
       KEYCLOAK_PUBLIC_URL: keycloakUrl(platformEnv),
@@ -268,7 +350,7 @@ async function create(tenant) {
   );
   console.log(`Models: ${models.join(", ")}`);
   console.log(
-    `Sign in as tenant-admin; unique password is TENANT_ADMIN_PASSWORD in deploy/tenants/${tenant}.env (not printed).`,
+    `Sign-ins: ${accounts.map(({ username, roles }) => `${username} (${roles.join("+")})`).join(", ")}; each password is <USERNAME>_PASSWORD in deploy/tenants/${tenant}.env (not printed).`,
   );
 }
 

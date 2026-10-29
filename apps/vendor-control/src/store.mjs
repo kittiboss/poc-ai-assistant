@@ -21,6 +21,8 @@ export const models = [
   "groq-llama",
   "openrouter-free",
 ];
+/** Run by the platform's own mock provider; every other model calls an external provider. */
+export const localModels = new Set(["local-mock", "mock-embedding"]);
 export const defaultConfig = (id, name, webPort = 3100) => ({
   id,
   name,
@@ -343,6 +345,61 @@ export class Store {
         ...r,
         charge: amount === null ? null : usd(amount),
       })),
+    };
+  }
+  /**
+   * Today's (UTC) requests and provider-reported tokens per customer and model, from the ledger.
+   * Rejected calls cost nothing and are left out; running ones count as requests with no tokens yet.
+   */
+  async usageToday(now = new Date()) {
+    const start = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
+    const [tenants, usage] = await Promise.all([
+      this.pool.query("SELECT id,name,config FROM vendor.tenants ORDER BY id"),
+      this.pool.query(
+        `SELECT tenant, model,
+           count(*) FILTER (WHERE state <> 'REJECTED')::int AS requests,
+           count(*) FILTER (WHERE state = 'PENDING')::int AS running,
+           (COALESCE(sum(input_tokens) FILTER (WHERE state <> 'REJECTED'),0)
+             + COALESCE(sum(output_tokens) FILTER (WHERE state <> 'REJECTED'),0))::bigint AS tokens
+         FROM vendor.requests WHERE created_at >= $1 GROUP BY tenant, model`,
+        [start],
+      ),
+    ]);
+    const total = (rows, field) =>
+      rows.reduce((sum, row) => sum + row[field], 0);
+    return {
+      resetsAt: new Date(start.getTime() + 86_400_000).toISOString(),
+      tenants: tenants.rows.map((t) => {
+        const used = new Map(
+          usage.rows
+            .filter((row) => row.tenant === t.id)
+            .map((row) => [row.model, row]),
+        );
+        // Every model in the plan, plus any used today and since removed from it.
+        const names = [
+          ...new Set([...(t.config.models ?? []), ...used.keys()]),
+        ];
+        const models = names.map((model) => ({
+          model,
+          external: !localModels.has(model),
+          requests: used.get(model)?.requests ?? 0,
+          running: used.get(model)?.running ?? 0,
+          tokens: Number(used.get(model)?.tokens ?? 0),
+        }));
+        const external = models.filter((m) => m.external);
+        return {
+          tenant: t.id,
+          name: t.name,
+          limits: t.config.dailyExternalLimits ?? null,
+          external: {
+            requests: total(external, "requests"),
+            tokens: total(external, "tokens"),
+          },
+          models,
+        };
+      }),
     };
   }
   async reserve(tenant, requestId, body, bounds, kind) {

@@ -19,12 +19,12 @@ npm run tenant:create -- c
 | Interface | URL | Sign-in |
 | --- | --- | --- |
 | Vendor console | http://localhost:4050/console/ | Browser Basic Auth: `vendor` / `VENDOR_ADMIN_KEY` from `deploy/platform/.env` |
-| Customer A | http://localhost:3100 | `tenant-admin` / `TENANT_ADMIN_PASSWORD` from `deploy/tenants/a.env` |
-| Customer B | http://localhost:3200 | Same username, unique password in `b.env` |
-| Customer C | http://localhost:3300 | Same username, unique password in `c.env` |
+| Customer A | http://localhost:3100 | `tenant-admin` / `TENANT_ADMIN_PASSWORD` from `deploy/tenants/a.env`; users `user-1` / `USER_1_PASSWORD`, `user-2` / `USER_2_PASSWORD` |
+| Customer B | http://localhost:3200 | Same usernames, unique passwords in `b.env` |
+| Customer C | http://localhost:3300 | Same usernames, unique passwords in `c.env` |
 | Keycloak admin | http://localhost:8180 | `admin` / `KEYCLOAK_ADMIN_PASSWORD` from platform `.env` |
 
-Secrets are generated randomly, stored owner-readable only, ignored by Git, and never printed by provisioning commands. Customer containers receive only their gateway credential, database password and realm settings—not provider/master/vendor credentials. There are no demo users in new customer realms. On upgrading an existing POC realm, `admin`, `employee1`, and `employee2` are disabled (not deleted); their historical data is preserved. Each realm gets its own `tenant-admin`.
+Secrets are generated randomly, stored owner-readable only, ignored by Git, and never printed by provisioning commands. Customer containers receive only their gateway credential, database password and realm settings—not provider/master/vendor credentials. There are no demo users in new customer realms. On upgrading an existing POC realm, `admin`, `employee1`, and `employee2` are disabled (not deleted); their historical data is preserved. Each realm gets its own `tenant-admin` (ADMIN) plus the accounts listed under `users` in `deploy/tenants/<id>.json` (each `{ "username", "name", "roles" }`, roles from `ADMIN`/`USER`; the checked-in customers have `user-1` and `user-2` with `USER`). `tenant:create` creates missing accounts, keeps their app roles as listed and never changes an existing password; each password is `<USERNAME>_PASSWORD` in the customer's `.env`. The list stays in the provisioning script and is not sent to vendor-control.
 
 The customer application's **Test credits & billing** menu (`/billing`, ADMIN only) shows available/reserved/spent credit, current sale prices, the latest 100 ledger entries and requests, and downloadable JSON SIM receipts. It refreshes every 5 seconds. Top-ups here only grant test credit, with no card, payment gateway, bank transfer or payment integration.
 
@@ -108,6 +108,8 @@ Vendor console ─► vendor-control ─(RAG_ADMIN_KEY)─► rag-engine /admin 
 ## Quotas and no-paid-call boundaries
 
 The three checked-in tenant configs divide sample per-minute limits and daily external request/token limits. **These are example allocations, not authoritative current provider quotas.** Check the relevant provider console before enabling external models. Shared account quotas and other API users can still cause 429 responses; applications do not retry with paid fallbacks.
+
+**Usage bars.** The customer app shows each model's use today (UTC) against its limits in the chat model picker, the admin Overview and the live usage page, from `GET /api/usage/models`. The bars count what admission counts (completed requests plus reservations of running ones) against an administrator's MODEL quota, or, for an external model without one, the shared daily external limit (how full it is for every external model, with the model's own use in the label). The vendor console's **Model usage today** table shows the same day per customer and model from the credit ledger (`GET /admin/usage/today`), leaving out calls the provider rejected. Provider free-tier quotas are not shown: Groq reports them only in response headers, Gemini has no API for them, and the proxies do not keep those headers. A request reserves its input in bytes plus the maximum reply, so a message can be refused while a bar still shows room: the refusal (HTTP 429, code `QUOTA_EXCEEDED`) carries what the message needed, what was left, the limit and the reset time. The chat says so in those numbers, and the bar of that limit turns red with the amount the message needed until one goes through.
 
 Mock chat/embedding run fully offline and consume only simulated credit. Using an external model still contacts its provider and uses its free-tier allowance; simulated billing does not make a paid provider free. Gemini requires a free-tier project without paid billing; Groq additionally requires the operator's `GROQ_FREE_TIER_CONFIRMED=true` attestation; OpenRouter remains free-router-only. This app cannot independently verify a provider account's billing plan. All verification described below uses mocks only.
 

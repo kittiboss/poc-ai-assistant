@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { GatewayService } from './gateway.service';
+import { GatewayService, gatewayErrorCode, refusedByGateway } from './gateway.service';
 
 describe('gateway abstraction', () => {
   afterEach(() => {
@@ -181,5 +181,17 @@ describe('vendor-managed gateway', () => {
     vi.stubGlobal('fetch', fetchMock);
     expect(await new GatewayService().credit()).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it('treats a call the provider refused before any work as costing nothing, keeping the generic message', async () => {
+    const rejected = { error: { type: 'upstream_rejected', message: 'AI gateway rejected the request. No test credit deducted.' } };
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => Response.json(rejected, { status: 400 })));
+    const error = await new GatewayService().stream('groq-llama', [{ role: 'user', content: 'hi' }], new AbortController().signal, () => undefined).catch((e: unknown) => e);
+    expect(error).toMatchObject({ message: 'The AI provider rejected the request.' });
+    expect(gatewayErrorCode(error)).toBeUndefined();
+    expect(refusedByGateway(error)).toBe(true);
+    // Without the gateway's word that nothing ran, a failure still counts its estimate.
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response('bad', { status: 400 })));
+    const unknown = await new GatewayService().stream('groq-llama', [{ role: 'user', content: 'hi' }], new AbortController().signal, () => undefined).catch((e: unknown) => e);
+    expect(refusedByGateway(unknown)).toBe(false);
   });
 });

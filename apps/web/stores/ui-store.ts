@@ -6,6 +6,22 @@ export interface ActiveStream {
   abort: AbortController;
 }
 
+/** The quota that refused the latest message (API code QUOTA_EXCEEDED), with its numbers. */
+export interface QuotaRefusal {
+  modelId: string;
+  /** INSTALLATION for the shared external-provider limit, otherwise a quota policy's scope */
+  scope: string;
+  subject: string;
+  unit: 'requests' | 'tokens';
+  period: 'day' | 'request';
+  limit: number;
+  /** Already used or held when the message was refused */
+  used: number;
+  /** What the message would have reserved */
+  needed: number;
+  resetsAt: string;
+}
+
 export interface UIState {
   /** The sidebar drawer on screens narrower than md */
   mobileNavOpen: boolean;
@@ -21,6 +37,8 @@ export interface UIState {
   stream: ActiveStream | null;
   /** Last chat error, shown above the composer */
   chatError: string;
+  /** Lets the usage bars show why the latest message did not fit; cleared when one goes through */
+  quotaRefusal: QuotaRefusal | null;
 }
 
 export interface UIActions {
@@ -32,6 +50,7 @@ export interface UIActions {
   setShowArchived: (show: boolean) => void;
   setStream: (stream: ActiveStream | null) => void;
   setChatError: (error: string) => void;
+  setQuotaRefusal: (refusal: QuotaRefusal | null) => void;
 }
 
 export type UIStore = UIState & UIActions;
@@ -46,6 +65,7 @@ export function createUIStore(initial: Partial<UIState> = {}) {
     showArchived: false,
     stream: null,
     chatError: '',
+    quotaRefusal: null,
     ...initial,
     setMobileNavOpen: (mobileNavOpen) => set({ mobileNavOpen }),
     setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
@@ -55,5 +75,6 @@ export function createUIStore(initial: Partial<UIState> = {}) {
     setShowArchived: (showArchived) => set({ showArchived }),
     setStream: (stream) => set({ stream }),
     setChatError: (chatError) => set({ chatError }),
+    setQuotaRefusal: (quotaRefusal) => set({ quotaRefusal }),
   }));
 }

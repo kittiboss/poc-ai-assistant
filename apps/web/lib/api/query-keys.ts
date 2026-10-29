@@ -11,6 +11,8 @@ export const queryKeys = {
   conversation: (id: string) => ['conversations', id] as const,
   myUsage: ['usage', 'me'] as const,
   liveUsage: ['usage', 'me', 'live'] as const,
+  /** Organization-wide use of each model today. */
+  modelUsage: ['usage', 'models'] as const,
   knowledge: ['knowledge', 'status'] as const,
   /** The central knowledge base (vendor-managed deployments). */
   knowledgeBase: {

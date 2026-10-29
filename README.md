@@ -388,6 +388,7 @@ POST   /api/conversations/:id/branch
 POST   /api/conversations/:id/messages/:messageId/feedback
 GET    /api/usage/me
 GET    /api/usage/me/live      (auto-refresh token snapshot and in-flight reservations)
+GET    /api/usage/models       (organization-wide use of each model today against its MODEL quota and the shared daily external limit)
 GET    /api/knowledge/status   (product catalog availability and index state)
 GET/POST/PATCH/DELETE /api/workspace/... (retained compatibility APIs; not exposed in the UI)
 ```
