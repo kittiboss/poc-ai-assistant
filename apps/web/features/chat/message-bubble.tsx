@@ -95,6 +95,7 @@ export const MessageBubble = memo(function MessageBubble({
             className="opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100"
           />
         }
+        className="w-full"
         classNames={{
           root: 'group',
           body: 'max-w-[86%]',
