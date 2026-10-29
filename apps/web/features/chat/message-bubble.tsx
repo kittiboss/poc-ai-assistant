@@ -11,6 +11,7 @@ import { useEnumLabel } from '@/i18n/use-enum-label';
 import type { Message } from '@/lib/api/types';
 import { cn } from '@/lib/cn';
 import { download } from '@/lib/download';
+import { AttachedFiles } from './attached-files';
 import type { Rating } from './chat-queries';
 import { MarkdownContent } from './markdown-content';
 
@@ -76,8 +77,10 @@ export const MessageBubble = memo(function MessageBubble({
   const branch = action('branch', t('branch'), <GitBranch size={14} />, () => actions.branch(message));
 
   if (message.role === 'USER') {
+    const files = message.metadata.attachments ?? [];
     const items = [
-      copy,
+      // A message that only sent files has no text to copy.
+      ...(message.content ? [copy] : []),
       ...(canChange && !tool
         ? [action('edit', t('editResend'), <Pencil size={14} />, () => actions.edit(message))]
         : []),
@@ -86,6 +89,7 @@ export const MessageBubble = memo(function MessageBubble({
     return (
       <Bubble
         placement="end"
+        header={files.length > 0 && <AttachedFiles files={files} />}
         content={message.content}
         footerPlacement="outer-end"
         // Shown on hover or focus, and always on touch screens.
@@ -99,7 +103,11 @@ export const MessageBubble = memo(function MessageBubble({
         classNames={{
           root: 'group',
           body: 'max-w-[86%]',
-          content: 'whitespace-pre-wrap rounded-brand-lg bg-primary px-4 py-3 text-sm leading-6 text-on-primary',
+          header: 'mb-2',
+          content: cn(
+            'rounded-brand-lg bg-primary px-4 py-3 text-sm leading-6 whitespace-pre-wrap text-on-primary',
+            !message.content && 'hidden',
+          ),
         }}
       />
     );

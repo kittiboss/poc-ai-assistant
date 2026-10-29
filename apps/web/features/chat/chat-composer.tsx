@@ -3,9 +3,10 @@
 import { Attachments, FileCard, Sender } from '@ant-design/x';
 import { App, Button, Upload, type GetProp, type GetRef, type UploadFile, type UploadProps } from 'antd';
 import { Paperclip, X } from 'lucide-react';
-import { useFormatter, useTranslations } from 'next-intl';
+import { useTranslations } from 'next-intl';
 import { useCallback, useRef, useState } from 'react';
-import type { Attachment } from '@/lib/api/types';
+import type { Attachment, AttachmentRef } from '@/lib/api/types';
+import { useAttachmentSize } from './attached-files';
 import { useAttachmentApi } from './chat-queries';
 
 const MAX_LENGTH = 20000;
@@ -30,13 +31,14 @@ interface ChatComposerProps {
   /** False while no available model is selected */
   canSend: boolean;
   disabled?: boolean;
-  onSend: (prompt: string) => void;
+  /** The prompt may be empty when files are sent. Resolves to false when the message was refused unsaved. */
+  onSend: (prompt: string, attachments: AttachmentRef[]) => Promise<boolean>;
   onStop: () => void;
 }
 
 export function ChatComposer({ generating, canSend, disabled = false, onSend, onStop }: ChatComposerProps) {
   const t = useTranslations('chat');
-  const format = useFormatter();
+  const size = useAttachmentSize();
   const { message: toast } = App.useApp();
   const attachmentApi = useAttachmentApi();
   // The draft and the attached files survive switching chats, because the chat layout stays mounted.
@@ -48,16 +50,20 @@ export function ChatComposer({ generating, canSend, disabled = false, onSend, on
   const uploads = useRef(new Map<string, AbortController>());
   const getDropContainer = useCallback(() => senderRef.current?.nativeElement, []);
 
+  // Files the API has read go with the message; a refused one stays behind with its reason.
+  const ready = files.flatMap((file) => (file.status === 'done' && file.response ? [file.response] : []));
+  const canSubmit =
+    canSend &&
+    !generating &&
+    !files.some((file) => file.status === 'uploading') &&
+    Boolean(draft.trim() || ready.length);
+
   const describe = (file: ComposerFile) =>
     file.status === 'uploading'
       ? t('attachReading')
       : file.status === 'error'
         ? file.error?.message
-        : file.response &&
-          t(file.response.pageCount ? 'attachPagesChars' : 'attachChars', {
-            pages: file.response.pageCount ?? 0,
-            chars: format.number(file.response.charCount),
-          });
+        : file.response && size(file.response);
 
   // A file the API would refuse for its type, size or number is not added. This also keeps images
   // out: Ant Design X waits forever for a preview of an image the browser cannot decode.
@@ -113,10 +119,18 @@ export function ChatComposer({ generating, canSend, disabled = false, onSend, on
       // The API takes up to 20,000 characters.
       onChange={(value) => setDraft(value.slice(0, MAX_LENGTH))}
       onSubmit={(value) => {
-        const prompt = value.trim();
-        if (!prompt || generating || !canSend) return;
+        if (!canSubmit) return;
+        const sentFiles = files.filter((file) => file.status === 'done');
         setDraft('');
-        onSend(prompt);
+        // Sent files belong to the chat now, so they are cleared without removing them on the API.
+        setFiles([]);
+        void onSend(value.trim(), ready).then((accepted) => {
+          // Refused before it was saved (too long for the model, say): give the message back, unless
+          // the user has started another one, so it can be sent again without attaching the files again.
+          if (accepted) return;
+          setDraft((current) => current || value);
+          setFiles((current) => (current.length ? current : sentFiles));
+        });
       }}
       onPasteFile={pasteFiles}
       loading={generating}
@@ -182,12 +196,13 @@ export function ChatComposer({ generating, canSend, disabled = false, onSend, on
           />
         </Attachments>
       }
-      // Named buttons (the defaults only carry an icon); send also waits for an available model.
+      // Named buttons (the defaults only carry an icon); send also waits for an available model and
+      // for files still being read.
       suffix={(_, { components: { SendButton, LoadingButton } }) =>
         generating ? (
           <LoadingButton title={t('stop')} aria-label={t('stop')} />
         ) : (
-          <SendButton title={t('send')} aria-label={t('send')} disabled={!canSend || !draft.trim()} />
+          <SendButton title={t('send')} aria-label={t('send')} disabled={!canSubmit} />
         )
       }
     />

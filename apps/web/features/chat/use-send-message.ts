@@ -3,11 +3,11 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { App } from 'antd';
 import { useRouter } from 'next/navigation';
-import { useFormatter, useTranslations } from 'next-intl';
+import { useFormatter, useLocale, useTranslations } from 'next-intl';
 import { useApi } from '@/components/api/api-provider';
 import { apiUrl, errorMessage } from '@/lib/api/client';
 import { queryKeys } from '@/lib/api/query-keys';
-import type { ConversationDetail, Message, SendMessage } from '@/lib/api/types';
+import type { AttachmentRef, ConversationDetail, Message, SendMessage } from '@/lib/api/types';
 import type { QuotaRefusal } from '@/stores/ui-store';
 import { useUIStore } from '@/stores/ui-store-provider';
 import { addConversation } from './chat-queries';
@@ -22,6 +22,7 @@ export function useSendMessage() {
   const router = useRouter();
   const t = useTranslations('chat');
   const tCommon = useTranslations('common');
+  const locale = useLocale();
   const { modal } = App.useApp();
   const setStream = useUIStore((state) => state.setStream);
   const setChatError = useUIStore((state) => state.setChatError);
@@ -73,14 +74,21 @@ export function useSendMessage() {
     await queryClient.invalidateQueries({ queryKey: queryKeys.conversationLists });
   };
 
+  /**
+   * False when the server refused the message before streaming (nothing was saved), so the caller can
+   * give it back to the user, for example to send it again with another model.
+   */
   return async function send({
     conversationId,
     prompt,
+    attachments,
     modelId,
     useKnowledge,
   }: {
     conversationId?: string;
+    /** May be empty when files are sent: the reply is then a short overview of them. */
     prompt: string;
+    attachments: AttachmentRef[];
     modelId: string;
     /** Product catalog, or the central knowledge base in vendor-managed deployments. */
     useKnowledge: boolean;
@@ -90,6 +98,7 @@ export function useSendMessage() {
     let id = conversationId;
     setStream({ conversationId: id ?? '', abort });
     let completed = false;
+    let accepted = false;
     try {
       if (!id) {
         const created = unwrap(await client.POST('/api/conversations', { body: {} }));
@@ -116,7 +125,9 @@ export function useSendMessage() {
         updatedAt: now,
       });
       const assistant = message('ASSISTANT', '', 'STREAMING');
-      updateMessages(id, (messages) => [...messages, message('USER', prompt, 'COMPLETED'), assistant]);
+      const user = message('USER', prompt, 'COMPLETED');
+      if (attachments.length) user.metadata = { attachments };
+      updateMessages(id, (messages) => [...messages, user, assistant]);
       const setAssistant = (change: Partial<Message>) =>
         updateMessages(id!, (messages) =>
           messages.map((item) => (item.id === assistant.id ? { ...item, ...change } : item)),
@@ -131,6 +142,7 @@ export function useSendMessage() {
           acknowledgeSensitive,
           useKnowledge,
           useProductCatalog: false,
+          ...(attachments.length ? { attachmentIds: attachments.map((file) => file.id), locale } : {}),
         };
         return fetch(
           new Request(`${apiUrl()}/conversations/${id}/messages`, {
@@ -141,15 +153,16 @@ export function useSendMessage() {
           }),
         );
       };
-      // Refusals the server marks with a code get this app's own wording (prepaid credit, rate limits, plan).
-      const refusal = (code?: string) =>
-        code === 'CREDIT_EXHAUSTED'
-          ? t('creditExhausted')
-          : code === 'RATE_LIMITED'
-            ? t('rateLimited')
-            : code === 'MODEL_NOT_ENTITLED'
-              ? t('modelNotEntitled')
-              : undefined;
+      // Refusals the server marks with a code get this app's own wording (prepaid credit, rate limits, plan, files).
+      const refusals: Record<string, string> = {
+        CREDIT_EXHAUSTED: t('creditExhausted'),
+        RATE_LIMITED: t('rateLimited'),
+        MODEL_NOT_ENTITLED: t('modelNotEntitled'),
+        ATTACHMENT_LIMIT: t('attachChatLimit'),
+        ATTACHMENT_NOT_FOUND: t('attachMissing'),
+        CONTEXT_TOO_LONG: t('contextTooLong'),
+      };
+      const refusal = (code?: string) => (code ? refusals[code] : undefined);
       type Refusal = { code?: string; canAcknowledge?: boolean; quota?: Omit<QuotaRefusal, 'modelId'> };
       function fail(payload: Refusal, status: number): never {
         // A quota refused it before anything was sent: say by how much, and let the usage bars show it.
@@ -178,6 +191,8 @@ export function useSendMessage() {
         else fail(payload, response.status);
       }
       if (!response.ok || !response.body) fail((await response.json().catch(() => ({}))) as Refusal, response.status);
+      // The server has saved the message once it streams.
+      accepted = true;
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
@@ -207,6 +222,8 @@ export function useSendMessage() {
       void queryClient.invalidateQueries({ queryKey: queryKeys.modelUsage });
     } catch (cause) {
       const aborted = (cause as Error).name === 'AbortError';
+      // A stop may come after the server saved the message, so it is not given back.
+      if (aborted) accepted = true;
       setChatError(aborted ? t('stopped') : (cause as Error).message);
       if (id)
         updateMessages(id, (messages) =>
@@ -223,5 +240,6 @@ export function useSendMessage() {
       }
       setStream(null);
     }
+    return accepted;
   };
 }
