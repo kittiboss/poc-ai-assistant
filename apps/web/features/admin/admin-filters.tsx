@@ -45,7 +45,7 @@ export function useAdminFilters() {
     if (next.provider) query.set('provider', next.provider);
     if (next.modelId) query.set('model', next.modelId);
     const search = query.toString();
-    router.push(search ? `${pathname}?${search}` : pathname, { scroll: false });
+    router.replace(search ? `${pathname}?${search}` : pathname, { scroll: false });
   };
   const current = { range, ...filters };
 
