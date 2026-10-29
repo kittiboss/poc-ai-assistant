@@ -19,12 +19,12 @@ npm run tenant:create -- c
 | Interface | URL | Sign-in |
 | --- | --- | --- |
 | Vendor console | http://localhost:4050/console/ | Browser Basic Auth: `vendor` / `VENDOR_ADMIN_KEY` from `deploy/platform/.env` |
-| Customer A | http://localhost:3100 | `tenant-admin` / `TENANT_ADMIN_PASSWORD` from `deploy/tenants/a.env` |
-| Customer B | http://localhost:3200 | Same username, unique password in `b.env` |
-| Customer C | http://localhost:3300 | Same username, unique password in `c.env` |
+| Customer A | http://localhost:3100 | `tenant-admin` / `TENANT_ADMIN_PASSWORD` from `deploy/tenants/a.env`; users `user-1` / `USER_1_PASSWORD`, `user-2` / `USER_2_PASSWORD` |
+| Customer B | http://localhost:3200 | Same usernames, unique passwords in `b.env` |
+| Customer C | http://localhost:3300 | Same usernames, unique passwords in `c.env` |
 | Keycloak admin | http://localhost:8180 | `admin` / `KEYCLOAK_ADMIN_PASSWORD` from platform `.env` |
 
-Secrets are generated randomly, stored owner-readable only, ignored by Git, and never printed by provisioning commands. Customer containers receive only their gateway credential, database password and realm settings—not provider/master/vendor credentials. There are no demo users in new customer realms. On upgrading an existing POC realm, `admin`, `employee1`, and `employee2` are disabled (not deleted); their historical data is preserved. Each realm gets its own `tenant-admin`.
+Secrets are generated randomly, stored owner-readable only, ignored by Git, and never printed by provisioning commands. Customer containers receive only their gateway credential, database password and realm settings—not provider/master/vendor credentials. There are no demo users in new customer realms. On upgrading an existing POC realm, `admin`, `employee1`, and `employee2` are disabled (not deleted); their historical data is preserved. Each realm gets its own `tenant-admin` (ADMIN) plus the accounts listed under `users` in `deploy/tenants/<id>.json` (each `{ "username", "name", "roles" }`, roles from `ADMIN`/`USER`; the checked-in customers have `user-1` and `user-2` with `USER`). `tenant:create` creates missing accounts, keeps their app roles as listed and never changes an existing password; each password is `<USERNAME>_PASSWORD` in the customer's `.env`. The list stays in the provisioning script and is not sent to vendor-control.
 
 The customer application's **Test credits & billing** menu (`/billing`, ADMIN only) shows available/reserved/spent credit, current sale prices, the latest 100 ledger entries and requests, and downloadable JSON SIM receipts. It refreshes every 5 seconds. Top-ups here only grant test credit, with no card, payment gateway, bank transfer or payment integration.
 
