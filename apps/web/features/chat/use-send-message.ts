@@ -3,11 +3,12 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { App } from 'antd';
 import { useRouter } from 'next/navigation';
-import { useTranslations } from 'next-intl';
+import { useFormatter, useTranslations } from 'next-intl';
 import { useApi } from '@/components/api/api-provider';
 import { apiUrl, errorMessage } from '@/lib/api/client';
 import { queryKeys } from '@/lib/api/query-keys';
 import type { ConversationDetail, Message, SendMessage } from '@/lib/api/types';
+import type { QuotaRefusal } from '@/stores/ui-store';
 import { useUIStore } from '@/stores/ui-store-provider';
 import { addConversation } from './chat-queries';
 
@@ -24,6 +25,22 @@ export function useSendMessage() {
   const { modal } = App.useApp();
   const setStream = useUIStore((state) => state.setStream);
   const setChatError = useUIStore((state) => state.setChatError);
+  const setQuotaRefusal = useUIStore((state) => state.setQuotaRefusal);
+  const tUsage = useTranslations('modelUsage');
+  const format = useFormatter();
+
+  /** How much the message needed against how much is left, and what to do about it. */
+  const quotaMessage = (quota: Omit<QuotaRefusal, 'modelId'>) => {
+    const values = {
+      scope: quota.scope,
+      needed: format.number(quota.needed),
+      left: format.number(Math.max(0, quota.limit - quota.used)),
+      limit: format.number(quota.limit),
+      time: format.dateTime(new Date(quota.resetsAt), { timeStyle: 'short' }),
+    };
+    if (quota.period === 'request') return tUsage('refusedPerRequest', values);
+    return tUsage(quota.unit === 'requests' ? 'refusedRequests' : 'refusedTokens', values);
+  };
 
   const updateMessages = (id: string, update: (messages: Message[]) => Message[]) =>
     queryClient.setQueryData<ConversationDetail>(queryKeys.conversation(id), (current) =>
@@ -133,9 +150,19 @@ export function useSendMessage() {
             : code === 'MODEL_NOT_ENTITLED'
               ? t('modelNotEntitled')
               : undefined;
+      type Refusal = { code?: string; canAcknowledge?: boolean; quota?: Omit<QuotaRefusal, 'modelId'> };
+      function fail(payload: Refusal, status: number): never {
+        // A quota refused it before anything was sent: say by how much, and let the usage bars show it.
+        if (payload.code === 'QUOTA_EXCEEDED' && payload.quota) {
+          setQuotaRefusal({ modelId, ...payload.quota });
+          void queryClient.invalidateQueries({ queryKey: queryKeys.modelUsage });
+          throw new Error(quotaMessage(payload.quota));
+        }
+        throw new Error(refusal(payload.code) || errorMessage(payload) || t('failedStatus', { status }));
+      }
       let response = await post(false);
       if (!response.ok) {
-        const payload = (await response.json().catch(() => ({}))) as { code?: string; canAcknowledge?: boolean };
+        const payload = (await response.json().catch(() => ({}))) as Refusal;
         // The workspace's sensitive-data policy can ask the user to confirm before context leaves the company.
         if (
           payload.code === 'SENSITIVE_CONTEXT' &&
@@ -148,15 +175,9 @@ export function useSendMessage() {
           }))
         )
           response = await post(true);
-        else
-          throw new Error(
-            refusal(payload.code) || errorMessage(payload) || t('failedStatus', { status: response.status }),
-          );
+        else fail(payload, response.status);
       }
-      if (!response.ok || !response.body) {
-        const payload = await response.json().catch(() => ({}));
-        throw new Error(errorMessage(payload) || t('failedStatus', { status: response.status }));
-      }
+      if (!response.ok || !response.body) fail((await response.json().catch(() => ({}))) as Refusal, response.status);
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = '';
@@ -182,6 +203,8 @@ export function useSendMessage() {
       }
       if (!completed) throw new Error(t('connectionEnded'));
       setAssistant({ status: 'COMPLETED' });
+      setQuotaRefusal(null);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.modelUsage });
     } catch (cause) {
       const aborted = (cause as Error).name === 'AbortError';
       setChatError(aborted ? t('stopped') : (cause as Error).message);

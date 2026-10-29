@@ -84,6 +84,26 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/usage/models': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Today's usage of each model against its daily limits
+     * @description Organization-wide counts for the current UTC day, as quota admission counts them: completed requests plus reservations of requests still running. Limits are MODEL quota policies and, for external models, the shared daily external-provider limit. Never includes who made a request or its content.
+     */
+    get: operations['UsageController_models'];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/conversations/{id}/tools': {
     parameters: {
       query?: never;
@@ -1108,6 +1128,46 @@ export interface components {
       /** @description Latest 100 requests; prompt and response content are never included. */
       records: components['schemas']['UsageRecordView'][];
     };
+    UsageMeter: {
+      /** @description Completed requests or tokens today (UTC). */
+      used: number;
+      /** @description Held by requests still running: conservative upper bounds, not consumed usage. */
+      reserved: number;
+      /** @description Daily ceiling; null when none applies. */
+      limit: number | null;
+    };
+    UsageMeters: {
+      requests: components['schemas']['UsageMeter'];
+      tokens: components['schemas']['UsageMeter'];
+    };
+    ModelUsageView: {
+      requests: components['schemas']['UsageMeter'];
+      tokens: components['schemas']['UsageMeter'];
+      /** @example groq-llama */
+      modelId: string;
+      /** @example GPT-OSS 20B (Groq) */
+      displayName: string;
+      /** @enum {string} */
+      provider: 'MOCK' | 'OLLAMA' | 'OPENAI' | 'ANTHROPIC' | 'GEMINI' | 'GROQ' | 'OPENROUTER';
+      local: boolean;
+      /** @description Also counts toward the shared external-provider limit. */
+      external: boolean;
+    };
+    ModelUsageResponse: {
+      /** Format: date-time */
+      updatedAt: string;
+      /** @example 5000 */
+      pollAfterMs: number;
+      /**
+       * Format: date-time
+       * @description When today's counts start again.
+       */
+      resetsAt: string;
+      /** @description Every external model together, against the installation's daily external-provider limit. */
+      external: components['schemas']['UsageMeters'];
+      /** @description Each enabled model (and any other used today); limits come from MODEL quota policies. */
+      models: components['schemas']['ModelUsageView'][];
+    };
     ToolDto: {
       /** @enum {string} */
       tool: 'calculator' | 'time' | 'search' | 'faq' | 'usage' | 'prices' | 'csv' | 'markdown';
@@ -2130,6 +2190,43 @@ export interface operations {
         };
         content: {
           'application/json': components['schemas']['MyUsageResponse'];
+        };
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  UsageController_models: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ModelUsageResponse'];
         };
       };
       /** @description Missing, expired, or invalid access token (signature, issuer, audience). */

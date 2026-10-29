@@ -6,6 +6,7 @@ import { SimpleBarChart } from '@/components/ui/charts';
 import { MetricCard } from '@/components/ui/metric-card';
 import { SectionCard } from '@/components/ui/section-card';
 import { StatusTag, usageKindTone } from '@/components/ui/status-tag';
+import { ModelUsageList, ModelUsageNote, useModelUsage } from '@/features/usage/model-usage';
 import { useEnumLabel } from '@/i18n/use-enum-label';
 import type { AdminSummary, CreditStatus } from '@/lib/api/types';
 import { cn } from '@/lib/cn';
@@ -31,6 +32,8 @@ export function OverviewTab() {
   const summaryQuery = useAdminSummary(filters.filters);
   const modelsQuery = useAdminModels();
   const credit = useAdminCredit();
+  const modelUsage = useModelUsage(true);
+  const usageText = useTranslations('modelUsage');
   const summary = summaryQuery.data;
   const loadError = [summaryQuery, modelsQuery, credit].find((query) => query.error)?.error?.message;
   // Today's external-provider ceiling comes with the summary but does not depend on its filters.
@@ -62,7 +65,7 @@ export function OverviewTab() {
     <>
       {loadError && <Alert type="error" showIcon title={loadError} />}
 
-      {(creditStatus || guard) && (
+      {(creditStatus || guard || modelUsage.data) && (
         <section aria-labelledby="admin-status" className="space-y-3">
           <h2 id="admin-status" className="text-sm font-semibold">
             {t('status.title')} <span className="font-normal text-fg-secondary">· {t('status.note')}</span>
@@ -85,6 +88,11 @@ export function OverviewTab() {
               </SectionCard>
             )}
           </div>
+          {modelUsage.data && (
+            <SectionCard title={usageText('title')} description={<ModelUsageNote usage={modelUsage.data} />}>
+              <ModelUsageList usage={modelUsage.data} />
+            </SectionCard>
+          )}
         </section>
       )}
 

@@ -40,6 +40,30 @@
         </div>
       </section>
       <section>
+        <h2>Model usage today</h2>
+        <p>
+          Requests and provider-reported tokens per customer and model since
+          00:00 UTC (next reset <span id="usage-reset">00:00 UTC</span>), from
+          the credit ledger; rejected calls are not counted. A customer's
+          external models share one daily limit, which its own deployment
+          enforces with conservative estimates, so it can stop a little before
+          these bars are full.
+        </p>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Tenant</th>
+                <th>Model</th>
+                <th>Requests</th>
+                <th>Tokens</th>
+              </tr>
+            </thead>
+            <tbody id="usage"></tbody>
+          </table>
+        </div>
+      </section>
+      <section>
         <h2>Register a deployment</h2>
         <p>
           Creates an isolated tenant record with $2 test credit and mock models.

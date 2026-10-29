@@ -137,3 +137,53 @@ export class LiveUsageResponse {
   @ApiProperty({ type: () => LiveReservations }) active!: LiveReservations;
   @ApiProperty({ type: [LiveUsageRecord] }) recent!: LiveUsageRecord[];
 }
+
+class UsageMeter {
+  @ApiProperty({ description: "Completed requests or tokens today (UTC)." })
+  used!: number;
+  @ApiProperty({
+    description:
+      "Held by requests still running: conservative upper bounds, not consumed usage.",
+  })
+  reserved!: number;
+  @ApiProperty({
+    ...NULLABLE_INT,
+    description: "Daily ceiling; null when none applies.",
+  })
+  limit!: number | null;
+}
+
+class UsageMeters {
+  @ApiProperty({ type: () => UsageMeter }) requests!: UsageMeter;
+  @ApiProperty({ type: () => UsageMeter }) tokens!: UsageMeter;
+}
+
+class ModelUsageView extends UsageMeters {
+  @ApiProperty({ example: "groq-llama" }) modelId!: string;
+  @ApiProperty({ example: "GPT-OSS 20B (Groq)" }) displayName!: string;
+  @ApiProperty({ enum: Provider }) provider!: Provider;
+  @ApiProperty() local!: boolean;
+  @ApiProperty({
+    description: "Also counts toward the shared external-provider limit.",
+  })
+  external!: boolean;
+}
+
+export class ModelUsageResponse {
+  @ApiProperty(DATE) updatedAt!: string;
+  @ApiProperty({ example: 5000 }) pollAfterMs!: number;
+  @ApiProperty({ ...DATE, description: "When today's counts start again." })
+  resetsAt!: string;
+  @ApiProperty({
+    type: () => UsageMeters,
+    description:
+      "Every external model together, against the installation's daily external-provider limit.",
+  })
+  external!: UsageMeters;
+  @ApiProperty({
+    type: [ModelUsageView],
+    description:
+      "Each enabled model (and any other used today); limits come from MODEL quota policies.",
+  })
+  models!: ModelUsageView[];
+}

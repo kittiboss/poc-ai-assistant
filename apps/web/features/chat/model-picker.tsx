@@ -1,17 +1,19 @@
 'use client';
 import { Drawer, Grid, Select } from 'antd';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StatusTag } from '@/components/ui/status-tag';
+import { ModelUsageLine, useModelUsage } from '@/features/usage/model-usage';
 import { useEnumLabel } from '@/i18n/use-enum-label';
-import type { Model } from '@/lib/api/types';
+import type { Model, ModelUsage } from '@/lib/api/types';
 import { cn } from '@/lib/cn';
 
 type Option = { value: string; label: string; disabled: boolean; model: Model };
 
 /**
  * The model for the next message. The field shows the name only; each choice adds where the model
- * runs, whether it can be used now and its provider. A dropdown on a wider screen, a drawer on a phone.
+ * runs, whether it can be used now, its provider and how close today's use is to its limit. A
+ * dropdown on a wider screen, a drawer on a phone.
  */
 export function ModelPicker({
   models,
@@ -28,6 +30,15 @@ export function ModelPicker({
   // Unknown before the first measure, which counts as wide, like the sidebar.
   const phone = Grid.useBreakpoint().md === false;
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [listOpen, setListOpen] = useState(false);
+  // Usage follows live only while the choices are on screen, and is fresh the moment they open.
+  const choosing = phone ? drawerOpen : listOpen;
+  const usageQuery = useModelUsage(choosing);
+  const { refetch } = usageQuery;
+  useEffect(() => {
+    if (choosing) void refetch();
+  }, [choosing, refetch]);
+  const usage = usageQuery.data;
 
   return (
     <>
@@ -39,12 +50,15 @@ export function ModelPicker({
         onChange={onChange}
         // A phone opens the drawer in place of the list.
         open={phone ? false : undefined}
-        onOpenChange={(open) => phone && open && setDrawerOpen(true)}
+        onOpenChange={(open) => {
+          setListOpen(open);
+          if (phone && open) setDrawerOpen(true);
+        }}
         popupMatchSelectWidth={352}
         classNames={{ popup: { listItem: 'py-1' } }}
-        // About six models fit; more scroll. A plain list keeps its scroll bar in view, and the
-        // options' own text is what screen readers read.
-        listHeight={290}
+        // About six models with their usage lines fit; more scroll. A plain list keeps its scroll bar
+        // in view, and the options' own text is what screen readers read.
+        listHeight={360}
         virtual={false}
         options={models.map((model) => ({
           value: model.id,
@@ -52,7 +66,7 @@ export function ModelPicker({
           disabled: !model.available,
           model,
         }))}
-        optionRender={(option) => <ModelOption model={option.data.model} />}
+        optionRender={(option) => <ModelOption model={option.data.model} usage={usage} />}
       />
       <Drawer
         placement="bottom"
@@ -81,7 +95,7 @@ export function ModelPicker({
                   selected ? 'bg-primary-soft' : 'enabled:hover:bg-fill-tertiary',
                 )}
               >
-                <ModelOption model={model} />
+                <ModelOption model={model} usage={usage} />
               </button>
             );
           })}
@@ -91,8 +105,8 @@ export function ModelPicker({
   );
 }
 
-/** Name and where it runs, whether it can be used now, then the provider on a smaller line. */
-function ModelOption({ model }: { model: Model }) {
+/** Name and where it runs, whether it can be used now, then the provider and today's usage on smaller lines. */
+function ModelOption({ model, usage }: { model: Model; usage?: ModelUsage }) {
   const enums = useEnumLabel();
   return (
     // A model that cannot be picked fades as a whole, its tags too.
@@ -107,6 +121,7 @@ function ModelOption({ model }: { model: Model }) {
         </StatusTag>
       </div>
       <span className="truncate text-xs text-fg-secondary">{model.provider}</span>
+      <ModelUsageLine modelId={model.id} usage={usage} />
     </div>
   );
 }

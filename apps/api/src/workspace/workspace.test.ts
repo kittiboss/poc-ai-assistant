@@ -1,3 +1,4 @@
+import { HttpException } from "@nestjs/common";
 import { describe, expect, it, vi } from "vitest";
 import { WorkspaceService } from "./workspace.service";
 import { GovernanceService } from "./governance.service";
@@ -160,6 +161,28 @@ describe("governance admission", () => {
     const { service, tx } = setup({ dailyRequests: 1 });
     await expect(service.reserve(args)).rejects.toMatchObject({ status: 429 });
     expect(tx.usageReservation.create).not.toHaveBeenCalled();
+  });
+  it("tells a refused request how much it needed and how much was left", async () => {
+    const refusal = async (promise: Promise<unknown>) =>
+      ((await promise.catch((error: HttpException) => error)) as HttpException).getResponse();
+    // 5 input bytes + 100 output + 512 margin, with 600 already held by a running request.
+    expect(await refusal(setup({ dailyTokens: 1000 }).service.reserve(args))).toMatchObject({
+      statusCode: 429,
+      code: "QUOTA_EXCEEDED",
+      message: expect.stringContaining("needs up to 617, 400 of 1000 left"),
+      quota: { scope: "USER", subject: localUser.id, unit: "tokens", period: "day", limit: 1000, used: 600, needed: 617 },
+    });
+    vi.stubEnv("EXTERNAL_DAILY_REQUEST_LIMIT", "100");
+    vi.stubEnv("EXTERNAL_DAILY_TOKEN_LIMIT", "1000");
+    const external = (await refusal(setup(null).service.reserve({ ...args, external: true }))) as {
+      quota: { resetsAt: Date };
+    };
+    expect(external).toMatchObject({
+      code: "QUOTA_EXCEEDED",
+      quota: { scope: "INSTALLATION", subject: "external", unit: "tokens", limit: 1000, used: 600, needed: 617 },
+    });
+    expect(external.quota.resetsAt.getTime() - Date.now()).toBeLessThanOrEqual(86_400_000);
+    vi.unstubAllEnvs();
   });
   it("enforces per-request tokens and decimal simulated budgets", async () => {
     await expect(

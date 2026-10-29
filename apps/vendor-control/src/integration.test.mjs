@@ -377,6 +377,63 @@ test(
       },
     );
     await t.test(
+      "today's usage per customer and model leaves out rejected calls",
+      async () => {
+        const key = `sk-${randomUUID()}`;
+        await store.register(
+          {
+            ...defaultConfig("usage", "Usage"),
+            models: ["local-mock", "groq-llama"],
+          },
+          key,
+          "1",
+        );
+        for (const [model, content] of [
+          ["local-mock", "hello"],
+          ["groq-llama", "hello"],
+          ["groq-llama", "rate"],
+        ])
+          await (
+            await call(
+              "/v1/chat/completions",
+              { ...chat, model, messages: [{ role: "user", content }] },
+              key,
+            )
+          ).text();
+        const response = await call(
+          "/admin/usage/today",
+          undefined,
+          "vendor-test-key-that-is-not-a-real-secret",
+        );
+        assert.equal(response.status, 200);
+        const usage = (await response.json()).tenants.find(
+          (t) => t.tenant === "usage",
+        );
+        assert.deepEqual(usage.limits, { requests: 33, tokens: 33333 });
+        assert.deepEqual(usage.external, { requests: 1, tokens: 5 });
+        assert.deepEqual(usage.models, [
+          {
+            model: "local-mock",
+            external: false,
+            requests: 1,
+            running: 0,
+            tokens: 5,
+          },
+          {
+            model: "groq-llama",
+            external: true,
+            requests: 1,
+            running: 0,
+            tokens: 5,
+          },
+        ]);
+        assert.equal(
+          (await call("/admin/usage/today", undefined, key)).status,
+          401,
+        );
+      },
+    );
+    await t.test(
       "uncertain network failure cannot be abused for free requests; labelled estimated",
       async () => {
         assert.equal(

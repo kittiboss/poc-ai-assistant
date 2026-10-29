@@ -174,3 +174,19 @@ footer {
     flex-wrap: wrap;
   }
 }
+.meter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.meter progress {
+  width: 120px;
+  accent-color: #34d399;
+}
+.meter progress.high {
+  accent-color: #f59e0b;
+}
+.meter progress.full {
+  accent-color: #f87171;
+}
