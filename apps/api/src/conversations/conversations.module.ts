@@ -8,6 +8,7 @@ import { ConversationsController } from './conversations.controller';
 import { ConversationsService } from './conversations.service';
 import { WorkspaceModule } from '../workspace/workspace.module';
 import { KnowledgeModule } from '../knowledge/knowledge.module';
+import { AttachmentsModule } from '../attachments/attachments.module';
 
-@Module({ imports: [UsersModule, ModelsModule, UsageModule, GatewayModule, WorkspaceModule, KnowledgeModule], controllers: [ConversationsController], providers: [ConversationsService, ChatService] })
+@Module({ imports: [UsersModule, ModelsModule, UsageModule, GatewayModule, WorkspaceModule, KnowledgeModule, AttachmentsModule], controllers: [ConversationsController], providers: [ConversationsService, ChatService] })
 export class ConversationsModule {}

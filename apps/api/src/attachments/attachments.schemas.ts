@@ -1,7 +1,8 @@
 import { ApiProperty } from "@nestjs/swagger";
 import { DATE, NULLABLE_INT } from "../common/swagger/schema-types";
 
-export class AttachmentView {
+/** A file as a user message lists it in metadata.attachments. */
+export class AttachmentRefView {
   @ApiProperty({ format: "uuid" }) id!: string;
   @ApiProperty({ example: "leave-policy.pdf" }) filename!: string;
   @ApiProperty({
@@ -22,5 +23,8 @@ export class AttachmentView {
     description: "Characters of extracted text that the model reads.",
   })
   charCount!: number;
+}
+
+export class AttachmentView extends AttachmentRefView {
   @ApiProperty(DATE) createdAt!: string;
 }

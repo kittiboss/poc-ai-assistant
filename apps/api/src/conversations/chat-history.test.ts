@@ -18,4 +18,18 @@ describe('gateway history', () => {
       { role: 'user', content: 'next' },
     ]);
   });
+
+  it('replays a turn that only sent files as a note naming them', () => {
+    const attachments = [{ id: 'a1', filename: 'report.pdf' }, { id: 'a2', filename: 'notes.md' }];
+    expect(toGatewayHistory([
+      { role: 'USER', content: '', status: 'COMPLETED', metadata: { attachments } },
+      { role: 'ASSISTANT', content: 'Overview', status: 'COMPLETED' },
+      { role: 'USER', content: 'Compare them', status: 'COMPLETED', metadata: { attachments } },
+      { role: 'USER', content: '', status: 'COMPLETED', metadata: { tool: 'time' } },
+    ])).toEqual([
+      { role: 'user', content: '[Attached without a message: report.pdf, notes.md]' },
+      { role: 'assistant', content: 'Overview' },
+      { role: 'user', content: 'Compare them' },
+    ]);
+  });
 });

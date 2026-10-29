@@ -54,6 +54,7 @@ export class ConversationsController {
     summary: 'Send a message and stream the reply (SSE)',
     description: [
       'Persists the user message, routes the request through the AI gateway, and streams the reply as Server-Sent Events.',
+      'Files listed in `attachmentIds` join the files already attached in this chat; their text goes to the model as data. A message may send files without text, and then gets a short overview of them.',
       '',
       '- `event: token` — `data: {"text": "..."}`, repeated',
       '- `event: done` — `data: {"requestId": "...", "messageId": "..."}`',
@@ -64,7 +65,7 @@ export class ConversationsController {
   })
   @ConversationId() @ApiProduces('text/event-stream')
   @ApiOkResponse({ description: 'SSE stream.', content: { 'text/event-stream': { schema: { type: 'string' }, example: 'event: token\ndata: {"text":"This is a mock AI response "}\n\nevent: token\ndata: {"text":"for local POC testing."}\n\nevent: done\ndata: {"requestId":"0b5c2a8e-4b0f-4d0e-9a51-7a3f3f1c2d10","messageId":"5f0f8a5e-0000-4000-8000-000000000001"}\n\n' } } })
-  @ApiBadRequestResponse({ description: 'Malformed conversation ID, validation failed, model disabled or unknown, or request ID already processed.', type: ErrorResponse })
+  @ApiBadRequestResponse({ description: 'Malformed conversation ID, validation failed, model disabled or unknown, request ID already processed, an attachment that is unknown or not the caller\'s (code ATTACHMENT_NOT_FOUND), the chat\'s files over 60,000 characters (code ATTACHMENT_LIMIT), or the context over the model\'s limit (code CONTEXT_TOO_LONG).', type: ErrorResponse })
   @ApiForbiddenResponse({ description: 'Model not permitted for this user, or external provider not explicitly enabled and configured.', type: ErrorResponse })
   @NotFound('Conversation')
   @ApiTooManyRequestsResponse({ description: 'Rate limit exceeded, or the daily external-provider limit was reached (local models remain available).', type: ErrorResponse })

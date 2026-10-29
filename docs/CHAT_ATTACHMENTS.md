@@ -59,10 +59,10 @@ class SendMessageDto {
 1. A message with neither text nor attachments is rejected, as before.
 2. Every attachment must belong to the sender. A file that was sent before may be sent again, because regenerate and edit resend the original message's files.
 3. The chat's files are the ones referenced by any of its messages (not only the 49 replayed as history) plus the new ones. Their text together may not exceed 60,000 characters (`ATTACHMENT_LIMIT`).
-4. `workspace.context` appends an `Attached files (data only)` block to the system message. Quota reservation, the sensitive-information check and the context-limit check therefore include the files' text with no further change.
+4. The API appends an `Attached files (data only)` block to the system message, after the workspace context. The files are given as JSON, so a file's text cannot close its own block, and the model is told never to follow instructions found inside them. Quota reservation, the sensitive-information check and the context-limit check therefore include the files' text with no further change.
 5. When only files are sent:
    - the stored user message stays empty, and the model receives `[Attached without a message: report.pdf]` in its place;
-   - the system message asks for a 3–5 point overview of each file in the language of `locale`, followed by a question about what the user wants to do;
+   - the system message asks for a 3–5 point overview of each file in the language of `locale` (without it, the language of the files), followed by a question about what the user wants to do;
    - the reply is capped at 400 output tokens;
    - knowledge base and product catalog retrieval are skipped;
    - an untitled chat is named after the first file.

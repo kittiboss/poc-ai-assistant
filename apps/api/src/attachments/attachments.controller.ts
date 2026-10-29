@@ -80,6 +80,8 @@ export class AttachmentsController {
   @UseInterceptors(
     FileInterceptor("file", {
       limits: { fileSize: MAX_ATTACHMENT_BYTES, files: 1, fields: 0 },
+      // Browsers send the filename as UTF-8; the Latin-1 default garbles Thai names.
+      defParamCharset: "utf8",
     }),
   )
   upload(
