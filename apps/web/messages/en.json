@@ -53,9 +53,6 @@
     "deleteConfirm": "“{title}” will be deleted. This cannot be undone.",
     "newConversation": "New conversation",
     "private": "Private to your company account",
-    "modelOption": "{name} · {provider} · {location} · {status}",
-    "modelLocal": "Local · no external provider",
-    "modelExternal": "External",
     "modelBadge": "{location} · {status}",
     "externalNotice": "External model: messages in this conversation are sent to {provider} under that provider’s data terms. Free-tier providers may use them to improve their products — do not send confidential data.",
     "productCatalog": "Product catalog",
@@ -170,9 +167,20 @@
     "exportCsv": "Export usage CSV"
   },
   "admin": {
-    "eyebrow": "ADMIN CONSOLE",
-    "title": "Platform operations",
+    "title": "Admin console",
     "intro": "Aggregate metrics only. Private conversation content is never exposed here.",
+    "tabs": {
+      "label": "Admin console sections",
+      "overview": "Overview",
+      "models": "Models & access",
+      "workspace": "Workspace",
+      "activity": "Activity"
+    },
+    "status": {
+      "title": "Right now",
+      "note": "not affected by the filters"
+    },
+    "report": "Usage report",
     "modelUpdated": "{model} updated.",
     "pricingCreated": "A new immutable pricing version was created.",
     "knowledge": {
@@ -218,10 +226,24 @@
       "allProviders": "All providers",
       "allModels": "All models",
       "reset": "Reset",
-      "note": "Filters apply to metrics, charts, and cost breakdown."
+      "range": "Period",
+      "ranges": {
+        "7d": "7 days",
+        "30d": "30 days",
+        "month": "This month",
+        "custom": "Custom"
+      },
+      "summary": "Showing {period} · {provider} · {model}",
+      "since": "from {date}",
+      "until": "until {date}",
+      "allTime": "all time",
+      "button": "Filters",
+      "buttonCount": "Filters · {count}",
+      "title": "Report filters",
+      "done": "Done"
     },
     "metrics": {
-      "users": "Users ({active} active in range)",
+      "activeUsers": "Active users",
       "requests": "AI requests",
       "inputTokens": "Input tokens",
       "outputTokens": "Output tokens",
@@ -355,7 +377,6 @@
     },
     "permissionUpdated": "Permission updated.",
     "workspace": {
-      "title": "Workspace controls",
       "intro": "Policies for every chat in this workspace. Every change is recorded in the audit log.",
       "policy": {
         "title": "External access & retention",

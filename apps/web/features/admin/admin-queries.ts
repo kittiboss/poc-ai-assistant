@@ -30,39 +30,59 @@ function summaryQuery(filters: Filters) {
   };
 }
 
-export function useAdminData(filters: Filters) {
+// One hook per endpoint, so each tab of the admin console loads only what it shows.
+
+export function useAdminSummary(filters: Filters) {
   const { client, unwrap } = useApi();
-  return {
-    summary: useQuery<AdminSummary>({
-      queryKey: queryKeys.admin.summary(filters),
-      queryFn: async ({ signal }) =>
-        unwrap(await client.GET('/api/admin/summary', { params: { query: summaryQuery(filters) }, signal })),
-      // Keep showing the previous numbers while a new filter loads.
-      placeholderData: (previous) => previous,
-    }),
-    models: useQuery<AdminModel[]>({
-      queryKey: queryKeys.admin.models,
-      queryFn: async ({ signal }) => unwrap(await client.GET('/api/admin/models', { signal })),
-    }),
-    pricing: useQuery<PricingConfiguration[]>({
-      queryKey: queryKeys.admin.pricing,
-      queryFn: async ({ signal }) => unwrap(await client.GET('/api/admin/pricing', { signal })),
-    }),
-    users: useQuery<AdminUser[]>({
-      queryKey: queryKeys.admin.users,
-      queryFn: async ({ signal }) => unwrap(await client.GET('/api/admin/users', { signal })),
-    }),
-    audit: useQuery<AuditLog[]>({
-      queryKey: queryKeys.admin.audit,
-      queryFn: async ({ signal }) => unwrap(await client.GET('/api/admin/audit', { signal })),
-    }),
+  return useQuery<AdminSummary>({
+    queryKey: queryKeys.admin.summary(filters),
+    queryFn: async ({ signal }) =>
+      unwrap(await client.GET('/api/admin/summary', { params: { query: summaryQuery(filters) }, signal })),
+    // Keep showing the previous numbers while a new filter loads.
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useAdminModels() {
+  const { client, unwrap } = useApi();
+  return useQuery<AdminModel[]>({
+    queryKey: queryKeys.admin.models,
+    queryFn: async ({ signal }) => unwrap(await client.GET('/api/admin/models', { signal })),
+  });
+}
+
+export function useAdminPricing() {
+  const { client, unwrap } = useApi();
+  return useQuery<PricingConfiguration[]>({
+    queryKey: queryKeys.admin.pricing,
+    queryFn: async ({ signal }) => unwrap(await client.GET('/api/admin/pricing', { signal })),
+  });
+}
+
+export function useAdminUsers() {
+  const { client, unwrap } = useApi();
+  return useQuery<AdminUser[]>({
+    queryKey: queryKeys.admin.users,
+    queryFn: async ({ signal }) => unwrap(await client.GET('/api/admin/users', { signal })),
+  });
+}
+
+export function useAdminAudit() {
+  const { client, unwrap } = useApi();
+  return useQuery<AuditLog[]>({
+    queryKey: queryKeys.admin.audit,
+    queryFn: async ({ signal }) => unwrap(await client.GET('/api/admin/audit', { signal })),
+  });
+}
+
+export function useAdminCredit() {
+  const { client, unwrap } = useApi();
+  return useQuery<CreditStatus>({
+    queryKey: queryKeys.admin.credit,
+    queryFn: async ({ signal }) => unwrap(await client.GET('/api/admin/credit', { signal })),
     // The central ledger settles synchronously; polling keeps this summary fresh between page actions.
-    credit: useQuery<CreditStatus>({
-      queryKey: queryKeys.admin.credit,
-      queryFn: async ({ signal }) => unwrap(await client.GET('/api/admin/credit', { signal })),
-      refetchInterval: 15_000,
-    }),
-  };
+    refetchInterval: 15_000,
+  });
 }
 
 /** Every change is audited and may move the numbers, so all admin data is refreshed afterwards. */

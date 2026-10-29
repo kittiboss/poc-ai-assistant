@@ -1,5 +1,5 @@
 'use client';
-import { Alert, App, Button, Checkbox, Dropdown, Select } from 'antd';
+import { Alert, App, Button, Checkbox, Dropdown } from 'antd';
 import { Download, LoaderCircle, MessageSquare, MoreHorizontal } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
@@ -25,6 +25,7 @@ import { useChatList, useChatMenu } from './chat-sidebar';
 import { exportChat } from './export-chat';
 import type { MessageActions } from './message-bubble';
 import { MessageList } from './message-list';
+import { ModelPicker } from './model-picker';
 import { PromptDialog } from './prompt-dialog';
 import { useSendMessage } from './use-send-message';
 
@@ -166,24 +167,7 @@ export function ChatApp() {
   const composerOptions = (
     <div className="@container">
       <div className="flex items-center gap-2 @sm:gap-3">
-        <Select
-          aria-label={t('chatModel')}
-          className="max-w-96 min-w-0 flex-1"
-          value={modelId || undefined}
-          disabled={generating}
-          onChange={setSelectedModelId}
-          popupMatchSelectWidth={false}
-          options={modelList.map((model) => ({
-            value: model.id,
-            disabled: !model.available,
-            label: t('modelOption', {
-              name: model.displayName,
-              provider: model.provider,
-              location: model.local ? t('modelLocal') : t('modelExternal'),
-              status: enums.modelStatus(model.status),
-            }),
-          }))}
-        />
+        <ModelPicker models={modelList} value={modelId} disabled={generating} onChange={setSelectedModelId} />
         <Checkbox
           checked={catalogOn}
           disabled={generating || !catalog.data?.available}

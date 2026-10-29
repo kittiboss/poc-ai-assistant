@@ -4,9 +4,11 @@ import {
   chatLinks,
   chatMenu,
   chatRow,
+  chosenModel,
   expect,
   lastReply,
   MOCK_REPLY,
+  modelField,
   sendButton,
   sendPrompt,
   startChat,
@@ -20,6 +22,23 @@ test('streams a reply from the mock model into a new chat', async ({ page, m, cr
   // The chat is saved: it is still there after a reload.
   await page.reload();
   await expect(lastReply(page)).toContainText(MOCK_REPLY);
+});
+
+test('each model in the list shows where it runs, its status and provider; the field only its name', async ({
+  page,
+  m,
+}) => {
+  // The mock model is always there and available, and the first one, so it is chosen.
+  await expect(chosenModel(page, m)).toHaveText('Local Mock');
+  await modelField(page, m).click();
+  const mock = page.getByRole('option', { name: /^Local Mock/ });
+  await expect(mock).toContainText(m.enums.location.LOCAL);
+  await expect(mock).toContainText(m.enums.modelStatus.available);
+  await expect(mock).toContainText('MOCK');
+
+  await mock.click();
+  await expect(page.getByRole('listbox')).toBeHidden();
+  await expect(chosenModel(page, m)).toHaveText('Local Mock');
 });
 
 test('stops a reply while it is generating', async ({ page, m, createdChats }) => {

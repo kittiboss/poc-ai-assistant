@@ -1,4 +1,4 @@
-import { accountMenu, chatRow, expect, lastReply, startChat, test } from './fixtures';
+import { accountMenu, chatRow, chosenModel, expect, lastReply, modelField, startChat, test } from './fixtures';
 
 // The mobile project only (390 × 844, touch).
 
@@ -15,6 +15,34 @@ test('the menu drawer opens, closes from its button, navigates and closes', asyn
   await expect(page).toHaveURL(/\/usage$/);
   await expect(drawer).toBeHidden();
   await expect(page.getByRole('heading', { name: m.usage.title })).toBeVisible();
+});
+
+test('the admin overview filters open in a drawer on a phone', async ({ page, m }) => {
+  const f = m.admin.filters;
+  await page.goto('/admin');
+  await page.getByRole('button', { name: f.button, exact: true }).click();
+  const drawer = page.getByRole('dialog', { name: f.title });
+  await drawer.getByText(f.ranges['7d']).click();
+  await expect(page).toHaveURL(/\/admin\?range=7d$/);
+  await drawer.getByRole('button', { name: f.done }).click();
+  await expect(drawer).toBeHidden();
+  await expect(page.getByRole('button', { name: f.buttonCount.replace('{count}', '1') })).toBeVisible();
+});
+
+test('the model list opens in a drawer on a phone', async ({ page, m }) => {
+  // The first available model is chosen: the mock.
+  await expect(chosenModel(page, m)).toHaveText('Local Mock');
+  await modelField(page, m).click();
+  const drawer = page.getByRole('dialog', { name: m.chat.chatModel });
+  const mock = drawer.getByRole('button', { name: /^Local Mock/ });
+  await expect(mock).toHaveAttribute('aria-current', 'true');
+  await expect(mock).toContainText(m.enums.modelStatus.available);
+  // The drawer replaces the dropdown list.
+  await expect(page.getByRole('listbox')).toHaveCount(0);
+
+  await mock.click();
+  await expect(drawer).toBeHidden();
+  await expect(chosenModel(page, m)).toHaveText('Local Mock');
 });
 
 test('chats on a phone: send, reply and the chat menu without hover', async ({ page, m, createdChats }) => {

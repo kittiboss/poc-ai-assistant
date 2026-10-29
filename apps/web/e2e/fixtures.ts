@@ -49,6 +49,11 @@ export const lastReply = (page: Page) => page.locator('.ant-bubble-start').last(
 /** Exact, or it would also match a message's "Edit & resend". */
 export const sendButton = (page: Page, m: Messages) => page.getByRole('button', { name: m.chat.send, exact: true });
 
+/** The model field above the composer, and the box around it that shows the chosen model. */
+export const modelField = (page: Page, m: Messages) => page.getByRole('combobox', { name: m.chat.chatModel });
+export const chosenModel = (page: Page, m: Messages) =>
+  page.locator('.ant-select').filter({ has: modelField(page, m) });
+
 /** Types a prompt and sends it with Enter. */
 export async function sendPrompt(page: Page, m: Messages, prompt: string) {
   await composer(page, m).fill(prompt);

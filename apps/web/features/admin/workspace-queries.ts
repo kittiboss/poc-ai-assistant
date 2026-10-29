@@ -74,18 +74,21 @@ export interface CsvFile {
   content: string;
 }
 
-export function useWorkspace() {
+/** Settings, quotas, departments and feedback; the workspace and activity tabs share it. */
+export function useWorkspaceDashboard() {
   const { request } = useApi();
-  return {
-    dashboard: useQuery({
-      queryKey: queryKeys.admin.workspace,
-      queryFn: ({ signal }) => request<WorkspaceDashboard>('/admin/workspace', { signal }),
-    }),
-    templates: useQuery({
-      queryKey: queryKeys.admin.templates,
-      queryFn: ({ signal }) => request<PromptTemplate[]>('/admin/workspace/templates', { signal }),
-    }),
-  };
+  return useQuery({
+    queryKey: queryKeys.admin.workspace,
+    queryFn: ({ signal }) => request<WorkspaceDashboard>('/admin/workspace', { signal }),
+  });
+}
+
+export function usePromptTemplates() {
+  const { request } = useApi();
+  return useQuery({
+    queryKey: queryKeys.admin.templates,
+    queryFn: ({ signal }) => request<PromptTemplate[]>('/admin/workspace/templates', { signal }),
+  });
 }
 
 /** Every change is audited and may move the numbers, so all admin data is refreshed afterwards. */
