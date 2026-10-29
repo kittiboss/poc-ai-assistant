@@ -210,6 +210,7 @@ export interface paths {
     /**
      * Send a message and stream the reply (SSE)
      * @description Persists the user message, routes the request through the AI gateway, and streams the reply as Server-Sent Events.
+     *     Files listed in `attachmentIds` join the files already attached in this chat; their text goes to the model as data. A message may send files without text, and then gets a short overview of them.
      *
      *     - `event: token` — `data: {"text": "..."}`, repeated
      *     - `event: done` — `data: {"requestId": "...", "messageId": "..."}`
@@ -696,6 +697,43 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  '/api/attachments': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Attach a document to the caller's next chat message
+     * @description TXT, MD, CSV, JSON, text PDF or DOCX. Text is extracted in this deployment and only the text is kept. The attachment stays unsent until a message lists it in `attachmentIds`; unsent attachments are removed after 24 hours.
+     */
+    post: operations['AttachmentsController_upload'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/attachments/{id}': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Remove an attachment that was not sent */
+    delete: operations['AttachmentsController_remove'];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   '/api/admin/summary': {
     parameters: {
       query?: never;
@@ -937,6 +975,11 @@ export interface components {
       message: string | string[];
       /** @example Not Found */
       error?: string;
+      /**
+       * @description Stable reason a client can word itself, on errors that have one.
+       * @example ATTACHMENT_TYPE
+       */
+      code?: string;
     };
     ModelView: {
       /** @example local-mock */
@@ -1262,6 +1305,27 @@ export interface components {
        */
       score?: number;
     };
+    AttachmentRefView: {
+      /** Format: uuid */
+      id: string;
+      /** @example leave-policy.pdf */
+      filename: string;
+      /**
+       * @description Size of the uploaded file in bytes.
+       * @example 182044
+       */
+      byteSize: number;
+      /**
+       * @description PDF pages; null for other types.
+       * @example 12
+       */
+      pageCount: number | null;
+      /**
+       * @description Characters of extracted text that the model reads.
+       * @example 18350
+       */
+      charCount: number;
+    };
     MessageMetadata: {
       /** @description Local tool that produced this message; no model was called. */
       tool?: string;
@@ -1271,6 +1335,8 @@ export interface components {
       content?: string;
       /** @example text/csv */
       mime?: string;
+      /** @description Files attached to this user message. Every file attached in a chat stays in its context. */
+      attachments?: components['schemas']['AttachmentRefView'][];
     };
     MessageUsage: {
       inputTokens: number;
@@ -1374,7 +1440,10 @@ export interface components {
       comment?: string;
     };
     SendMessageDto: {
-      /** @example Explain Docker Compose */
+      /**
+       * @description May be empty when attachmentIds lists a file.
+       * @example Explain Docker Compose
+       */
       content: string;
       /**
        * @description A model ID from GET /models that is available to the caller.
@@ -1399,6 +1468,13 @@ export interface components {
        * @default false
        */
       useKnowledge: boolean;
+      /** @description Files from POST /attachments to send with this message. Every file attached in the chat stays in the model context. */
+      attachmentIds?: string[];
+      /**
+       * @description Language of the overview when the message only sends files; without it, the language of the files.
+       * @enum {string}
+       */
+      locale?: 'th' | 'en';
     };
     ProjectDto: {
       name: string;
@@ -1586,6 +1662,29 @@ export interface components {
     KnowledgeDocumentUpdateDto: {
       /** @description Whether chat may use this document. */
       enabled: boolean;
+    };
+    AttachmentView: {
+      /** Format: uuid */
+      id: string;
+      /** @example leave-policy.pdf */
+      filename: string;
+      /**
+       * @description Size of the uploaded file in bytes.
+       * @example 182044
+       */
+      byteSize: number;
+      /**
+       * @description PDF pages; null for other types.
+       * @example 12
+       */
+      pageCount: number | null;
+      /**
+       * @description Characters of extracted text that the model reads.
+       * @example 18350
+       */
+      charCount: number;
+      /** Format: date-time */
+      createdAt: string;
     };
     TokenTotals: {
       inputTokens: number | null;
@@ -2718,7 +2817,7 @@ export interface operations {
           'text/event-stream': string;
         };
       };
-      /** @description Malformed conversation ID, validation failed, model disabled or unknown, or request ID already processed. */
+      /** @description Malformed conversation ID, validation failed, model disabled or unknown, request ID already processed, an attachment that is unknown or not the caller's (code ATTACHMENT_NOT_FOUND), the chat's files over 60,000 characters (code ATTACHMENT_LIMIT), or the context over the model's limit (code CONTEXT_TOO_LONG). */
       400: {
         headers: {
           [name: string]: unknown;
@@ -4510,6 +4609,137 @@ export interface operations {
       };
       /** @description The central knowledge service is unreachable. */
       502: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  AttachmentsController_upload: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        'multipart/form-data': {
+          /**
+           * Format: binary
+           * @description At most 5 MB.
+           */
+          file: string;
+        };
+      };
+    };
+    responses: {
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['AttachmentView'];
+        };
+      };
+      /** @description No file (no code), or code ATTACHMENT_TYPE (unsupported type), ATTACHMENT_SIZE (empty), ATTACHMENT_UNREADABLE, ATTACHMENT_NO_TEXT (such as a scanned PDF) or ATTACHMENT_TOO_LONG (more than 60,000 characters of text). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description The file is over 5 MB. */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Another document is being extracted (code ATTACHMENT_BUSY); retry shortly. Also the rate limit of 60 requests per minute. */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  AttachmentsController_remove: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Attachment ID owned by the caller. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Removed. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Malformed ID: IDs must be UUIDs. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Attachment does not exist or is not visible to the caller. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description The attachment was sent and stays with its chat (code ATTACHMENT_SENT). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
         headers: {
           [name: string]: unknown;
         };
