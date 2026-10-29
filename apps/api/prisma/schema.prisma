@@ -76,6 +76,7 @@ model User {
   projects Project[]
   memories Memory[]
   reservations UsageReservation[]
+  attachments Attachment[]
 }
 
 model Role {
@@ -283,6 +284,25 @@ model SourceChunk {
   content String @db.Text
   source Source @relation(fields: [sourceId], references: [id], onDelete: Cascade)
   @@unique([sourceId, ordinal])
+}
+
+/// A document attached to a chat message; only its extracted text is kept.
+/// Messages reference it in metadata.attachments, so a branched chat keeps its files.
+model Attachment {
+  id String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+  filename String @db.VarChar(200)
+  byteSize Int
+  /// PDFs only.
+  pageCount Int?
+  charCount Int
+  /// Extracted text as the model reads it; PDF pages are marked [Page n].
+  content String @db.Text
+  /// Null until a message sends it; unsent attachments are removed after 24 hours.
+  sentAt DateTime?
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([sentAt, createdAt])
 }
 
 model Memory {

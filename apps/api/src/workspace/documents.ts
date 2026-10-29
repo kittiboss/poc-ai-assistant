@@ -3,7 +3,37 @@ import { extname, join } from "node:path";
 import { Worker } from "node:worker_threads";
 
 export type Page = { text: string; page: number | null };
+/** Why a document was refused. Chat attachments turn it into an error code the web words itself. */
+export type DocumentProblem =
+  | "TYPE"
+  | "SIZE"
+  | "UNREADABLE"
+  | "NO_TEXT"
+  | "TOO_LONG"
+  | "BUSY";
+export const NO_READABLE_TEXT =
+  "No readable text found. Scanned PDFs need OCR, which this POC does not include.";
 let extracting = false;
+
+/** The response is the same as without a problem; only callers that read `problem` see it. */
+function refuse(problem: DocumentProblem, message: string) {
+  const error =
+    problem === "BUSY"
+      ? new HttpException(message, 429)
+      : new BadRequestException(message);
+  return Object.assign(error, { problem });
+}
+
+export function documentProblem(error: unknown) {
+  return error instanceof HttpException
+    ? (error as { problem?: DocumentProblem }).problem
+    : undefined;
+}
+
+/** A display name only: no path separators or control characters. */
+export function safeFilename(name: string) {
+  return name.replace(/[\\/\x00-\x1F]/g, "_").slice(0, 200);
+}
 
 export async function extractDocument(
   filename: string,
@@ -11,37 +41,38 @@ export async function extractDocument(
 ): Promise<Page[]> {
   const extension = extname(filename).slice(1).toLowerCase();
   if (!["txt", "md", "csv", "json", "pdf", "docx"].includes(extension))
-    throw new BadRequestException(
-      "Supported files: TXT, MD, CSV, JSON, PDF, DOCX",
-    );
+    throw refuse("TYPE", "Supported files: TXT, MD, CSV, JSON, PDF, DOCX");
   if (!buffer.length || buffer.length > 5 * 1024 * 1024)
-    throw new BadRequestException("Upload a non-empty file up to 5 MB");
+    throw refuse("SIZE", "Upload a non-empty file up to 5 MB");
   if (!["pdf", "docx"].includes(extension)) {
     let text: string;
     try {
       text = new TextDecoder("utf-8", { fatal: true }).decode(buffer);
     } catch {
-      throw new BadRequestException("Use UTF-8 text");
+      throw refuse("UNREADABLE", "Use UTF-8 text");
     }
     if (text.includes("\0") || text.length > 200_000)
-      throw new BadRequestException("Use text up to 200,000 characters");
+      throw refuse(
+        text.includes("\0") ? "UNREADABLE" : "TOO_LONG",
+        "Use text up to 200,000 characters",
+      );
     if (extension === "json") {
       try {
         JSON.parse(text);
       } catch {
-        throw new BadRequestException("Invalid JSON");
+        throw refuse("UNREADABLE", "Invalid JSON");
       }
     }
     return [{ text, page: null }];
   }
   if (extension === "pdf" && buffer.subarray(0, 5).toString() !== "%PDF-")
-    throw new BadRequestException("Invalid PDF");
+    throw refuse("UNREADABLE", "Invalid PDF");
   if (extension === "docx" && buffer.subarray(0, 2).toString() !== "PK")
-    throw new BadRequestException("Invalid DOCX");
+    throw refuse("UNREADABLE", "Invalid DOCX");
   if (extracting)
-    throw new HttpException(
+    throw refuse(
+      "BUSY",
       "Another document is processing; please retry shortly.",
-      429,
     );
   extracting = true;
   try {
@@ -52,19 +83,32 @@ export async function extractDocument(
       });
       const timer = setTimeout(() => {
         void worker.terminate();
-        reject(new BadRequestException("Document processing timed out"));
+        reject(refuse("UNREADABLE", "Document processing timed out"));
       }, 20_000);
-      worker.once("message", (data: { pages?: Page[]; error?: string }) => {
-        clearTimeout(timer);
-        void worker.terminate();
-        data.pages
-          ? resolve(data.pages)
-          : reject(new BadRequestException(data.error));
-      });
+      worker.once(
+        "message",
+        (data: {
+          pages?: Page[];
+          error?: string;
+          problem?: DocumentProblem;
+        }) => {
+          clearTimeout(timer);
+          void worker.terminate();
+          data.pages
+            ? resolve(data.pages)
+            : reject(
+                refuse(
+                  data.problem ?? "UNREADABLE",
+                  data.error ?? "Cannot extract document",
+                ),
+              );
+        },
+      );
       worker.once("error", () => {
         clearTimeout(timer);
         reject(
-          new BadRequestException(
+          refuse(
+            "UNREADABLE",
             "Document processing failed or exceeded memory limit",
           ),
         );
@@ -72,7 +116,7 @@ export async function extractDocument(
       worker.once("exit", (code) => {
         clearTimeout(timer);
         if (code !== 0)
-          reject(new BadRequestException("Document processing stopped"));
+          reject(refuse("UNREADABLE", "Document processing stopped"));
       });
     });
   } finally {
@@ -94,11 +138,7 @@ export function chunkPages(pages: Page[]) {
       if (start + 1400 >= text.length) break;
     }
   }
-  if (!chunks.length)
-    throw new BadRequestException(
-      "No readable text found. Scanned PDFs need OCR, which this POC does not include.",
-    );
-  if (chunks.length > 300)
-    throw new BadRequestException("Document is too large");
+  if (!chunks.length) throw refuse("NO_TEXT", NO_READABLE_TEXT);
+  if (chunks.length > 300) throw refuse("TOO_LONG", "Document is too large");
   return chunks;
 }

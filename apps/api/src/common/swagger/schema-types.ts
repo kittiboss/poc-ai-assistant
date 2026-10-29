@@ -14,4 +14,5 @@ export class ErrorResponse {
   @ApiProperty({ example: 404 }) statusCode!: number;
   @ApiProperty({ oneOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }], example: 'Conversation not found' }) message!: string | string[];
   @ApiPropertyOptional({ example: 'Not Found' }) error?: string;
+  @ApiPropertyOptional({ example: 'ATTACHMENT_TYPE', description: 'Stable reason a client can word itself, on errors that have one.' }) code?: string;
 }
