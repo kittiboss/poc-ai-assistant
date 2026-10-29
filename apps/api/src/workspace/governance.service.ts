@@ -18,6 +18,16 @@ import { UsersService } from "../users/users.service";
 import { externalDailyLimits, startOfUtcDay } from "../usage/external-limits";
 import type { GovernanceDto, QuotaDto } from "./workspace.dto";
 
+/** Code of a refusal by a daily or per-request quota; its `quota` field carries the numbers. */
+export const QUOTA_EXCEEDED = "QUOTA_EXCEEDED";
+/** Which quota refused: a QuotaPolicy (USER, ROLE, MODEL, DEPARTMENT) or the installation's external limit. */
+type QuotaLimit = {
+  scope: string;
+  subject: string;
+  unit: "requests" | "tokens";
+  period: "day" | "request";
+};
+
 export const GOVERNANCE_DEFAULTS: GovernanceDto = {
   externalBlocked: false,
   retentionDays: 0,
@@ -149,16 +159,29 @@ export class GovernanceService implements OnModuleInit, OnModuleDestroy {
             ],
           },
         });
+        // The numbers let the web say how much this request needs and how much is left.
         const check = (
           used: number,
           reserved: number,
           incoming: number,
           limit: number | null,
           label: string,
+          quota: QuotaLimit,
         ) => {
           if (limit !== null && used + reserved + incoming > limit)
             throw new HttpException(
-              `${label} quota would be exceeded. Reservations include a conservative input estimate and maximum output.`,
+              {
+                statusCode: 429,
+                code: QUOTA_EXCEEDED,
+                message: `${label} quota would be exceeded: this request needs up to ${incoming}, ${Math.max(0, limit - used - reserved)} of ${limit} left. Reservations include a conservative input estimate and maximum output.`,
+                quota: {
+                  ...quota,
+                  limit,
+                  used: used + reserved,
+                  needed: incoming,
+                  resetsAt: new Date(today.gte.getTime() + 86_400_000),
+                },
+              },
               429,
             );
         };
@@ -196,12 +219,14 @@ export class GovernanceService implements OnModuleInit, OnModuleDestroy {
             }),
           ]);
           const label = `${policy.scope} ${policy.subject}`;
+          const scope = { scope: policy.scope, subject: policy.subject };
           check(
             0,
             0,
             tokens,
             policy.perRequestTokens,
             `${label} per-request tokens`,
+            { ...scope, unit: "tokens", period: "request" },
           );
           check(
             used._count,
@@ -209,6 +234,7 @@ export class GovernanceService implements OnModuleInit, OnModuleDestroy {
             1,
             policy.dailyRequests,
             `${label} daily requests`,
+            { ...scope, unit: "requests", period: "day" },
           );
           check(
             used._sum.totalTokens || 0,
@@ -216,6 +242,7 @@ export class GovernanceService implements OnModuleInit, OnModuleDestroy {
             tokens,
             policy.dailyTokens,
             `${label} daily tokens`,
+            { ...scope, unit: "tokens", period: "day" },
           );
           if (policy.dailySimulatedBudget !== null) {
             if (price?.currency !== "USD")
@@ -249,12 +276,14 @@ export class GovernanceService implements OnModuleInit, OnModuleDestroy {
             }),
           ]);
           const limits = externalDailyLimits();
+          const scope = { scope: "INSTALLATION", subject: "external" };
           check(
             used._count,
             reserved._count,
             1,
             limits.requests,
             "Installation external requests",
+            { ...scope, unit: "requests", period: "day" },
           );
           check(
             used._sum.totalTokens || 0,
@@ -262,6 +291,7 @@ export class GovernanceService implements OnModuleInit, OnModuleDestroy {
             tokens,
             limits.tokens,
             "Installation external tokens",
+            { ...scope, unit: "tokens", period: "day" },
           );
         }
         await tx.usageReservation.create({

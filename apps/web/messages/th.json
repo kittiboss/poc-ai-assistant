@@ -643,6 +643,26 @@
       "KnowledgeSettings": "การตั้งค่าคลังความรู้"
     }
   },
+  "modelUsage": {
+    "title": "การใช้งานแต่ละโมเดลวันนี้",
+    "description": "รวมทุกคนในองค์กร · รีเซ็ตเวลา {time}",
+    "requests": "เหลือ {left} จาก {limit} ครั้ง",
+    "tokens": "เหลือ {left} จาก {limit} token",
+    "running": "+{count} กำลังทำงาน",
+    "sharedRequests": "โมเดลนี้ {part} · เหลือ {left} จาก {limit} ครั้ง (ใช้ร่วมกัน)",
+    "sharedTokens": "โมเดลนี้ {part} · เหลือ {left} จาก {limit} token (ใช้ร่วมกัน)",
+    "modelLimit": "เพดานของโมเดลนี้",
+    "noLimit": "วันนี้ {requests} ครั้ง · {tokens} token · ไม่มีเพดานรายวัน",
+    "external": "โมเดลภายนอกทั้งหมด",
+    "externalNote": "เพดานรายวันที่ใช้ร่วมกันทุกโมเดลภายนอก รวมถึง embedding",
+    "requestsLabel": "จำนวนครั้ง",
+    "tokensLabel": "Token",
+    "lastNeeded": "ข้อความล่าสุดต้องจองสูงสุด {needed} มากกว่าที่เหลือ",
+    "refusedTokens": "ข้อความนี้ต้องจองสูงสุด {needed} token จาก{scope, select, INSTALLATION {เพดานรายวันที่โมเดลภายนอกใช้ร่วมกัน} MODEL {เพดานรายวันของโมเดลนี้} USER {เพดานรายวันของคุณ} ROLE {เพดานรายวันของ role คุณ} other {เพดานรายวันของแผนกคุณ}} แต่เหลือเพียง {left} จาก {limit} ลองปิด Knowledge base เริ่มแชทใหม่ หรือใช้โมเดลภายใน เพดานจะรีเซ็ตเวลา {time}",
+    "refusedRequests": "{scope, select, INSTALLATION {โมเดลภายนอก} MODEL {โมเดลนี้} USER {คุณ} ROLE {role ของคุณ} other {แผนกของคุณ}}ใช้ครบ {limit} ครั้งของวันนี้แล้ว เพดานจะรีเซ็ตเวลา {time}",
+    "refusedPerRequest": "ข้อความนี้ต้องจองสูงสุด {needed} token เกินเพดาน {limit} token ต่อครั้ง ลองย่อข้อความหรือเริ่มแชทใหม่",
+    "loading": "กำลังโหลดการใช้งาน…"
+  },
   "liveUsage": {
     "eyebrow": "มาตรวัดโทเค็นแบบเรียลไทม์",
     "title": "การใช้โทเค็นแบบเรียลไทม์",

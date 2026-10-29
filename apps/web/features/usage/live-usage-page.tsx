@@ -12,6 +12,7 @@ import { useEnumLabel } from '@/i18n/use-enum-label';
 import { queryKeys } from '@/lib/api/query-keys';
 import type { LiveUsage } from '@/lib/api/types';
 import { cn } from '@/lib/cn';
+import { ModelUsageList, ModelUsageNote, useModelUsage } from './model-usage';
 
 type LiveRecord = LiveUsage['recent'][number];
 
@@ -36,6 +37,8 @@ export function LiveUsagePage() {
     refetchInterval: (query) =>
       query.state.status === 'error' ? 5000 : Math.max(1000, query.state.data?.pollAfterMs ?? 5000),
   });
+  const modelUsage = useModelUsage(true);
+  const usageText = useTranslations('modelUsage');
   const number = (value: number | undefined) => format.number(value ?? 0);
   const inputShare = data?.totals.totalTokens ? (data.totals.inputTokens / data.totals.totalTokens) * 100 : 0;
   const active = Boolean(data?.active.requests);
@@ -155,6 +158,18 @@ export function LiveUsagePage() {
             />
             <LiveMetric icon={<Zap />} label={t('todayTotal')} value={data?.today.totalTokens} tone="warning" />
           </section>
+
+          <Card className="overflow-hidden bg-surface/80 backdrop-blur" styles={{ body: { padding: 0 } }}>
+            <div className="border-b border-line-secondary p-5">
+              <h2 className="font-semibold">{usageText('title')}</h2>
+              <p className="mt-1 text-xs text-fg-secondary">
+                <ModelUsageNote usage={modelUsage.data} />
+              </p>
+            </div>
+            <div className="p-5">
+              <ModelUsageList usage={modelUsage.data} />
+            </div>
+          </Card>
 
           <section className="grid grid-cols-1 gap-6 xl:grid-cols-[1fr_.85fr]">
             <Card className="overflow-hidden bg-surface/80 backdrop-blur" styles={{ body: { padding: 0 } }}>

@@ -643,6 +643,26 @@
       "KnowledgeSettings": "KnowledgeSettings"
     }
   },
+  "modelUsage": {
+    "title": "Model usage today",
+    "description": "Everyone in the organization · resets at {time}",
+    "requests": "{left} of {limit} requests left",
+    "tokens": "{left} of {limit} tokens left",
+    "running": "+{count} running",
+    "sharedRequests": "{part} by this model · {left} of {limit} requests left (shared)",
+    "sharedTokens": "{part} by this model · {left} of {limit} tokens left (shared)",
+    "modelLimit": "model limit",
+    "noLimit": "{requests} requests · {tokens} tokens today · no daily limit",
+    "external": "All external models",
+    "externalNote": "One daily limit shared by every external model, embeddings included",
+    "requestsLabel": "Requests",
+    "tokensLabel": "Tokens",
+    "lastNeeded": "Your last message needed up to {needed}, more than is left",
+    "refusedTokens": "This message needs up to {needed} tokens of {scope, select, INSTALLATION {the daily limit shared by external models} MODEL {this model's daily limit} USER {your daily limit} ROLE {your role's daily limit} other {your department's daily limit}}, but only {left} of {limit} are left. Turn off Knowledge base, start a new chat or use a local model. The limit resets at {time}.",
+    "refusedRequests": "{scope, select, INSTALLATION {External models have} MODEL {This model has} USER {You have} ROLE {Your role has} other {Your department has}} used all {limit} requests for today. The limit resets at {time}.",
+    "refusedPerRequest": "This message needs up to {needed} tokens, more than the {limit} allowed per request. Shorten it or start a new chat.",
+    "loading": "Loading usage…"
+  },
   "liveUsage": {
     "eyebrow": "LIVE TOKEN METER",
     "title": "Token usage in real time",
