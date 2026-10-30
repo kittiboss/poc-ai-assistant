@@ -61,7 +61,8 @@ export function useAdminFilters() {
       navigate({ ...current, range: 'custom', ...(from && to && from > to ? { from: to, to: from } : { from, to }) }),
     setProvider: (next: string) => navigate({ ...current, provider: next }),
     setModel: (next: string) => navigate({ ...current, modelId: next }),
-    reset: () => router.push(pathname, { scroll: false }),
+    // Like every filter change, a reset replaces the history entry, so Back leaves the overview.
+    reset: () => router.replace(pathname, { scroll: false }),
   };
 }
 

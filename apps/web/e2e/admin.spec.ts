@@ -40,21 +40,23 @@ test('the overview filters start at the last 30 days and live in the URL', async
   await expect(page).toHaveURL(/\/admin\?range=7d&provider=MOCK$/);
   await expect(summary).toContainText('MOCK');
 
-  // A reload keeps them, and Back steps through them.
+  // A reload keeps them.
   await page.reload();
   await expect(range.getByRole('radio', { name: f.ranges['7d'] })).toBeChecked();
   await expect(summary).toContainText('MOCK');
-  await page.goBack({ waitUntil: 'commit' });
-  await expect(page).toHaveURL(/\/admin\?range=7d$/);
-  await expect(summary).toContainText(f.allProviders);
 
-  // Custom starts from the dates the preset showed.
+  // Custom starts from the dates the preset showed, and keeps the provider.
   await range.getByText(f.ranges.custom).click();
-  await expect(page).toHaveURL(/\/admin\?range=custom&from=\d{4}-\d\d-\d\d&to=\d{4}-\d\d-\d\d$/);
+  await expect(page).toHaveURL(/\/admin\?range=custom&from=\d{4}-\d\d-\d\d&to=\d{4}-\d\d-\d\d&provider=MOCK$/);
   await expect(page.getByLabel(f.from, { exact: true })).not.toHaveValue('');
   await expect(page.getByLabel(f.to, { exact: true })).not.toHaveValue('');
 
   await page.getByRole('button', { name: f.reset }).click();
   await expect(page).toHaveURL(/\/admin$/);
   await expect(range.getByRole('radio', { name: f.ranges['30d'] })).toBeChecked();
+
+  // A filter change replaces the page in the history instead of adding one, so Back leaves the
+  // overview at once rather than stepping through every change.
+  await page.goBack({ waitUntil: 'commit' });
+  await expect(page).not.toHaveURL(/\/admin/);
 });
