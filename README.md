@@ -454,6 +454,7 @@ The backend rejects external enablement unless both the global switch and matchi
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Production gap analysis](docs/PRODUCTION_GAPS.md)
+- [Chat attachments](docs/CHAT_ATTACHMENTS.md)
 - [Prisma schema](apps/api/prisma/schema.prisma)
 - [Keycloak realm](infra/keycloak/enterprise-ai-realm.json)
 - [LiteLLM configuration](infra/litellm/config.yaml)

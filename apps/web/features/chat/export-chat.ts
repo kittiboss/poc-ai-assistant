@@ -13,10 +13,14 @@ export function exportChat(chat: ConversationDetail, format: ExportFormat) {
           `[${source.label}] ${source.filename}${source.page ? `, page ${source.page}` : ''}\n> ${source.content.replace(/\n/g, '\n> ')}`,
       )
       .join('\n\n');
+  const files = (message: Message) =>
+    message.metadata.attachments?.length
+      ? `Attached: ${message.metadata.attachments.map((file) => file.filename).join(', ')}\n\n`
+      : '';
   const body = chat.messages
     .map(
       (message) =>
-        `## ${message.role}${message.modelId ? ` (${message.modelId})` : ''}\n\n${message.content}\n\n${sources(message)}`,
+        `## ${message.role}${message.modelId ? ` (${message.modelId})` : ''}\n\n${files(message)}${message.content}\n\n${sources(message)}`,
     )
     .join('\n\n');
   download('conversation.md', `# ${chat.title}\n\n${body}`, 'text/markdown');

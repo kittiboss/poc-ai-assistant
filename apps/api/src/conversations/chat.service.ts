@@ -18,7 +18,12 @@ import {
 import { ModelsService } from "../models/models.service";
 import { UsageService } from "../usage/usage.service";
 import { UsersService } from "../users/users.service";
-import { toGatewayHistory } from "./chat-history";
+import {
+  AttachmentsService,
+  FILES_ONLY_MAX_OUTPUT_TOKENS,
+  attachmentInstructions,
+} from "../attachments/attachments.service";
+import { filesOnlyTurn, toGatewayHistory } from "./chat-history";
 import type { SendMessageDto } from "./conversations.dto";
 import { ConversationsService } from "./conversations.service";
 import { WorkspaceService } from "../workspace/workspace.service";
@@ -45,6 +50,7 @@ export class ChatService implements OnModuleInit, OnModuleDestroy {
     private readonly workspace: WorkspaceService,
     private readonly governance: GovernanceService,
     private readonly knowledge: KnowledgeService,
+    private readonly attachments: AttachmentsService,
   ) {}
 
   onModuleInit() {
@@ -167,10 +173,17 @@ export class ChatService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException(
         "This request ID has already been processed",
       );
-    if (!dto.content.trim())
+    const filesOnly = !dto.content.trim();
+    if (filesOnly && !dto.attachmentIds?.length)
       throw new BadRequestException("Message cannot be empty");
-    // Retrieval runs before anything is persisted, so a failed search leaves no half-written turn.
-    const productCitations = dto.useKnowledge || dto.useProductCatalog
+    // Files and retrieval are checked before anything is persisted, so a failure leaves no half-written turn.
+    const attachments = await this.attachments.forMessage(
+      user.id,
+      conversationId,
+      dto.attachmentIds,
+    );
+    // A message with only files has nothing to search for.
+    const productCitations = (dto.useKnowledge || dto.useProductCatalog) && !filesOnly
       ? await this.knowledge.retrieve({
           userId: user.id,
           roles: auth.roles,
@@ -208,23 +221,42 @@ export class ChatService implements OnModuleInit, OnModuleDestroy {
             ),
         ),
     );
+    // The files' text is in the system message, so quotas, the sensitive check and the context limit count it.
+    const instructions = [
+      context.instructions,
+      attachmentInstructions(
+        attachments.files,
+        filesOnly ? { locale: dto.locale } : undefined,
+      ),
+    ]
+      .filter(Boolean)
+      .join("\n\n");
     const history: GatewayMessage[] = [
-      { role: "system", content: context.instructions },
+      { role: "system", content: instructions },
       ...previous,
-      { role: "user", content: dto.content },
+      {
+        role: "user",
+        content: filesOnly
+          ? filesOnlyTurn(attachments.added.map((file) => file.filename))
+          : dto.content,
+      },
     ];
     const input = history.map((m) => m.content).join("\n");
     const maxOutputTokens = Math.min(
       context.maxOutputTokens ?? this.gateway.maxOutputTokens(),
       this.gateway.maxOutputTokens(),
+      filesOnly ? FILES_ONLY_MAX_OUTPUT_TOKENS : Infinity,
     );
     if (
       Buffer.byteLength(input, "utf8") + maxOutputTokens + 512 >
       model.contextWindow
     )
-      throw new BadRequestException(
-        "This conversation exceeds the conservative context limit. Start a new chat with a shorter prompt.",
-      );
+      throw new BadRequestException({
+        statusCode: 400,
+        code: "CONTEXT_TOO_LONG",
+        message:
+          "This conversation exceeds the conservative context limit. Start a new chat with a shorter prompt.",
+      });
     if (!model.local)
       await this.governance.checkSensitive(input, dto.acknowledgeSensitive);
     await this.governance.reserve({
@@ -244,6 +276,9 @@ export class ChatService implements OnModuleInit, OnModuleDestroy {
             role: MessageRole.USER,
             content: dto.content,
             status: MessageStatus.COMPLETED,
+            ...(attachments.added.length
+              ? { metadata: { attachments: attachments.added } }
+              : {}),
             createdAt: new Date(),
           },
         }),
@@ -265,10 +300,16 @@ export class ChatService implements OnModuleInit, OnModuleDestroy {
           data: {
             updatedAt: new Date(),
             ...(conversation.title === "New conversation"
-              ? { title: dto.content.slice(0, 70) }
+              ? {
+                  title: (filesOnly
+                    ? attachments.added[0].filename
+                    : dto.content
+                  ).slice(0, 70),
+                }
               : {}),
           },
         }),
+        this.attachments.markSent(attachments.added.map((file) => file.id)),
       ]);
 
       response.status(200).set({

@@ -11,7 +11,6 @@ import {
   UploadedFile,
   UseInterceptors,
 } from "@nestjs/common";
-import { FileInterceptor } from "@nestjs/platform-express";
 import {
   ApiBadGatewayResponse,
   ApiBadRequestResponse,
@@ -31,6 +30,7 @@ import {
   Roles,
   type AuthUser,
 } from "../common/auth/auth.decorators";
+import { FileUpload } from "../common/file-upload";
 import {
   Invalid,
   NotFound,
@@ -149,11 +149,7 @@ export class KnowledgeBaseController {
   @notConfigured
   @unavailable
   @Post("documents")
-  @UseInterceptors(
-    FileInterceptor("file", {
-      limits: { fileSize: MAX_FILE_BYTES, files: 1, fields: 1 },
-    }),
-  )
+  @UseInterceptors(FileUpload({ fileSize: MAX_FILE_BYTES, files: 1, fields: 1 }))
   upload(
     @CurrentUser() user: AuthUser,
     @Body() dto: KnowledgeUploadDto,

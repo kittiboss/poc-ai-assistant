@@ -1,9 +1,12 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { useApi } from '@/components/api/api-provider';
+import { apiUrl, errorMessage } from '@/lib/api/client';
 import { queryKeys, type ConversationFilters } from '@/lib/api/query-keys';
 import type {
+  Attachment,
   Conversation,
   ConversationChange,
   ConversationDetail,
@@ -138,6 +141,38 @@ export function useBranchConversation() {
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.conversationLists }),
   });
+}
+
+/** Why the API refused a file: its code without the ATTACHMENT_ prefix (see docs/CHAT_ATTACHMENTS.md). */
+const ATTACHMENT_PROBLEMS = ['TYPE', 'SIZE', 'UNREADABLE', 'NO_TEXT', 'TOO_LONG', 'BUSY'] as const;
+
+/**
+ * Files for the next message. The API keeps only their extracted text; a refused file comes back
+ * with a code, so the error is worded here in the user's language.
+ */
+export function useAttachmentApi() {
+  const { fetch } = useApi();
+  const t = useTranslations('chat');
+  const tErrors = useTranslations('errors');
+  return {
+    async upload(file: File, signal: AbortSignal) {
+      const form = new FormData();
+      form.append('file', file);
+      const response = await fetch(new Request(`${apiUrl()}/attachments`, { method: 'POST', body: form, signal }));
+      const body: unknown = await response.json().catch(() => null);
+      if (response.ok) return body as Attachment;
+      const code = (body as { code?: string } | null)?.code?.replace(/^ATTACHMENT_/, '');
+      // Over 5 MB is refused by the upload limit itself, without a code.
+      const problem = response.status === 413 ? 'SIZE' : ATTACHMENT_PROBLEMS.find((item) => item === code);
+      throw new Error(
+        problem
+          ? t(`attachError.${problem}`)
+          : (errorMessage(body) ?? tErrors('requestFailed', { status: response.status })),
+      );
+    },
+    /** Only a file that was not sent can be removed; an unsent one left behind is removed by the API after a day. */
+    remove: (id: string) => fetch(new Request(`${apiUrl()}/attachments/${id}`, { method: 'DELETE' })),
+  };
 }
 
 export type Rating = Message['feedback'] & number;

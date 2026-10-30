@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { MessageRole, MessageStatus, UsageKind } from '@prisma/client';
+import { AttachmentRefView } from '../attachments/attachments.schemas';
 import { DATE, DECIMAL, NULLABLE_INT, NULLABLE_STRING, NULLABLE_UUID } from '../common/swagger/schema-types';
 
 export class ConversationView {
@@ -45,6 +46,8 @@ class MessageMetadata {
   @ApiPropertyOptional({ description: 'File offered for download with this message.' }) filename?: string;
   @ApiPropertyOptional({ description: 'Content of that file.' }) content?: string;
   @ApiPropertyOptional({ example: 'text/csv' }) mime?: string;
+  @ApiPropertyOptional({ type: [AttachmentRefView], description: 'Files attached to this user message. Every file attached in a chat stays in its context.' })
+  attachments?: AttachmentRefView[];
 }
 
 class MessageUsage {

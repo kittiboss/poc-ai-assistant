@@ -3,6 +3,7 @@ import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { VendorResponseInterceptor } from './common/vendor-response.interceptor';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AdminModule } from './admin/admin.module';
+import { AttachmentsModule } from './attachments/attachments.module';
 import { AuthGuard } from './common/auth/auth.guard';
 import { PrismaModule } from './common/prisma/prisma.module';
 import { ConversationsModule } from './conversations/conversations.module';
@@ -18,6 +19,7 @@ import { UsageModule } from './usage/usage.module';
     HealthModule,
     ModelsModule,
     ConversationsModule,
+    AttachmentsModule,
     KnowledgeModule,
     UsageModule,
     AdminModule,

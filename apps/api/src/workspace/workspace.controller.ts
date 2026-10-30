@@ -10,7 +10,6 @@ import {
   UploadedFile,
   UseInterceptors,
 } from "@nestjs/common";
-import { FileInterceptor } from "@nestjs/platform-express";
 import {
   ApiBody,
   ApiConsumes,
@@ -23,6 +22,7 @@ import {
   Roles,
   type AuthUser,
 } from "../common/auth/auth.decorators";
+import { FileUpload } from "../common/file-upload";
 import {
   Invalid,
   MalformedId,
@@ -97,11 +97,7 @@ export class WorkspaceController {
       required: ["file"],
     },
   })
-  @UseInterceptors(
-    FileInterceptor("file", {
-      limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 0 },
-    }),
-  )
+  @UseInterceptors(FileUpload({ fileSize: 5 * 1024 * 1024, files: 1, fields: 0 }))
   upload(
     @CurrentUser() auth: AuthUser,
     @Param("id", ParseUUIDPipe) id: string,

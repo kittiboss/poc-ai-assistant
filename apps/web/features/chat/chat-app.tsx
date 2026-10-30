@@ -84,9 +84,17 @@ export function ChatApp() {
     router.push(`/c/${copy.id}`);
     return copy;
   };
+  // The new copy leaves out the message itself, so its files are sent again with it.
   const resend = async (userMessage: Message, prompt: string) => {
     const copy = await branch(userMessage, true);
-    if (copy) await send({ conversationId: copy.id, prompt, modelId, useKnowledge: catalogOn });
+    if (copy)
+      await send({
+        conversationId: copy.id,
+        prompt,
+        attachments: userMessage.metadata.attachments ?? [],
+        modelId,
+        useKnowledge: catalogOn,
+      });
   };
   const submitFeedback = async (message: Message, rating: Rating, comment: string) => {
     if (!activeId) return;
@@ -237,7 +245,9 @@ export function ChatApp() {
               generating={generating}
               canSend={Boolean(selectedModel?.available)}
               disabled={notFound}
-              onSend={(prompt) => void send({ conversationId: activeId, prompt, modelId, useKnowledge: catalogOn })}
+              onSend={(prompt, attachments) =>
+                send({ conversationId: activeId, prompt, attachments, modelId, useKnowledge: catalogOn })
+              }
               onStop={() => stream?.abort.abort()}
             />
             <p className="text-center text-[11px] text-fg-secondary">{t('disclaimerSources')}</p>
@@ -252,7 +262,8 @@ export function ChatApp() {
           label={t('editPrompt')}
           initialValue={dialog.message.content}
           multiline
-          requiredMessage={t('messageRequired')}
+          // A message that sent files may go again without text.
+          requiredMessage={dialog.message.metadata.attachments?.length ? undefined : t('messageRequired')}
           maxLength={20000}
           okText={t('send')}
           onSubmit={(value) => {

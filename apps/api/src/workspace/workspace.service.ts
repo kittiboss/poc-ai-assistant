@@ -12,7 +12,7 @@ import type { AuthUser } from "../common/auth/auth.decorators";
 import { UsersService } from "../users/users.service";
 import { vendorGateway } from "../models/model-policies";
 import { customerResponse } from "../common/vendor-response.interceptor";
-import { chunkPages, extractDocument } from "./documents";
+import { chunkPages, extractDocument, safeFilename } from "./documents";
 import type {
   MemoryDto,
   ProjectDto,
@@ -87,9 +87,7 @@ export class WorkspaceService {
       return tx.source.create({
         data: {
           projectId,
-          filename: file.originalname
-            .replace(/[\\/\x00-\x1F]/g, "_")
-            .slice(0, 200),
+          filename: safeFilename(file.originalname),
           byteSize: file.buffer.length,
           chunks: { create: chunks },
         },
