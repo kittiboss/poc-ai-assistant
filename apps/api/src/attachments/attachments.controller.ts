@@ -8,7 +8,6 @@ import {
   UploadedFile,
   UseInterceptors,
 } from "@nestjs/common";
-import { FileInterceptor } from "@nestjs/platform-express";
 import {
   ApiBadRequestResponse,
   ApiBody,
@@ -22,6 +21,7 @@ import {
   ApiTooManyRequestsResponse,
 } from "@nestjs/swagger";
 import { CurrentUser, type AuthUser } from "../common/auth/auth.decorators";
+import { FileUpload } from "../common/file-upload";
 import {
   MalformedId,
   NotFound,
@@ -78,11 +78,7 @@ export class AttachmentsController {
   })
   @Post()
   @UseInterceptors(
-    FileInterceptor("file", {
-      limits: { fileSize: MAX_ATTACHMENT_BYTES, files: 1, fields: 0 },
-      // Browsers send the filename as UTF-8; the Latin-1 default garbles Thai names.
-      defParamCharset: "utf8",
-    }),
+    FileUpload({ fileSize: MAX_ATTACHMENT_BYTES, files: 1, fields: 0 }),
   )
   upload(
     @CurrentUser() user: AuthUser,
