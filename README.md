@@ -1,6 +1,6 @@
 # Enterprise AI Assistant — Local POC
 
-A working, single-enterprise AI assistant built with Next.js, NestJS, Prisma/PostgreSQL, Keycloak, LiteLLM, Valkey, and Docker Compose.
+A working, single-enterprise AI assistant built with Next.js, NestJS, Prisma/PostgreSQL, Keycloak, LiteLLM, Valkey, SeaweedFS, and Docker Compose.
 
 The default deployment is deliberately **mock-only**. It needs no AI API key, makes no paid model call, starts no Ollama container, and downloads no model. Every chat request still follows the production-shaped path:
 
@@ -8,7 +8,8 @@ The default deployment is deliberately **mock-only**. It needs no AI API key, ma
 Browser → Next.js → NestJS → LiteLLM → local mock provider
                     ├─ PostgreSQL
                     ├─ Keycloak
-                    └─ Valkey
+                    ├─ Valkey
+                    └─ SeaweedFS (S3-compatible storage for chat images)
 ```
 
 ## Start locally
@@ -334,7 +335,7 @@ Verification: `npm run test:rag` (offline mock; also part of `npm run test:e2e`)
 
 ## Cost safety
 
-Everything in the default stack is local: the mock provider, Ollama, PostgreSQL, Keycloak, Valkey, and LiteLLM are open-source containers and make no paid calls. OpenAI and Anthropic have no gateway route and no credential. Gemini, Groq and OpenRouter can reach external services only through explicit opt-in overlays, constrained in layers:
+Everything in the default stack is local: the mock provider, Ollama, PostgreSQL, Keycloak, Valkey, SeaweedFS, and LiteLLM are open-source containers and make no paid calls. OpenAI and Anthropic have no gateway route and no credential. Gemini, Groq and OpenRouter can reach external services only through explicit opt-in overlays, constrained in layers:
 
 | Layer                                                                                                                                                                                                                                                                                                                          | What it prevents                                                                                                 |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |

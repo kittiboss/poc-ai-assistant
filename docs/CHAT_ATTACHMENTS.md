@@ -129,7 +129,7 @@ Images use the same upload-first flow, chips, `attachmentIds` and message metada
 
 ### Storage
 
-- SeaweedFS (Apache 2.0) runs in the base Compose stack, on the internal network only, with its own volume. A one-off container creates the bucket; the API never creates buckets.
+- SeaweedFS (Apache 2.0) runs in the base Compose stack with its own volume, and creates the bucket when it starts; the API never creates buckets. Its filer and volume ports have no authentication of their own, so it sits on an internal `storage` network that only the backend shares.
 - The API uses the AWS SDK (`@aws-sdk/client-s3`), so moving to Amazon S3 or another S3-compatible service is a configuration change:
 
 | Setting | SeaweedFS (Compose) | Amazon S3 |
@@ -138,14 +138,17 @@ Images use the same upload-first flow, chips, `attachmentIds` and message metada
 | `S3_REGION` | any value | the bucket's region, such as `ap-southeast-7` |
 | `S3_BUCKET` | `attachments` | the customer's bucket |
 | `S3_FORCE_PATH_STYLE` | `true` | `false` |
-| Credentials | `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` in `.env` | unset; the SDK uses the IAM role of the container |
+| Credentials | `S3_ACCESS_KEY_ID` and `S3_SECRET_ACCESS_KEY` in `.env`, passed to the API as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` | unset; the SDK uses the IAM role of the container |
+
+The `.env` names differ from the SDK's so that a developer's own AWS keys in the shell never reach the stack.
 
 - Without `S3_BUCKET`, or in a vendor-managed deployment, images are unavailable: uploads are refused with `ATTACHMENT_TYPE` and no model reports `vision`.
-- To stay portable, the API uses only PutObject, GetObject, DeleteObject, HeadObject and ListObjectsV2, and the database keeps only the object key (`attachments/<id>`), never an endpoint, bucket or URL.
+- To stay portable, the API uses only PutObject, GetObject, DeleteObject and ListObjectsV2, and the database keeps only the object key (`attachments/<id>`), never an endpoint, bucket or URL.
 - An object and its row cannot share a transaction:
   - upload writes the object first, then the row, and deletes the object if the row fails;
   - removal and the unsent sweep delete the row first, then the object;
   - a daily sweep deletes objects older than 24 hours that have no row, so a failed delete, or a row removed by a cascade, leaves nothing behind for long.
+- A storage failure reaches the client as `503` without detail; the cause is logged.
 - Deleting a chat (a soft delete) keeps its images, as it keeps its messages.
 
 ### Data
