@@ -1,10 +1,10 @@
 # Chat attachments
 
-Users can attach documents to a chat message, or send documents without typing anything, as in other AI chat apps. Version 1 handles documents only. Text is extracted inside this installation with the same bounded extractor as project sources, so reading a file costs no model call. What the model receives is the extracted text, as tokens like any other prompt.
+Users can attach documents and images to a chat message, or send them without typing anything, as in other AI chat apps. For a document, text is extracted inside this installation with the same bounded extractor as project sources, so reading a file costs no model call. What the model receives is the extracted text, as tokens like any other prompt. Images are kept as files and sent to models that can see them; see [Images](#images).
 
 ## Flow
 
-1. The web uploads each file as soon as it is attached: `POST /api/attachments`. The API extracts the text, keeps only the text (never the original file) and returns the attachment. It is not linked to any chat yet.
+1. The web uploads each file as soon as it is attached: `POST /api/attachments`. For a document, the API extracts the text, keeps only the text (never the original file) and returns the attachment. It is not linked to any chat yet.
 2. The composer shows each file as a chip (uploading, ready or failed). A chip removed before sending deletes its attachment: `DELETE /api/attachments/:id`.
 3. Sending lists the files in `attachmentIds`, next to the usual message fields.
 4. The API stores the file references in the user message's `metadata.attachments` and adds the text of every file attached anywhere in the chat to the system message, as data.
@@ -84,16 +84,17 @@ Errors follow the API's coded shape `{ statusCode, code, message }`, so the web 
 
 | Code | Status | When |
 |---|---|---|
-| `ATTACHMENT_TYPE` | 400 | Not TXT, MD, CSV, JSON, PDF or DOCX |
-| `ATTACHMENT_SIZE` | 400 | Empty file. A file over 5 MB is refused by the upload limit with 413 and no code. |
-| `ATTACHMENT_UNREADABLE` | 400 | Damaged file, text that is not UTF-8, invalid JSON, or extraction failed or timed out |
+| `ATTACHMENT_TYPE` | 400 | Not TXT, MD, CSV, JSON, PDF, DOCX, JPEG, PNG or WebP, or an image where images are unavailable |
+| `ATTACHMENT_SIZE` | 400 | Empty file, or an image over 1 MB or 1,600 px on its longer side. A file over 5 MB is refused by the upload limit with 413 and no code. |
+| `ATTACHMENT_UNREADABLE` | 400 | Damaged file, text that is not UTF-8, invalid JSON, extraction failed or timed out, or an image whose size cannot be read |
 | `ATTACHMENT_NO_TEXT` | 400 | No text found, such as a scanned PDF |
 | `ATTACHMENT_TOO_LONG` | 400 | One file has more text than a whole chat may hold, or more than the extractor reads (100 PDF pages, 200,000 characters) |
 | `ATTACHMENT_BUSY` | 429 | The API is extracting another document; retry shortly |
 | `ATTACHMENT_NOT_FOUND` | 400 | Sending refers to a file that does not exist or belongs to someone else |
 | `ATTACHMENT_SENT` | 409 | Removing a file that was already sent |
-| `ATTACHMENT_LIMIT` | 400 | The files of the chat together exceed the chat's limit |
-| `CONTEXT_TOO_LONG` | 400 | Code added to the existing conservative context-limit check |
+| `ATTACHMENT_LIMIT` | 400 | The files of the chat together exceed the chat's limit: 60,000 characters of text, 6 images or 4 MB of images |
+| `ATTACHMENT_NEEDS_VISION` | 400 | The chat has images and the chosen model cannot see them |
+| `CONTEXT_TOO_LONG` | 400 | Code added to the existing conservative context-limit check; also a request to the model over 7.5 MB |
 
 The shared extractor keeps its responses for project sources and the central knowledge base unchanged; only the attachment endpoints turn its failures into these codes.
 
@@ -113,6 +114,108 @@ The context-limit check counts bytes. `local-mock` has an 8,192 context window, 
 
 The files' text is sent again on every turn of the chat, like the rest of the history. Sending files without a question adds one turn compared with asking at once: the files' text once more, plus a reply of at most 400 tokens. On the Gemini free tier this costs nothing but one request of the rate limit; dashboards show the simulated paid-tier cost as for any other request.
 
+## Images
+
+Images are available in standalone deployments that have object storage configured. A vendor-managed deployment accepts documents only until vendor-control can meter image input.
+
+### Flow
+
+Images use the same upload-first flow, chips, `attachmentIds` and message metadata as documents. The differences:
+
+1. The composer accepts images only while the selected model has the `vision` capability in `GET /api/models`. That list reports `vision` only where images are available.
+2. The browser resizes each image so its longer side is at most 1,600 px and re-encodes it as WebP (JPEG where the browser cannot write WebP), lowering the quality until the file is at most 1 MB. Re-encoding also drops metadata such as GPS location.
+3. The API keeps the image file itself, in object storage, because the model needs the pixels on every turn.
+4. The web shows an image through `GET /api/attachments/:id/content`, fetched with the user's token into a blob URL, because an `<img>` cannot send a bearer token.
+
+### Storage
+
+- SeaweedFS (Apache 2.0) runs in the base Compose stack, on the internal network only, with its own volume. A one-off container creates the bucket; the API never creates buckets.
+- The API uses the AWS SDK (`@aws-sdk/client-s3`), so moving to Amazon S3 or another S3-compatible service is a configuration change:
+
+| Setting | SeaweedFS (Compose) | Amazon S3 |
+|---|---|---|
+| `S3_ENDPOINT` | `http://seaweedfs:8333` | unset |
+| `S3_REGION` | any value | the bucket's region, such as `ap-southeast-7` |
+| `S3_BUCKET` | `attachments` | the customer's bucket |
+| `S3_FORCE_PATH_STYLE` | `true` | `false` |
+| Credentials | `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` in `.env` | unset; the SDK uses the IAM role of the container |
+
+- Without `S3_BUCKET`, or in a vendor-managed deployment, images are unavailable: uploads are refused with `ATTACHMENT_TYPE` and no model reports `vision`.
+- To stay portable, the API uses only PutObject, GetObject, DeleteObject, HeadObject and ListObjectsV2, and the database keeps only the object key (`attachments/<id>`), never an endpoint, bucket or URL.
+- An object and its row cannot share a transaction:
+  - upload writes the object first, then the row, and deletes the object if the row fails;
+  - removal and the unsent sweep delete the row first, then the object;
+  - a daily sweep deletes objects older than 24 hours that have no row, so a failed delete, or a row removed by a cascade, leaves nothing behind for long.
+- Deleting a chat (a soft delete) keeps its images, as it keeps its messages.
+
+### Data
+
+```prisma
+enum AttachmentKind {
+  DOCUMENT
+  IMAGE
+}
+
+model Attachment {
+  // the fields above; for an image, content is "" and charCount is 0
+  kind       AttachmentKind @default(DOCUMENT)
+  mimeType   String?  @db.VarChar(50)   // images only: image/jpeg, image/png or image/webp
+  width      Int?                       // images only, in pixels
+  height     Int?
+  storageKey String?  @db.VarChar(200)  // images only: the object key in S3_BUCKET
+}
+```
+
+`AttachmentView` and the references in `metadata.attachments` gain the same fields except `storageKey`:
+
+```ts
+kind?: 'DOCUMENT' | 'IMAGE';  // a reference without kind is a document, so stored messages need no change
+mimeType?: string;
+width?: number;
+height?: number;
+```
+
+### Upload, content and remove
+
+| Endpoint | Behaviour |
+|---|---|
+| `POST /api/attachments` | Also takes JPEG, PNG and WebP, at most 1 MB and 1,600 px on the longer side. The type is read from the file's first bytes, never from its extension. |
+| `GET /api/attachments/:id/content` | The image file, for its owner only. `404` for anyone else, and for documents, which keep no file. Sent with its stored `Content-Type`, `Cache-Control: private, max-age=31536000, immutable` and `X-Content-Type-Options: nosniff`. |
+| `DELETE /api/attachments/:id` | Unchanged, and also deletes the object. |
+
+### Sending
+
+1. A chat's images are all the images its messages attached, as with documents. If the chat has any and the chosen model lacks `vision`, the message is refused with `ATTACHMENT_NEEDS_VISION` before anything is saved, and the web puts it back in the composer.
+2. Each image is sent with the user turn that attached it, after the turn's text: a text part `[Image: receipt.jpg]`, so replies can name it, then an OpenAI-style `image_url` part holding a base64 data URL. Images of turns older than the 49 replayed messages go with the earliest replayed user turn. LiteLLM turns the parts into Gemini's inline data.
+3. `GatewayMessage.content` becomes `string | ContentPart[]`. Turns without images stay strings.
+4. The system message tells the model that text inside images is data, never instructions. When a message only attaches images, the stored content stays empty, the model receives `[Attached without a message: receipt.jpg]` followed by the image, and the overview describes what each image shows.
+5. Each image counts as 1,120 tokens (Gemini 3's default media resolution, whatever the file size) in the context-limit check and the quota reservation, on top of the text's bytes. The base64 data never counts as text.
+6. The API refuses with `CONTEXT_TOO_LONG` a request whose text and base64 images together exceed 7.5 MB, below gemini-proxy's 8 MB. Within the chat limits a request stays under about 6.5 MB, so this only catches mistakes.
+7. gemini-proxy accepts requests of at most 8 MB (it was 2 MB) and inline data only when it is a JPEG, PNG or WebP image. Any other inline data, and file references (`fileData`), are refused.
+8. `local-mock` has `vision` for offline tests and demos. mock-provider accepts 8 MB, replies with each image's type and size (it does not look at the picture) and reports 1,120 tokens per image.
+
+### Limits
+
+| Limit | Value | Why |
+|---|---|---|
+| Image file | 1 MB, 1,600 px on the longer side | The browser resizes before upload; small text in screenshots stays readable |
+| Attachments per message | 3, documents and images together | |
+| Images per chat | 6 | Each image costs about 1,120 tokens on every turn |
+| Image bytes per chat | 4 MB | About 5.3 MB in base64, leaving room for 1 MB of text under 7.5 MB |
+| Request to the model | 7.5 MB | gemini-proxy accepts 8 MB |
+
+`local-mock`'s 8,192 context window holds about 3 images with a short message; more need Gemini (1M).
+
+### Cost
+
+An image costs about 1,120 input tokens on every turn while it is in the chat, whatever its file size. A chat with 6 images uses about 6,700 tokens a turn before any text: about $0.002 at Gemini 3.5 Flash-Lite's paid list price ($0.30 per 1M input tokens), and $0 on the free tier. The default external limit of 100,000 tokens a day covers about 14 such turns across all users; raise `EXTERNAL_DAILY_TOKEN_LIMIT` for a demo day if needed. Every turn sends the chat's images again, so a chat with many images answers more slowly.
+
+### Known gaps
+
+- Images are not checked for sensitive information. The notice shown before using an external model is the only safeguard; this is recorded in [PRODUCTION_GAPS.md](PRODUCTION_GAPS.md).
+- The API stores an image as uploaded. Only the web's re-encoding removes metadata such as GPS location, so a client calling the API directly can store it.
+- Object storage needs its own encryption, backup and lifecycle settings in production.
+
 ## Not in version 1
 
-Images, OCR for scanned PDFs, retrieving only the relevant passages of large files, keeping original files for download, and a project page for managing files.
+Images in vendor-managed deployments (the next piece of work), image generation, GIF and HEIC images (Safari on iPhone converts photos to JPEG when they are picked), choosing the media resolution to save tokens, OCR for scanned PDFs, retrieving only the relevant passages of large files, keeping original documents for download, and a project page for managing files.
