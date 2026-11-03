@@ -12,7 +12,7 @@ export class ModelView {
   @ApiProperty({ description: 'Enabled, permitted, configured, within the external daily limit, and routed by the gateway.' }) available!: boolean;
   @ApiProperty({ description: 'Local models have $0 external API cost.' }) local!: boolean;
   @ApiProperty({ example: 8192 }) contextWindow!: number;
-  @ApiProperty({ type: [String], example: ['chat', 'streaming'] }) capabilities!: string[];
+  @ApiProperty({ type: [String], example: ['chat', 'streaming'], description: 'vision: the model can read images attached to a chat. Reported only where this deployment accepts images.' }) capabilities!: string[];
   @ApiProperty({ enum: ['Disabled', 'Not permitted', 'Not configured', 'Credit exhausted', 'Daily limit reached', 'Available', 'Unavailable'], description: 'Credit exhausted: the prepaid credit on the platform gateway is used up (vendor-managed deployments).' }) status!: string;
 }
 

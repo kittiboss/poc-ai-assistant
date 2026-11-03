@@ -84,7 +84,7 @@ Errors follow the API's coded shape `{ statusCode, code, message }`, so the web 
 
 | Code | Status | When |
 |---|---|---|
-| `ATTACHMENT_TYPE` | 400 | Not TXT, MD, CSV, JSON, PDF, DOCX, JPEG, PNG or WebP, or an image where images are unavailable |
+| `ATTACHMENT_TYPE` | 400 | Not TXT, MD, CSV, JSON, PDF, DOCX, JPEG, PNG or WebP (an animated WebP included), or an image where images are unavailable |
 | `ATTACHMENT_SIZE` | 400 | Empty file, or an image over 1 MB or 1,600 px on its longer side. A file over 5 MB is refused by the upload limit with 413 and no code. |
 | `ATTACHMENT_UNREADABLE` | 400 | Damaged file, text that is not UTF-8, invalid JSON, extraction failed or timed out, or an image whose size cannot be read |
 | `ATTACHMENT_NO_TEXT` | 400 | No text found, such as a scanned PDF |
@@ -146,8 +146,8 @@ The `.env` names differ from the SDK's so that a developer's own AWS keys in the
 - To stay portable, the API uses only PutObject, GetObject, DeleteObject and ListObjectsV2, and the database keeps only the object key (`attachments/<id>`), never an endpoint, bucket or URL.
 - An object and its row cannot share a transaction:
   - upload writes the object first, then the row, and deletes the object if the row fails;
-  - removal and the unsent sweep delete the row first, then the object;
-  - a daily sweep deletes objects older than 24 hours that have no row, so a failed delete, or a row removed by a cascade, leaves nothing behind for long.
+  - removal and the unsent sweep delete the row first, then the object; the sweep deletes its rows and reads their keys in one `DELETE … RETURNING`, so a file sent meanwhile keeps its object;
+  - a sweep at startup and then daily deletes objects older than 24 hours that have no row, so a failed delete, or a row removed by a cascade, leaves nothing behind for long.
 - A storage failure reaches the client as `503` without detail; the cause is logged.
 - Deleting a chat (a soft delete) keeps its images, as it keeps its messages.
 
@@ -165,7 +165,7 @@ model Attachment {
   mimeType   String?  @db.VarChar(50)   // images only: image/jpeg, image/png or image/webp
   width      Int?                       // images only, in pixels
   height     Int?
-  storageKey String?  @db.VarChar(200)  // images only: the object key in S3_BUCKET
+  storageKey String?  @unique @db.VarChar(200)  // images only: the object key in S3_BUCKET
 }
 ```
 
@@ -183,7 +183,7 @@ height?: number;
 | Endpoint | Behaviour |
 |---|---|
 | `POST /api/attachments` | Also takes JPEG, PNG and WebP, at most 1 MB and 1,600 px on the longer side. The type is read from the file's first bytes, never from its extension. |
-| `GET /api/attachments/:id/content` | The image file, for its owner only. `404` for anyone else, and for documents, which keep no file. Sent with its stored `Content-Type`, `Cache-Control: private, max-age=31536000, immutable` and `X-Content-Type-Options: nosniff`. |
+| `GET /api/attachments/:id/content` | The image file, for its owner only. `404` for anyone else, and for documents, which keep no file. Sent with its stored `Content-Type`, `Cache-Control: private, max-age=31536000, immutable` and `X-Content-Type-Options: nosniff`. Errors carry no cache headers, so a browser never keeps a failure. |
 | `DELETE /api/attachments/:id` | Unchanged, and also deletes the object. |
 
 ### Sending

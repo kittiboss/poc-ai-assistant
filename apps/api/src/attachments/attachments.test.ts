@@ -1,10 +1,13 @@
-import { HttpException } from "@nestjs/common";
-import { describe, expect, it, vi } from "vitest";
+import { Readable } from "node:stream";
+import { HttpException, ServiceUnavailableException } from "@nestjs/common";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { auth, basePrisma, localUser, usersWith } from "../testing/fixtures";
+import { jpeg, png, webp } from "../testing/image-fixtures";
 import { extractDocument } from "../workspace/documents";
 import {
   AttachmentsService,
   MAX_CHAT_ATTACHMENT_CHARS,
+  MAX_IMAGE_BYTES,
   UNSENT_ATTACHMENT_TTL_MS,
   attachedFiles,
   attachmentInstructions,
@@ -19,16 +22,35 @@ function setup() {
         id: "attachment-1",
         ...data,
       })),
+      findFirst: vi.fn().mockResolvedValue({ sentAt: null, storageKey: null }),
       findMany: vi.fn().mockResolvedValue([]),
       updateMany: vi.fn(),
       deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
-      count: vi.fn().mockResolvedValue(0),
     },
     message: { findMany: vi.fn().mockResolvedValue([]) },
+    $queryRaw: vi.fn().mockResolvedValue([]),
+  };
+  const storage = {
+    configured: true,
+    put: vi.fn().mockResolvedValue({}),
+    stream: vi.fn().mockResolvedValue(null),
+    remove: vi.fn().mockResolvedValue({}),
+    list: vi.fn(listing()),
   };
   return {
     prisma,
-    service: new AttachmentsService(prisma as never, usersWith(prisma)),
+    storage,
+    service: new AttachmentsService(
+      prisma as never,
+      usersWith(prisma),
+      storage as never,
+    ),
+  };
+}
+/** What storage.list yields. */
+function listing(...files: { key: string; lastModified: Date }[]) {
+  return async function* (_prefix: string) {
+    yield* files;
   };
 }
 const file = (originalname: string, text: string) => ({
@@ -99,26 +121,38 @@ describe("chat attachments", () => {
   });
 
   it("removes only the caller's unsent attachment", async () => {
-    const { prisma, service } = setup();
+    const { prisma, storage, service } = setup();
     await service.remove(auth, "attachment-1");
+    expect(prisma.attachment.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "attachment-1", userId: localUser.id },
+      }),
+    );
     expect(prisma.attachment.deleteMany).toHaveBeenCalledWith({
       where: { id: "attachment-1", userId: localUser.id, sentAt: null },
     });
+    // A document keeps no file.
+    expect(storage.remove).not.toHaveBeenCalled();
   });
 
-  it("keeps a sent attachment and does not reveal other users' ones", async () => {
+  it("keeps a sent attachment, also one sent just now, and does not reveal other users' ones", async () => {
     const { prisma, service } = setup();
-    prisma.attachment.deleteMany.mockResolvedValue({ count: 0 });
-    prisma.attachment.count.mockResolvedValueOnce(1);
+    prisma.attachment.findFirst.mockResolvedValueOnce({
+      sentAt: new Date(),
+      storageKey: null,
+    });
     await expect(service.remove(auth, "attachment-1")).rejects.toMatchObject({
       status: 409,
       response: { code: "ATTACHMENT_SENT" },
     });
+    expect(prisma.attachment.deleteMany).not.toHaveBeenCalled();
+    prisma.attachment.deleteMany.mockResolvedValueOnce({ count: 0 });
+    await expect(service.remove(auth, "attachment-1")).rejects.toMatchObject({
+      status: 409,
+    });
+    prisma.attachment.findFirst.mockResolvedValueOnce(null);
     await expect(service.remove(auth, "foreign")).rejects.toMatchObject({
       status: 404,
-    });
-    expect(prisma.attachment.count).toHaveBeenLastCalledWith({
-      where: { id: "foreign", userId: localUser.id },
     });
   });
 
@@ -129,6 +163,10 @@ describe("chat attachments", () => {
       byteSize: charCount,
       pageCount: null,
       charCount,
+      kind: "DOCUMENT",
+      mimeType: null,
+      width: null,
+      height: null,
       content: "x".repeat(charCount),
     });
 
@@ -163,6 +201,7 @@ describe("chat attachments", () => {
           byteSize: 5,
           pageCount: null,
           charCount: 5,
+          kind: "DOCUMENT",
         },
         {
           id: "a1",
@@ -170,6 +209,40 @@ describe("chat attachments", () => {
           byteSize: 10,
           pageCount: null,
           charCount: 10,
+          kind: "DOCUMENT",
+        },
+      ]);
+    });
+
+    it("lists an image with its type and size", async () => {
+      const { prisma, service } = setup();
+      prisma.attachment.findMany.mockResolvedValue([
+        {
+          ...stored("i1", 0),
+          filename: "receipt.webp",
+          kind: "IMAGE",
+          mimeType: "image/webp",
+          width: 1200,
+          height: 1600,
+          content: "",
+        },
+      ]);
+      const { added } = await service.forMessage(
+        localUser.id,
+        "conversation-1",
+        ["i1"],
+      );
+      expect(added).toEqual([
+        {
+          id: "i1",
+          filename: "receipt.webp",
+          byteSize: 0,
+          pageCount: null,
+          charCount: 0,
+          kind: "IMAGE",
+          mimeType: "image/webp",
+          width: 1200,
+          height: 1600,
         },
       ]);
     });
@@ -270,15 +343,247 @@ describe("chat attachments", () => {
     });
   });
 
-  it("sweeps attachments that were never sent within a day", async () => {
-    const { prisma, service } = setup();
+  it("sweeps attachments that were never sent within a day, with their files", async () => {
+    const { prisma, storage, service } = setup();
+    prisma.$queryRaw.mockResolvedValueOnce([
+      { storageKey: null },
+      { storageKey: "attachments/i1" },
+    ]);
     const now = Date.parse("2026-10-29T12:00:00Z");
-    await service.removeUnsent(now);
-    expect(prisma.attachment.deleteMany).toHaveBeenCalledWith({
-      where: {
-        sentAt: null,
-        createdAt: { lt: new Date(now - UNSENT_ATTACHMENT_TTL_MS) },
+    expect(await service.removeUnsent(now)).toBe(2);
+    const [sql, cutoff] = prisma.$queryRaw.mock.calls[0] as [string[], Date];
+    expect(sql.join("?").replace(/\s+/g, " ")).toBe(
+      'DELETE FROM "Attachment" WHERE "sentAt" IS NULL AND "createdAt" < ? RETURNING "storageKey"',
+    );
+    expect(cutoff).toEqual(new Date(now - UNSENT_ATTACHMENT_TTL_MS));
+    expect(storage.remove.mock.calls).toEqual([["attachments/i1"]]);
+  });
+
+  describe("images", () => {
+    beforeEach(() => {
+      vi.stubEnv("S3_BUCKET", "attachments");
+      vi.stubEnv("MODEL_ACCESS", "");
+    });
+    afterEach(() => vi.unstubAllEnvs());
+    const image = (originalname: string, buffer: Buffer) => ({
+      originalname,
+      buffer,
+    });
+
+    it("keeps the file in storage, then its row, typed by its bytes rather than its name", async () => {
+      const { prisma, storage, service } = setup();
+      const file = webp(1600, 900);
+      await service.upload(auth, image("ใบเสร็จ.png", file));
+      const key = storage.put.mock.calls[0][0] as string;
+      expect(key).toMatch(/^attachments\/[0-9a-f-]{36}$/);
+      expect(storage.put).toHaveBeenCalledWith(key, file, "image/webp");
+      expect(storage.put.mock.invocationCallOrder[0]).toBeLessThan(
+        prisma.attachment.create.mock.invocationCallOrder[0],
+      );
+      const [args] = prisma.attachment.create.mock.calls[0] as [
+        { data: object; select: object },
+      ];
+      expect(args.data).toEqual({
+        id: key.slice("attachments/".length),
+        userId: localUser.id,
+        kind: "IMAGE",
+        filename: "ใบเสร็จ.png",
+        byteSize: file.length,
+        charCount: 0,
+        content: "",
+        mimeType: "image/webp",
+        width: 1600,
+        height: 900,
+        storageKey: key,
+      });
+      // The browser never learns where the file is kept.
+      expect(args.select).not.toHaveProperty("storageKey");
+    });
+
+    it("removes the file again when its row cannot be written", async () => {
+      const { prisma, storage, service } = setup();
+      prisma.attachment.create.mockRejectedValueOnce(
+        new Error("database down"),
+      );
+      await expect(
+        service.upload(auth, image("a.png", png(10, 10))),
+      ).rejects.toThrow("database down");
+      expect(storage.remove).toHaveBeenCalledWith(storage.put.mock.calls[0][0]);
+    });
+
+    it.each([
+      {
+        name: "over 1 MB",
+        file: Buffer.concat([jpeg(800, 600), Buffer.alloc(MAX_IMAGE_BYTES)]),
+        code: "ATTACHMENT_SIZE",
       },
+      {
+        name: "wider than 1,600 px",
+        file: png(1601, 900),
+        code: "ATTACHMENT_SIZE",
+      },
+      {
+        name: "taller than 1,600 px",
+        file: jpeg(900, 1601),
+        code: "ATTACHMENT_SIZE",
+      },
+      {
+        name: "whose size cannot be read",
+        file: png(1600, 900).subarray(0, 20),
+        code: "ATTACHMENT_UNREADABLE",
+      },
+    ])("refuses an image $name with $code", async ({ file, code }) => {
+      const { prisma, storage, service } = setup();
+      await expect(
+        service.upload(auth, image("photo.jpg", file)),
+      ).rejects.toMatchObject({ status: 400, response: { code } });
+      expect(storage.put).not.toHaveBeenCalled();
+      expect(prisma.attachment.create).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["without object storage", { S3_BUCKET: "" }],
+      ["in a vendor-managed deployment", { MODEL_ACCESS: "vendor-gateway" }],
+    ])("refuses images %s as an unsupported type", async (_where, env) => {
+      for (const [name, value] of Object.entries(env)) vi.stubEnv(name, value);
+      const { storage, service } = setup();
+      await expect(
+        service.upload(auth, image("photo.png", png(10, 10))),
+      ).rejects.toMatchObject({
+        status: 400,
+        response: { code: "ATTACHMENT_TYPE" },
+      });
+      expect(storage.put).not.toHaveBeenCalled();
+    });
+
+    it("leaves a file that only has an image's name to the document checks", async () => {
+      const { storage, service } = setup();
+      await expect(
+        service.upload(auth, image("photo.png", Buffer.from("not an image"))),
+      ).rejects.toMatchObject({
+        response: {
+          code: "ATTACHMENT_TYPE",
+          message: expect.stringContaining("JPEG, PNG, WebP"),
+        },
+      });
+      expect(storage.put).not.toHaveBeenCalled();
+    });
+
+    it("streams an image to its owner, with the type read at upload", async () => {
+      const { prisma, storage, service } = setup();
+      prisma.attachment.findFirst.mockResolvedValueOnce({
+        mimeType: "image/png",
+        storageKey: "attachments/i1",
+      });
+      const body = Readable.from(["png"]);
+      storage.stream.mockResolvedValueOnce({
+        body,
+        contentType: "application/octet-stream",
+        byteSize: 3,
+      });
+      expect(await service.content(auth, "i1")).toEqual({
+        body,
+        contentType: "image/png",
+        byteSize: 3,
+      });
+      expect(prisma.attachment.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "i1", userId: localUser.id, kind: "IMAGE" },
+        }),
+      );
+      expect(storage.stream).toHaveBeenCalledWith("attachments/i1");
+    });
+
+    it("has no content for documents, other users' images or a missing file", async () => {
+      const { prisma, storage, service } = setup();
+      prisma.attachment.findFirst.mockResolvedValueOnce(null);
+      await expect(service.content(auth, "foreign")).rejects.toMatchObject({
+        status: 404,
+      });
+      expect(storage.stream).not.toHaveBeenCalled();
+      prisma.attachment.findFirst.mockResolvedValueOnce({
+        mimeType: "image/png",
+        storageKey: "attachments/gone",
+      });
+      await expect(service.content(auth, "gone")).rejects.toMatchObject({
+        status: 404,
+      });
+    });
+
+    it("removes an unsent image's row, then its file, and succeeds when storage fails", async () => {
+      const { prisma, storage, service } = setup();
+      prisma.attachment.findFirst.mockResolvedValue({
+        sentAt: null,
+        storageKey: "attachments/i1",
+      });
+      await service.remove(auth, "i1");
+      expect(
+        prisma.attachment.deleteMany.mock.invocationCallOrder[0],
+      ).toBeLessThan(storage.remove.mock.invocationCallOrder[0]);
+      expect(storage.remove).toHaveBeenCalledWith("attachments/i1");
+      // The daily file sweep removes it later.
+      storage.remove.mockRejectedValueOnce(new ServiceUnavailableException());
+      await expect(service.remove(auth, "i1")).resolves.toBeUndefined();
+    });
+
+    describe("file sweep", () => {
+      const now = Date.parse("2026-11-03T12:00:00Z");
+      const old = new Date(now - UNSENT_ATTACHMENT_TTL_MS - 1);
+
+      it("removes day-old files that have no row, and nothing newer", async () => {
+        const { prisma, storage, service } = setup();
+        storage.list.mockImplementation(
+          listing(
+            { key: "attachments/kept", lastModified: old },
+            { key: "attachments/orphan", lastModified: old },
+            // Possibly an upload whose row is being written.
+            { key: "attachments/new", lastModified: new Date(now - 1_000) },
+          ),
+        );
+        prisma.attachment.findMany.mockResolvedValueOnce([
+          { storageKey: "attachments/kept" },
+        ]);
+        expect(await service.removeOrphans(now)).toBe(1);
+        expect(storage.list).toHaveBeenCalledWith("attachments/");
+        expect(prisma.attachment.findMany).toHaveBeenCalledWith({
+          where: {
+            storageKey: { in: ["attachments/kept", "attachments/orphan"] },
+          },
+          select: { storageKey: true },
+        });
+        expect(storage.remove.mock.calls).toEqual([["attachments/orphan"]]);
+      });
+
+      it("checks files against rows a page at a time", async () => {
+        const { prisma, service, storage } = setup();
+        storage.list.mockImplementation(
+          listing(
+            ...Array.from({ length: 1_001 }, (_, i) => ({
+              key: `attachments/${i}`,
+              lastModified: old,
+            })),
+          ),
+        );
+        expect(await service.removeOrphans(now)).toBe(1_001);
+        expect(
+          prisma.attachment.findMany.mock.calls.map(
+            ([args]) => args.where.storageKey.in.length,
+          ),
+        ).toEqual([1_000, 1]);
+      });
+
+      it("does nothing without storage and survives a storage failure", async () => {
+        const { storage, service } = setup();
+        storage.configured = false;
+        expect(await service.removeOrphans(now)).toBe(0);
+        expect(storage.list).not.toHaveBeenCalled();
+        storage.configured = true;
+        storage.list.mockImplementation(async function* () {
+          yield* [];
+          throw new ServiceUnavailableException();
+        });
+        expect(await service.removeOrphans(now)).toBe(0);
+      });
     });
   });
 });

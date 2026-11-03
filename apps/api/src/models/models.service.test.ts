@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { admin } from '../testing/fixtures';
-import { gateway, modelsService, prismaWith } from '../testing/model-fixtures';
+import { gateway, models, modelsService, prismaWith } from '../testing/model-fixtures';
 
 describe('model availability and external provider guardrails', () => {
   afterEach(() => vi.unstubAllEnvs());
@@ -46,6 +46,20 @@ describe('model availability and external provider guardrails', () => {
     const error = await modelsService(prismaWith({ requests: 0, tokens: 0 })).resolveForChat('user-1', ['ADMIN'], 'google-gemini').catch((cause) => cause);
     expect(error.getStatus()).toBe(402);
     expect(error.getResponse()).toMatchObject({ code: 'CREDIT_EXHAUSTED' });
+  });
+
+  it('reports vision only where this deployment accepts images', async () => {
+    const prisma = prismaWith({ requests: 0, tokens: 0 });
+    prisma.aIModel.findMany.mockResolvedValue(models.map((model) => ({ ...model, capabilities: ['chat', 'streaming', 'vision'] })));
+    const vision = async () => (await modelsService(prisma).forUser(admin)).map((model) => model.capabilities.includes('vision'));
+    vi.stubEnv('S3_BUCKET', 'attachments');
+    expect(await vision()).toEqual([true, true]);
+    // vendor-control cannot meter images yet.
+    vi.stubEnv('MODEL_ACCESS', 'vendor-gateway');
+    expect(await vision()).toEqual([false, false]);
+    vi.stubEnv('MODEL_ACCESS', '');
+    vi.stubEnv('S3_BUCKET', '');
+    expect(await vision()).toEqual([false, false]);
   });
 
   it("refuses to enable a model the platform gateway does not route for this organization", async () => {
