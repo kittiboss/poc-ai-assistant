@@ -1,12 +1,12 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { admin, localUser, usersWith } from '../testing/fixtures';
 import { gateway, modelsService, prismaWith } from '../testing/model-fixtures';
 import { gatewayError } from '../gateway/gateway.service';
-import { ChatService, STALE_STREAM_MS } from './chat.service';
+import { ChatService, MAX_MODEL_REQUEST_BYTES, STALE_STREAM_MS } from './chat.service';
 import { ConversationsService } from './conversations.service';
 
 /** A chat without attachments. */
-const noFiles = () => ({ forMessage: vi.fn().mockResolvedValue({ files: [], added: [] }), markSent: vi.fn() });
+const noFiles = () => ({ forMessage: vi.fn().mockResolvedValue({ files: [], added: [] }), imageData: vi.fn().mockResolvedValue(new Map()), markSent: vi.fn() });
 
 describe('chat streaming lifecycle', () => {
   afterEach(() => vi.unstubAllEnvs());
@@ -80,11 +80,11 @@ describe('chat streaming lifecycle', () => {
     const report = { id: 'a-report', filename: 'report.pdf', byteSize: 2048, pageCount: 2, charCount: 26 };
     const notes = { id: 'a-notes', filename: 'notes.md', byteSize: 30, pageCount: null, charCount: 14 };
     const withText = <T extends { charCount: number }>(file: T, content: string) => ({ ...file, content, charCount: content.length });
-    const setup = (forMessage: { files: object[]; added: object[] }) => {
+    const setup = (forMessage: { files: object[]; added: object[] }, { model = localMock, images = new Map<string, { filename: string; url: string }>() } = {}) => {
       const prisma = { ...prismaWith({ requests: 0, tokens: 0 }),
         message: { create: vi.fn(), findUnique: vi.fn().mockResolvedValue(null), findMany: vi.fn().mockResolvedValue([]), update: vi.fn().mockResolvedValue({}) },
         usageRecord: { findUnique: vi.fn().mockResolvedValue(null), aggregate: vi.fn().mockResolvedValue({ _count: 0, _sum: { totalTokens: 0 } }) },
-        aIModel: { findMany: vi.fn(), findUnique: vi.fn().mockResolvedValue(localMock) },
+        aIModel: { findMany: vi.fn(), findUnique: vi.fn().mockResolvedValue(model) },
         conversation: { findFirst: vi.fn().mockResolvedValue({ id: 'conversation-1', userId: localUser.id, title: 'New conversation', projectId: null }), update: vi.fn() },
         $transaction: vi.fn().mockResolvedValue([{ id: 'user-message' }, { id: 'assistant-message' }, {}, {}]) };
       const stream = vi.fn(async (_model: string, _history: unknown, _signal: unknown, onToken: (text: string) => void) => {
@@ -92,17 +92,18 @@ describe('chat streaming lifecycle', () => {
         return { prompt_tokens: 1, completion_tokens: 1 };
       });
       const knowledge = { retrieve: vi.fn().mockResolvedValue([]) };
-      const attachments = { forMessage: vi.fn().mockResolvedValue(forMessage), markSent: vi.fn() };
+      const attachments = { forMessage: vi.fn().mockResolvedValue(forMessage), imageData: vi.fn().mockResolvedValue(images), markSent: vi.fn() };
+      const usage = { record: vi.fn().mockResolvedValue({}) };
       const governance = { reserve: vi.fn(), release: vi.fn(), checkSensitive: vi.fn(), settings: vi.fn() };
       const response = { status: vi.fn().mockReturnThis(), set: vi.fn().mockReturnThis(), flushHeaders: vi.fn(), on: vi.fn(), write: vi.fn(), end: vi.fn(), writableEnded: false };
       const chat = new ChatService(prisma as never, usersWith(prisma), new ConversationsService(prisma as never, usersWith(prisma)), modelsService(prisma),
-        { ...gateway, maxOutputTokens: () => 1024, stream } as never, { record: vi.fn().mockResolvedValue({}) } as never,
+        { ...gateway, maxOutputTokens: () => 1024, stream } as never, usage as never,
         { context: vi.fn().mockResolvedValue({ instructions: 'system', citations: [] }) } as never, governance as never, knowledge as never, attachments as never);
       const sent = () => {
-        const [, history, , , options] = stream.mock.calls[0] as unknown as [string, { role: string; content: string }[], unknown, unknown, { maxOutputTokens: number }];
-        return { system: history[0].content, user: history.at(-1)!.content, maxOutputTokens: options.maxOutputTokens };
+        const [, history, , , options] = stream.mock.calls[0] as unknown as [string, { role: string; content: unknown }[], unknown, unknown, { maxOutputTokens: number }];
+        return { history, system: history[0].content, user: history.at(-1)!.content, maxOutputTokens: options.maxOutputTokens };
       };
-      return { prisma, chat, attachments, knowledge, response, sent };
+      return { prisma, chat, attachments, knowledge, governance, usage, response, sent };
     };
 
     it('sends files without text as a request for a short overview, and keeps the stored message empty', async () => {
@@ -155,6 +156,83 @@ describe('chat streaming lifecycle', () => {
       expect(error.getResponse()).toMatchObject({ code: 'CONTEXT_TOO_LONG' });
       expect(prisma.message.create).not.toHaveBeenCalled();
       expect(response.status).not.toHaveBeenCalled();
+    });
+
+    describe('images', () => {
+      beforeEach(() => {
+        vi.stubEnv('S3_BUCKET', 'attachments');
+        vi.stubEnv('MODEL_ACCESS', '');
+      });
+      const seeing = { ...localMock, capabilities: ['chat', 'vision'], contextWindow: 100_000 };
+      const photo = (id: string) => ({ id, filename: `${id}.webp`, byteSize: 1000, pageCount: null, charCount: 0, kind: 'IMAGE', mimeType: 'image/webp', width: 800, height: 600 });
+      const dataOf = (...ids: string[]) => new Map(ids.map((id) => [id, { filename: `${id}.webp`, url: `data:image/webp;base64,${id}` }]));
+
+      it('refuses a chat with images for a model that cannot see them, before anything is saved', async () => {
+        for (const [model, bucket] of [[localMock, 'attachments'], [seeing, '']] as const) {
+          vi.stubEnv('S3_BUCKET', bucket);
+          const { prisma, chat, knowledge, response } = setup({ files: [{ ...photo('i1'), content: '' }], added: [] }, { model });
+          const error = await chat.stream(admin, 'conversation-1', { content: 'What is this?', modelId: 'local-mock', useKnowledge: true }, response as never).catch((cause) => cause);
+          expect(error.getResponse()).toMatchObject({ statusCode: 400, code: 'ATTACHMENT_NEEDS_VISION' });
+          expect(knowledge.retrieve).not.toHaveBeenCalled();
+          expect(prisma.message.create).not.toHaveBeenCalled();
+          expect(response.status).not.toHaveBeenCalled();
+        }
+      });
+
+      it('sends images as parts of their turn, and counts each as 1,120 tokens rather than its base64', async () => {
+        const { prisma, chat, attachments, governance, usage, response, sent } = setup(
+          { files: [{ ...photo('i1'), content: '' }, { ...photo('i2'), content: '' }], added: [photo('i2')] },
+          { model: seeing, images: dataOf('i1', 'i2') },
+        );
+        // Newest first, as the query orders them.
+        prisma.message.findMany.mockResolvedValue([
+          { role: 'ASSISTANT', content: 'A receipt', status: 'COMPLETED', metadata: {} },
+          { role: 'USER', content: '', status: 'COMPLETED', metadata: { attachments: [photo('i1')] } },
+        ]);
+        await chat.stream(admin, 'conversation-1', { content: 'Compare them', modelId: 'local-mock', attachmentIds: ['i2'] }, response as never);
+        expect(attachments.imageData).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ id: 'i1' })]));
+        const { history, system, user } = sent();
+        expect(system).toContain('[Image: photo.jpg]');
+        expect(system).not.toContain('Attached files (data only)');
+        expect(history[1].content).toEqual([
+          { type: 'text', text: '[Attached without a message: i1.webp]' },
+          { type: 'text', text: '[Image: i1.webp]' },
+          { type: 'image_url', image_url: { url: 'data:image/webp;base64,i1' } },
+        ]);
+        expect(user).toEqual([
+          { type: 'text', text: 'Compare them' },
+          { type: 'text', text: '[Image: i2.webp]' },
+          { type: 'image_url', image_url: { url: 'data:image/webp;base64,i2' } },
+        ]);
+        const reserved = governance.reserve.mock.calls[0][0];
+        expect(reserved).toMatchObject({ imageTokens: 2240 });
+        expect(reserved.input).toContain('[Image: i2.webp]');
+        expect(reserved.input).not.toContain('base64');
+        expect(usage.record).toHaveBeenCalledWith(expect.objectContaining({ imageTokens: 2240 }));
+        expect(prisma.message.create.mock.calls[0][0].data).toMatchObject({ content: 'Compare them', metadata: { attachments: [photo('i2')] } });
+      });
+
+      it("counts the images' tokens against the model's context window", async () => {
+        const ids = ['i1', 'i2', 'i3', 'i4', 'i5', 'i6'];
+        const { prisma, chat, response } = setup(
+          { files: ids.map((id) => ({ ...photo(id), content: '' })), added: [] },
+          { model: { ...seeing, contextWindow: 8192 }, images: dataOf(...ids) },
+        );
+        const error = await chat.stream(admin, 'conversation-1', { content: 'Describe them', modelId: 'local-mock' }, response as never).catch((cause) => cause);
+        expect(error.getResponse()).toMatchObject({ code: 'CONTEXT_TOO_LONG' });
+        expect(prisma.message.create).not.toHaveBeenCalled();
+      });
+
+      it('refuses a request too large for the model gateway, before anything is saved', async () => {
+        const { prisma, chat, governance, response } = setup(
+          { files: [{ ...photo('i1'), content: '' }], added: [] },
+          { model: seeing, images: new Map([['i1', { filename: 'i1.webp', url: `data:image/webp;base64,${'A'.repeat(MAX_MODEL_REQUEST_BYTES)}` }]]) },
+        );
+        const error = await chat.stream(admin, 'conversation-1', { content: 'Describe it', modelId: 'local-mock' }, response as never).catch((cause) => cause);
+        expect(error.getResponse()).toMatchObject({ code: 'CONTEXT_TOO_LONG' });
+        expect(governance.reserve).not.toHaveBeenCalled();
+        expect(prisma.message.create).not.toHaveBeenCalled();
+      });
     });
   });
 

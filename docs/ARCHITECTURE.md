@@ -58,7 +58,7 @@ API documentation is generated from the controllers and DTOs with `@nestjs/swagg
 1. The API checks conversation ownership, model state, role/user permission, and external-provider gates.
    With **Product catalog** on, the question is then embedded and the most similar products are retrieved, before anything is persisted, so a failed search leaves no half-written turn.
 2. A unique request ID and `STREAMING` assistant message are persisted before inference.
-3. The last 50 messages go through the gateway abstraction to LiteLLM. Failed and empty turns stay in the user's history but are never replayed to a provider (some providers reject empty content).
+3. The last 50 messages go through the gateway abstraction to LiteLLM. Failed and empty turns stay in the user's history but are never replayed to a provider (some providers reject empty content). A chat's images go with the user turns that attached them, as OpenAI-style image parts ([CHAT_ATTACHMENTS.md](CHAT_ATTACHMENTS.md#sending)).
 4. Tokens stream as SSE `token` events. Client disconnect aborts the gateway request.
 5. Completion, interruption, or error is persisted without discarding partial content.
 6. Usage is upserted by unique request ID with the pricing version and a complete price snapshot.
@@ -96,8 +96,9 @@ The opt-in Gemini, Groq and OpenRouter overlays add routes through credential pr
 ```text
 NestJS ──► LiteLLM (internal network only) ──► gemini-proxy ──► generativelanguage.googleapis.com
                                                holds the key, sends it as a header
-                                               allows only text generation for GEMINI_MODEL
-                                               rejects tools / grounding / cached content
+                                               allows only generation for GEMINI_MODEL, at most 8 MB a request
+                                               allows inline data only as JPEG / PNG / WebP images
+                                               rejects tools / grounding / cached content / file references
                                                clamps output tokens, forces one candidate
 
                                          └──► groq-proxy ──► api.groq.com

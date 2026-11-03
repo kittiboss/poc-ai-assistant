@@ -50,6 +50,20 @@ describe("usage tracking", () => {
     expect(call.create.actualProviderCost).toBe("0.000000000000");
     expect(call.create.pricingVersionId).toBe("price-v1");
     expect(call.create.pricingSnapshot.version).toBe(1);
+
+    // Without the provider's count, the estimate adds the images' tokens to the text's.
+    await service.record({
+      requestId: "request-images",
+      userId: localUser.id,
+      conversationId: "conversation-1",
+      model: { id: "local-mock", provider: Provider.MOCK, local: true },
+      input: "Explain Docker Compose",
+      imageTokens: 1120,
+      output: "",
+      durationMs: 42,
+      status: RequestStatus.ERROR,
+    });
+    expect(upsert.mock.calls[1][0].create.inputTokens).toBe(6 + 1120);
   });
 
   it("keeps completed usage separate from active token reservations in the live snapshot", async () => {

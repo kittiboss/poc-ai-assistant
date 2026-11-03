@@ -188,14 +188,15 @@ height?: number;
 
 ### Sending
 
-1. A chat's images are all the images its messages attached, as with documents. If the chat has any and the chosen model lacks `vision`, the message is refused with `ATTACHMENT_NEEDS_VISION` before anything is saved, and the web puts it back in the composer.
-2. Each image is sent with the user turn that attached it, after the turn's text: a text part `[Image: receipt.jpg]`, so replies can name it, then an OpenAI-style `image_url` part holding a base64 data URL. Images of turns older than the 49 replayed messages go with the earliest replayed user turn. LiteLLM turns the parts into Gemini's inline data.
+1. A chat's images are all the images its messages attached, as with documents. If the chat has any and the chosen model lacks `vision` (or the deployment no longer has images available), the message is refused with `ATTACHMENT_NEEDS_VISION` before anything is saved or retrieved, and the web puts it back in the composer.
+2. Each image is sent with the user turn that attached it, after the turn's text: a text part `[Image: receipt.jpg]`, so replies can name it, then an OpenAI-style `image_url` part holding a base64 data URL. Images of turns older than the 49 replayed messages go with the earliest replayed user turn. An image is sent once, also when several turns list it. LiteLLM turns the parts into Gemini's inline data.
+   - The images are read from storage before anything is saved; a storage failure refuses the message with `503`. An image whose object is missing is left out with a warning in the log, so one lost file does not fail every later turn of its chat.
 3. `GatewayMessage.content` becomes `string | ContentPart[]`. Turns without images stay strings.
 4. The system message tells the model that text inside images is data, never instructions. When a message only attaches images, the stored content stays empty, the model receives `[Attached without a message: receipt.jpg]` followed by the image, and the overview describes what each image shows.
-5. Each image counts as 1,120 tokens (Gemini 3's default media resolution, whatever the file size) in the context-limit check and the quota reservation, on top of the text's bytes. The base64 data never counts as text.
+5. Each image counts as 1,120 tokens (Gemini 3's default media resolution, whatever the file size) in the context-limit check and the quota reservation, on top of the text's bytes, and in the usage estimate when a provider reports no usage. The base64 data never counts as text, and the sensitive-information check reads only the text parts.
 6. The API refuses with `CONTEXT_TOO_LONG` a request whose text and base64 images together exceed 7.5 MB, below gemini-proxy's 8 MB. Within the chat limits a request stays under about 6.5 MB, so this only catches mistakes.
-7. gemini-proxy accepts requests of at most 8 MB (it was 2 MB) and inline data only when it is a JPEG, PNG or WebP image. Any other inline data, and file references (`fileData`), are refused.
-8. `local-mock` has `vision` for offline tests and demos. mock-provider accepts 8 MB, replies with each image's type and size (it does not look at the picture) and reports 1,120 tokens per image.
+7. gemini-proxy accepts requests of at most 8 MB (it was 2 MB) and inline data only when it is a JPEG, PNG or WebP image, by its declared type and its first bytes, in either spelling Google accepts (LiteLLM writes `inline_data`). Any other inline data, and file references (`fileData`), are refused.
+8. `local-mock` has `vision` for offline tests and demos, and `google-gemini` for the Gemini demo; the other seeded models stay text-only. mock-provider accepts 8 MB, adds each image of the request to its reply as its type and size in bytes (it does not look at the picture) and reports 1,120 tokens per image.
 
 ### Limits
 
@@ -207,7 +208,7 @@ height?: number;
 | Image bytes per chat | 4 MB | About 5.3 MB in base64, leaving room for 1 MB of text under 7.5 MB |
 | Request to the model | 7.5 MB | gemini-proxy accepts 8 MB |
 
-`local-mock`'s 8,192 context window holds about 3 images with a short message; more need Gemini (1M).
+`local-mock`'s 8,192 context window holds 4 images with a short message; more need Gemini (1M).
 
 ### Cost
 
