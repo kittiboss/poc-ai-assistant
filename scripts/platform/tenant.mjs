@@ -202,6 +202,13 @@ async function syncAccounts(admin, realmPath, config, accounts, passwords) {
   }
 }
 
+/** The key pair of the customer's own image storage, generated once and then kept. */
+const storageKeys = (tenant, env) => ({
+  TENANT_S3_ACCESS_KEY_ID:
+    env?.TENANT_S3_ACCESS_KEY_ID ?? `tenant-${tenant}-${secret(8)}`,
+  TENANT_S3_SECRET_ACCESS_KEY: env?.TENANT_S3_SECRET_ACCESS_KEY ?? secret(24),
+});
+
 async function create(tenant) {
   if (!id) usage();
   if (!existsSync(settingsFile(tenant))) {
@@ -323,6 +330,7 @@ async function create(tenant) {
     {
       ...existing,
       TENANT_DB_PASSWORD: existing?.TENANT_DB_PASSWORD ?? secret(16),
+      ...storageKeys(tenant, existing),
       ...passwords,
       VENDOR_MIGRATION_OPENING_USD: openingCredit,
       LITELLM_API_KEY: key,
@@ -417,7 +425,7 @@ async function rotate(tenant) {
   });
   writeEnvFile(
     envFile(tenant),
-    { ...env, LITELLM_API_KEY: key },
+    { ...env, ...storageKeys(tenant, env), LITELLM_API_KEY: key },
     "Tenant secrets. Never commit.",
   );
   await gateway("/key/delete", {
@@ -434,6 +442,14 @@ async function rotate(tenant) {
 async function down(tenant, args) {
   settings(tenant);
   const remove = args.includes("--remove");
+  // Compose reads the whole file, so a customer created before image storage needs its key pair to stop.
+  const existing = readEnvFile(envFile(tenant));
+  if (existing && !existing.TENANT_S3_ACCESS_KEY_ID)
+    writeEnvFile(
+      envFile(tenant),
+      { ...existing, ...storageKeys(tenant, existing) },
+      "Tenant secrets. Never commit.",
+    );
   tenantCompose(tenant, ["down", ...(remove ? ["--volumes"] : [])]);
   if (!remove) return;
   await vendor(`/admin/tenants/${tenant}`, {
