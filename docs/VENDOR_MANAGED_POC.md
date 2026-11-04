@@ -156,11 +156,11 @@ npm run lint -w @enterprise/web
 - RAG engine integration tests also use their own temporary database, on `rag-db`, connected as `rag_app`. They verify isolation (listing, search, edits by ID, forged rows, no-context reads), every vendor limit, version switching, stale vectors, pause/resume, a small tenant beside a large one in the same HNSW index, and purge.
 - `tenant:smoke -- a --rag` uploads TXT, MD, PDF and CSV documents with conflicting facts to customers a and b (`--with <id>` picks the second). It checks that each customer's chat cites only its own documents, including a PDF page. It also checks the embedding ledger entries, that a vendor-lowered top-K is clamped, and that a chunking change switches the index version. It refuses any embedding model other than `mock-embedding` and deletes its uploads afterwards. The browser smoke verifies vendor/customer pages, mock top-up, mobile layout and browser errors using an installed Chrome (`CHROME_PATH` override supported).
 - `tenant:smoke -- a --images` uploads a sample image to the customer and sends it to `local-mock` only. It checks:
+  - the image is in the customer's own SeaweedFS, whose network holds only that customer's backend and SeaweedFS, and comes back unchanged;
   - the reply names the image it received;
-  - the image is in the customer's own SeaweedFS;
-  - the ledger debit counts 1,120 tokens for it.
+  - the ledger counts at least 1,120 input tokens for the request.
 
-  It then turns images off for that customer through the console API, checks that the next image request is refused without a charge, restores the limits and deletes its chat.
+  It then turns images off for that customer through the console API, checks that the next image request is refused without a charge, restores the limits and deletes its chat. The delete is a soft delete, so the image file stays, as in the app. In PowerShell, which drops the `--`, run `node scripts/platform/tenant-smoke.mjs a --images` instead.
 
 ## Production exclusions
 
@@ -172,5 +172,12 @@ Central knowledge base verification, also on 2026-10-22, used mock models only:
 - `tenant:smoke -- a --rag` and `-- b --rag` passed. Each customer cited only its own TXT/MD/PDF/CSV documents, including the PDF page. A vendor-lowered top-K was clamped, a chunking change switched the index version, and the embedding requests appeared in each ledger.
 - The browser smoke passed for the console limits and the `/knowledge` page (upload, ready, delete, mobile).
 - `rag-db` and the engine used about 95 MB together.
+
+Chat images verification, on 2026-11-04, used mock models only:
+- 11 vendor unit tests and all 22 vendor integration tests passed, the latter inside the platform's vendor-control container.
+- Re-running `tenant:create -- a` on an existing customer added its SeaweedFS and key pair and seeded its image limits; its data and knowledge base stayed.
+- `tenant:smoke -- a --images` passed: the image stayed in customer A's own storage, on a network holding only its backend and SeaweedFS. The mock received it, and the ledger counted 1,361 input tokens, of which 1,120 were the image. With images turned off, the next message was refused without a charge.
+- The browser smoke passed with the console's image limits. In customer A's web, Local Mock was tagged "Reads images" and read an attached image. With images turned off in the console, the chat warned and the attach button offered documents only.
+- This run found that image downloads failed with a 500 in vendor-managed deployments, because the customer response filter tried to serialize the file. The filter now passes files through.
 
 No real payment processing, invoices/tax, refunds, provider invoice reconciliation, cloud deployment, MFA/federated vendor administration, guaranteed uptime/SLA, cross-host HA or automated backups are provided. Basic Auth and localhost HTTP are for this local POC only. Use TLS, a vendor identity role, production database roles, secret management, backups/restore tests, distributed provider quota controls and security review before deployment. See [production gaps](PRODUCTION_GAPS.md).

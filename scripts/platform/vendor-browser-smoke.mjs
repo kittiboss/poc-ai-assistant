@@ -39,6 +39,10 @@ try {
   await consolePage.locator("#rag tr").filter({ hasText: "Customer A (a)" }).waitFor();
   await consolePage.locator("#rag-tenant").selectOption("a");
   assert.ok(Number(await consolePage.locator('#rag-limits input[name="maxTopK"]').inputValue()) >= 1);
+  // Image limits per customer.
+  await consolePage.locator("#images tr").filter({ hasText: "Customer A (a)" }).waitFor();
+  await consolePage.locator("#images-tenant").selectOption("a");
+  assert.ok(Number(await consolePage.locator('#image-limits input[name="maxImages"]').inputValue()) >= 1);
   await consolePage.screenshot({
     path: "/tmp/vendor-console-poc.png",
     fullPage: true,

@@ -3,10 +3,13 @@
 // Exhaustion, concurrency and isolation run in test:vendor:integration's isolated temporary DB.
 // --rag [--with <id>]: the central knowledge base, with a second customer (default b, or a) to
 // prove each one only retrieves its own documents. Mock embeddings only; uploads are removed after.
+// --images: a chat image in the customer's own storage, sent to local-mock only and metered by the
+// vendor's ledger; then the vendor turns images off and the next message is refused uncharged.
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
+import { crc32, deflateSync } from "node:zlib";
 import { keycloakUrl, readEnvFile, tenantsDir, vendor } from "./lib.mjs";
 
 const tenant = process.argv[2] || "a";
@@ -99,7 +102,9 @@ const csv = await json("/workspace/usage.csv");
 assert.ok(!/actualProviderCost|simulatedProviderCost/.test(csv.content));
 let rag;
 if (process.argv.includes("--rag")) rag = await centralKnowledge();
-const containerEnv = ["backend", "frontend", "postgres"].flatMap((service) => {
+let images;
+if (process.argv.includes("--images")) images = await chatImages();
+const containerEnv = ["backend", "frontend", "postgres", "seaweedfs"].flatMap((service) => {
   const result = spawnSync(
     "docker",
     [
@@ -132,6 +137,7 @@ console.log(
       customerCostRedaction: "passed",
       noProviderSecrets: "passed",
       ...(rag ? { rag } : {}),
+      ...(images ? { images } : {}),
     },
     null,
     2,
@@ -170,7 +176,103 @@ async function customer(id) {
     assert.ok(response.ok, `${id} ${init.method ?? "GET"} ${path}: ${response.status} ${text.slice(0, 300)}`);
     return text.startsWith("event:") ? text : text ? JSON.parse(text) : undefined;
   };
-  return { id, call };
+  return { id, call, send: (path, init = {}) => send(path, init) };
+}
+
+/** A real PNG of grey pixels, so the tenant reads its type and size from it as for uploads. */
+function png(width, height) {
+  const chunk = (type, data) => {
+    const body = Buffer.concat([Buffer.from(type, "latin1"), data]);
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body));
+    return Buffer.concat([length, body, crc]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header[8] = 8; // 8-bit greyscale, no interlace
+  const rows = Buffer.alloc((width + 1) * height, 0x80);
+  for (let y = 0; y < height; y++) rows[y * (width + 1)] = 0; // each row's filter byte
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", header),
+    chunk("IDAT", deflateSync(rows)),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
+}
+
+async function chatImages() {
+  const self = await customer(tenant);
+  const limits = (await vendor("/admin/tenants")).find((t) => t.id === tenant).images;
+  const seeing = async () =>
+    (await self.call("/models")).find((m) => m.id === "local-mock")?.capabilities.includes("vision") === true;
+  const conversation = await self.call("/conversations", { method: "POST", body: "{}" });
+  try {
+    assert.ok(limits.enabled && limits.models.includes("local-mock"), `${tenant}: the image limits do not allow local-mock`);
+    assert.ok(await seeing(), `${tenant}: local-mock does not report vision`);
+    const file = png(64, 48);
+    const form = new FormData();
+    form.append("file", new Blob([file], { type: "image/png" }), "smoke.png");
+    const image = await self.call("/attachments", { method: "POST", body: form });
+    assert.deepEqual([image.kind, image.mimeType, image.width, image.height], ["IMAGE", "image/png", 64, 48]);
+
+    // The file sits in this customer's own storage, which only its backend can reach.
+    const listed = spawnSync("docker", ["exec", "-i", `tenant-${tenant}-seaweedfs-1`, "weed", "shell"], {
+      input: "fs.ls /buckets/attachments/attachments\n",
+      encoding: "utf8",
+    });
+    assert.ok(listed.stdout.includes(image.id), `${tenant}: the image is not in its own storage`);
+    const network = spawnSync(
+      "docker",
+      ["network", "inspect", `tenant-${tenant}_storage`, "--format", "{{range .Containers}}{{.Name}} {{end}}"],
+      { encoding: "utf8" },
+    );
+    assert.deepEqual(network.stdout.trim().split(" ").sort(), [`tenant-${tenant}-backend-1`, `tenant-${tenant}-seaweedfs-1`]);
+    const content = await self.send(`/attachments/${image.id}/content`);
+    const stored = Buffer.from(await content.arrayBuffer());
+    assert.ok(
+      content.ok && stored.equals(file),
+      `${tenant}: the stored image changed (${content.status}, ${stored.length} of ${file.length} bytes: ${stored.subarray(0, 80).toString("latin1")})`,
+    );
+
+    const requestId = randomUUID();
+    const stream = await self.call(`/conversations/${conversation.id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ requestId, modelId: "local-mock", content: "What is in this image?", attachmentIds: [image.id] }),
+    });
+    assert.ok(stream.includes("event: done"), `${tenant}: image chat failed: ${stream.slice(0, 300)}`);
+    // The mock names each image it received by type and size, so the reply proves the bytes arrived.
+    const reply = (await self.call(`/conversations/${conversation.id}`)).messages.at(-1).content;
+    assert.ok(reply.includes(`Images: image/png, ${file.length.toLocaleString("en")} bytes`), `${tenant}: ${reply}`);
+    const metered = (await self.call("/admin/billing")).requests.find((r) => r.request_id === requestId);
+    assert.equal(metered?.state, "COMPLETED");
+    assert.ok(metered.input_tokens >= 1120, `${tenant}: the ledger counted ${metered.input_tokens} input tokens`);
+
+    // The vendor turns images off: no model offers vision, and the chat's next message is refused uncharged.
+    await vendor(`/admin/tenants/${tenant}/images`, { method: "PATCH", body: { enabled: false } });
+    assert.equal(await seeing(), false, `${tenant}: local-mock still reports vision`);
+    const refusedId = randomUUID();
+    const refused = await self.send(`/conversations/${conversation.id}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ requestId: refusedId, modelId: "local-mock", content: "And now?" }),
+    });
+    assert.equal(refused.status, 400);
+    assert.equal((await refused.json()).code, "ATTACHMENT_NEEDS_VISION");
+    assert.ok(!(await self.call("/admin/billing")).requests.some((r) => r.request_id === refusedId));
+    return {
+      ownStorage: "passed",
+      storageNetwork: "backend and seaweedfs only",
+      mockReceivedImage: "passed",
+      ledgerInputTokens: metered.input_tokens,
+      charge: metered.charge,
+      vendorTurnedOff: "refused, not charged",
+    };
+  } finally {
+    await vendor(`/admin/tenants/${tenant}/images`, { method: "PATCH", body: limits }).catch(() => undefined);
+    await self.call(`/conversations/${conversation.id}`, { method: "DELETE" }).catch(() => undefined);
+  }
 }
 
 /** A one-page PDF with real text, so the tenant's PDF extraction runs as it does for uploads. */
