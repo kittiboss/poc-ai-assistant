@@ -389,6 +389,9 @@ async function status(only) {
         knowledge: rag
           ? `${used.get(t.id)?.documents ?? 0}/${t.rag.maxDocuments} docs, ${used.get(t.id)?.chunks ?? 0}/${t.rag.maxTotalChunks} chunks`
           : "unavailable",
+        images: t.imagesEntitled.length
+          ? `${t.imagesEntitled.join(" ")}, ${t.images.maxImages} a chat`
+          : "off",
       })),
   );
 }

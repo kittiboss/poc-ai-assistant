@@ -50,6 +50,57 @@ export function contentPart(part, role) {
   return { type: "image_url", image_url: { url } };
 }
 
-/** Whether the platform lets `model` receive `images` images in one request. */
-export const imagesAllowed = (model, images) =>
-  VISION_MODELS.has(model) && images <= MAX_IMAGES;
+// Image limits the vendor sets per tenant in the console (vendor.tenants.images). The customer API
+// reads them from GET /v1/models; vendor-control enforces them on every request.
+
+/** New tenants start mock-only, like their model plan. */
+export const defaultImages = () => ({
+  enabled: true,
+  models: ["local-mock"],
+  maxImages: MAX_IMAGES,
+});
+
+/** A complete, validated limits object; missing fields keep their current value. */
+export function imagesInput(body, current = defaultImages()) {
+  if (!body || typeof body !== "object" || Array.isArray(body))
+    throw new Error("Image limits must be an object");
+  const next = { ...current, ...body };
+  const unknown = Object.keys(next).filter((key) => !(key in defaultImages()));
+  if (unknown.length) throw new Error(`Unknown setting: ${unknown.join(", ")}`);
+  if (typeof next.enabled !== "boolean")
+    throw new Error("enabled must be true or false");
+  const vision = [...VISION_MODELS.keys()];
+  if (
+    !Array.isArray(next.models) ||
+    next.models.some((model) => !vision.includes(model)) ||
+    new Set(next.models).size !== next.models.length
+  )
+    throw new Error(`models must be a list of: ${vision.join(", ")}`);
+  const maxImages = Number(next.maxImages);
+  if (!Number.isInteger(maxImages) || maxImages < 1 || maxImages > MAX_IMAGES)
+    throw new Error(`maxImages must be a whole number from 1 to ${MAX_IMAGES}`);
+  if (next.enabled && !next.models.length)
+    throw new Error("Choose at least one model");
+  return {
+    enabled: next.enabled,
+    models: vision.filter((model) => next.models.includes(model)),
+    maxImages,
+  };
+}
+
+/** What the tenant may send: the vision models of its limits that its plan includes; none when off. */
+export const effectiveImages = (images, config) => {
+  const limits = images ?? defaultImages();
+  return {
+    ...limits,
+    models: limits.enabled
+      ? limits.models.filter((model) => config.models.includes(model))
+      : [],
+  };
+};
+
+/** Whether `tenant` may send `images` images to `model` in one request. */
+export const imagesAllowed = (tenant, model, images) => {
+  const limits = effectiveImages(tenant.images, tenant.config);
+  return limits.models.includes(model) && images <= limits.maxImages;
+};

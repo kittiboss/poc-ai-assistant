@@ -4,7 +4,10 @@ import {
   MAX_IMAGES,
   VISION_MODELS,
   contentPart,
+  defaultImages,
+  effectiveImages,
   imagesAllowed,
+  imagesInput,
 } from "./images.mjs";
 
 const PNG = Buffer.from([
@@ -75,11 +78,77 @@ test("parts keep only the fields that are forwarded; images only in user message
     assert.throws(() => contentPart(part, "user"));
 });
 
-test("only the platform's vision models take images, at most a chat's worth a request", () => {
+test("new tenants may send images to local-mock only; limits are validated and merged", () => {
   assert.deepEqual([...VISION_MODELS.keys()], ["local-mock", "google-gemini"]);
-  assert.equal(imagesAllowed("local-mock", MAX_IMAGES), true);
-  assert.equal(imagesAllowed("google-gemini", 1), true);
-  assert.equal(imagesAllowed("local-mock", MAX_IMAGES + 1), false);
+  assert.deepEqual(defaultImages(), {
+    enabled: true,
+    models: ["local-mock"],
+    maxImages: MAX_IMAGES,
+  });
+  assert.deepEqual(imagesInput(defaultImages()), defaultImages());
+  assert.deepEqual(
+    imagesInput({ models: ["google-gemini", "local-mock"], maxImages: "3" }),
+    { enabled: true, models: ["local-mock", "google-gemini"], maxImages: 3 },
+  );
+  // Images off need no model.
+  assert.deepEqual(imagesInput({ enabled: false, models: [] }), {
+    enabled: false,
+    models: [],
+    maxImages: MAX_IMAGES,
+  });
+  for (const body of [
+    { models: ["groq-llama"] },
+    { models: ["local-mock", "local-mock"] },
+    { models: [] },
+    { maxImages: 0 },
+    { maxImages: MAX_IMAGES + 1 },
+    { maxImages: 2.5 },
+    { enabled: "yes" },
+    { perMessage: 2 },
+    [],
+    null,
+  ])
+    assert.throws(() => imagesInput(body), JSON.stringify(body));
+});
+
+test("a tenant sends images only to vision models of its limits that its plan includes", () => {
+  const tenant = (
+    images,
+    models = ["local-mock", "google-gemini", "groq-llama"],
+  ) => ({
+    images,
+    config: { models },
+  });
+  const both = {
+    enabled: true,
+    models: ["local-mock", "google-gemini"],
+    maxImages: 2,
+  };
+  assert.deepEqual(effectiveImages(both, { models: ["local-mock"] }).models, [
+    "local-mock",
+  ]);
+  assert.deepEqual(
+    effectiveImages({ ...both, enabled: false }, { models: ["local-mock"] })
+      .models,
+    [],
+  );
+  // Tenants registered before image limits existed get the defaults.
+  assert.deepEqual(
+    effectiveImages(null, { models: ["local-mock"] }),
+    defaultImages(),
+  );
+  assert.equal(imagesAllowed(tenant(both), "google-gemini", 2), true);
+  assert.equal(imagesAllowed(tenant(both), "google-gemini", 3), false);
+  assert.equal(
+    imagesAllowed(tenant(both, ["local-mock"]), "google-gemini", 1),
+    false,
+  );
+  assert.equal(
+    imagesAllowed(tenant({ ...both, enabled: false }), "local-mock", 1),
+    false,
+  );
+  assert.equal(imagesAllowed(tenant(null), "local-mock", MAX_IMAGES), true);
+  assert.equal(imagesAllowed(tenant(null), "google-gemini", 1), false);
   for (const model of ["groq-llama", "openrouter-free", "mock-embedding"])
-    assert.equal(imagesAllowed(model, 1), false);
+    assert.equal(imagesAllowed(tenant(both), model, 1), false);
 });

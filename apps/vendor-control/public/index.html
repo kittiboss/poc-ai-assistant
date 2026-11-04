@@ -280,6 +280,54 @@
           ><button>Save limits</button>
         </form>
       </section>
+      <section>
+        <h2>Image limits</h2>
+        <p>
+          Chat images stay in each customer's own storage and reach the model
+          inside the request. Each image is billed as 1,120 input tokens when
+          reserved and settled on the provider's count. Models also need the
+          tenant's model entitlement.
+        </p>
+        <div class="scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Tenant</th>
+                <th>Models</th>
+                <th>Images per chat</th>
+              </tr>
+            </thead>
+            <tbody id="images"></tbody>
+          </table>
+        </div>
+        <form id="image-limits">
+          <label>Tenant<select name="tenant" id="images-tenant"></select></label
+          ><label class="check"
+            ><input name="enabled" type="checkbox" />Enabled</label
+          ><fieldset>
+            <legend>Models</legend>
+            <label class="check"
+              ><input
+                name="models"
+                type="checkbox"
+                value="local-mock" />local-mock</label
+            ><label class="check"
+              ><input
+                name="models"
+                type="checkbox"
+                value="google-gemini" />google-gemini</label
+            >
+          </fieldset>
+          <label
+            >Images per chat<input
+              name="maxImages"
+              type="number"
+              min="1"
+              max="6"
+              required /></label
+          ><button>Save limits</button>
+        </form>
+      </section>
       <section id="history" hidden>
         <h2 id="history-title">Credit history</h2>
         <p>

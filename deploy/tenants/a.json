@@ -46,6 +46,11 @@
     "maxTotalChunks": 3000,
     "maxTopK": 8
   },
+  "images": {
+    "enabled": true,
+    "models": ["local-mock", "google-gemini"],
+    "maxImages": 6
+  },
   "users": [
     { "username": "user-1", "name": "User 1", "roles": ["USER"] },
     { "username": "user-2", "name": "User 2", "roles": ["USER"] }

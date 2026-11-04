@@ -152,6 +152,43 @@ test(
       },
     );
     await t.test(
+      "image limits are seeded once and survive re-provisioning",
+      async () => {
+        const config = {
+          ...defaultConfig("pics", "Pictures"),
+          models: ["local-mock", "google-gemini"],
+        };
+        await store.register(
+          { ...config, images: { models: ["local-mock", "google-gemini"], maxImages: 3 } },
+          `sk-${randomUUID()}`,
+          "1",
+        );
+        await store.setImages("pics", { maxImages: 2 });
+        // tenant:create and tenant:rotate re-register with the checked-in seed.
+        await store.register(
+          { ...config, images: { models: ["local-mock"], maxImages: 6 } },
+          `sk-${randomUUID()}`,
+        );
+        const [row] = (await store.tenants()).filter((t) => t.id === "pics");
+        assert.equal(row.config.images, undefined);
+        assert.deepEqual(row.images, {
+          enabled: true,
+          models: ["local-mock", "google-gemini"],
+          maxImages: 2,
+        });
+        assert.deepEqual(row.imagesEntitled, ["local-mock", "google-gemini"]);
+        // A tenant registered without a seed gets the defaults.
+        const [plain] = (await store.tenants()).filter((t) => t.id === "a");
+        assert.deepEqual(plain.images, { enabled: true, models: ["local-mock"], maxImages: 6 });
+        await assert.rejects(
+          store.register({ ...config, id: "bad-pics", images: { models: ["groq-llama"] } }),
+          { status: 400 },
+        );
+        await assert.rejects(store.setImages("pics", { maxImages: 7 }), { status: 400 });
+        await assert.rejects(store.setImages("missing", {}), { status: 404 });
+      },
+    );
+    await t.test(
       "database refuses updates/deletes of historical prices and ledger entries",
       async () => {
         await assert.rejects(
@@ -405,7 +442,7 @@ test(
       },
     );
     await t.test(
-      "images for a model or a count the platform does not allow are refused before any reservation",
+      "images for a model or a count outside the tenant's image limits are refused before any reservation",
       async () => {
         const key = `sk-${randomUUID()}`;
         await store.register(
@@ -433,6 +470,73 @@ test(
         assert.equal((await remote.json()).error.type, "invalid_request");
         assert.equal(upstreamCalls, before);
         assert.equal((await store.balance("img")).remaining, 2);
+      },
+    );
+    await t.test(
+      "the vendor's image limits decide what /v1/models offers and what a request may carry",
+      async () => {
+        const key = `sk-${randomUUID()}`;
+        await store.register(
+          {
+            ...defaultConfig("lim", "Limits"),
+            // google-gemini is in the limits but not the plan, so it never takes effect.
+            models: ["local-mock", "groq-llama"],
+            images: { models: ["local-mock", "google-gemini"], maxImages: 3 },
+          },
+          key,
+          "2",
+        );
+        const offered = async () =>
+          Object.fromEntries(
+            (await (await call("/v1/models", undefined, key)).json()).data.map(
+              ({ id, ...rest }) => [id, rest],
+            ),
+          );
+        assert.deepEqual(await offered(), {
+          "local-mock": { object: "model", capabilities: ["vision"], max_images: 3 },
+          "groq-llama": { object: "model" },
+        });
+        const vendor = {
+          Authorization: "Bearer vendor-test-key-that-is-not-a-real-secret",
+          "Content-Type": "application/json",
+        };
+        const patch = (body, headers = vendor) =>
+          fetch(`${base}/admin/tenants/lim/images`, {
+            method: "PATCH",
+            headers,
+            body: JSON.stringify(body),
+          });
+        assert.equal(
+          (await patch({ enabled: false }, { ...vendor, Authorization: `Bearer ${key}` })).status,
+          401,
+        );
+        assert.equal((await patch({ models: ["groq-llama"] })).status, 400);
+        const send = async (count) => {
+          const id = randomUUID();
+          const urls = Array.from({ length: count }, () => png(64));
+          const response = await call("/v1/chat/completions", withImages("local-mock", ...urls), key, {
+            "x-request-id": id,
+          });
+          return { status: response.status, body: await response.text(), reserved: await reservedFor(id) };
+        };
+        // Off: no model offers vision, and an image request is refused before any reservation.
+        assert.equal((await patch({ enabled: false })).status, 200);
+        assert.deepEqual((await offered())["local-mock"], { object: "model" });
+        const off = await send(1);
+        assert.equal(off.status, 403);
+        assert.match(off.body, /image_access_denied/);
+        assert.equal(off.reserved, undefined);
+        // On again with fewer images a chat; the change applies to the next request.
+        assert.equal((await patch({ enabled: true, maxImages: 1 })).status, 200);
+        assert.equal((await offered())["local-mock"].max_images, 1);
+        assert.equal((await send(2)).status, 403);
+        const one = await send(1);
+        assert.equal(one.status, 200);
+        assert.ok(BigInt(one.reserved) > 0n);
+        // Text still goes to every model of the plan.
+        const text = await call("/v1/chat/completions", { ...chat, model: "groq-llama" }, key);
+        assert.equal(text.status, 200);
+        await text.text();
       },
     );
     await t.test("only chat completions take a body over 512 KB, after authentication", async () => {
