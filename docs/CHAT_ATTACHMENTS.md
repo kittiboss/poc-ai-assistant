@@ -213,7 +213,7 @@ height?: number;
 
 ### Cost
 
-An image costs about 1,120 input tokens on every turn while it is in the chat, whatever its file size. A chat with 6 images uses about 6,700 tokens a turn before any text: about $0.002 at Gemini 3.5 Flash-Lite's paid list price ($0.30 per 1M input tokens), and $0 on the free tier. The default external limit of 100,000 tokens a day covers about 14 such turns across all users; raise `EXTERNAL_DAILY_TOKEN_LIMIT` for a demo day if needed. Every turn sends the chat's images again, so a chat with many images answers more slowly.
+An image costs about 1,120 input tokens on every turn while it is in the chat, whatever its file size. A chat with 6 images uses about 6,700 tokens a turn before any text: about $0.002 at Gemini 3.5 Flash-Lite's paid list price ($0.30 per 1M input tokens), and $0 on the free tier. The default external limit of 100,000 tokens a day covers about 14 such turns across all users; raise `EXTERNAL_DAILY_TOKEN_LIMIT` for a demo day if needed. Every turn sends the chat's images again, so a chat with many images answers more slowly. In a demo on 2026-11-04, Gemini 3.5 Flash-Lite counted 1,367 input tokens for a message that only sent one 1,600 × 900 image, system message included, and 1,410 for the follow-up question, which sent the image again; the image accounts for about 1,100 of them.
 
 ### Known gaps
 

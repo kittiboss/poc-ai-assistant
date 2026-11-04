@@ -21,8 +21,8 @@ services:
       timeout: 3s
       retries: 20
     # The only container granted internet egress for a model provider. It holds the
-    # credential and forwards nothing but text generation for GEMINI_MODEL and text
-    # embedding for GEMINI_EMBEDDING_MODEL.
+    # credential and forwards nothing but generation for GEMINI_MODEL (text, and inline
+    # JPEG, PNG or WebP images) and embedding for GEMINI_EMBEDDING_MODEL.
     networks: [backend, edge]
     restart: unless-stopped
 
