@@ -18,10 +18,13 @@ const textFile = (name: string, text: string): FilePayload => ({
   buffer: Buffer.from(text),
 });
 
+/** The attach button; `local-mock` reads images, so it offers them too. */
+const attachButton = (page: Page, m: Messages) => page.getByRole('button', { name: m.chat.attachWithImages });
+
 /** Picks files with the attach button's file picker. */
 async function attach(page: Page, m: Messages, ...files: FilePayload[]) {
   const chooser = page.waitForEvent('filechooser');
-  await page.getByRole('button', { name: m.chat.attach }).click();
+  await attachButton(page, m).click();
   await (await chooser).setFiles(files);
 }
 
@@ -103,9 +106,15 @@ test('refuses what the API cannot read, and files over the limits before they ar
   await page.getByRole('button', { name: m.chat.attachRemove.replace('{name}', 'blank.txt') }).click();
   await expect(chips).toHaveCount(0);
 
-  // A type or size the API does not take is not added.
+  // An image the browser cannot decode stays with the reason, like a document the API cannot read.
   await attach(page, m, { name: 'photo.png', mimeType: 'image/png', buffer: Buffer.from('89504e470d0a1a0a', 'hex') });
-  await expect(page.getByText(m.chat.attachError.TYPE)).toBeVisible();
+  await expect(chips).toContainText(m.chat.attachError.UNREADABLE);
+  await page.getByRole('button', { name: m.chat.attachRemove.replace('{name}', 'photo.png') }).click();
+  await expect(chips).toHaveCount(0);
+
+  // A type or size the API does not take is not added.
+  await attach(page, m, { name: 'anim.gif', mimeType: 'image/gif', buffer: Buffer.from('GIF89a') });
+  await expect(page.getByText(m.chat.attachError.TYPE_IMAGES)).toBeVisible();
   await attach(page, m, textFile('huge.txt', 'a'.repeat(6 * 1024 * 1024)));
   await expect(page.getByText(m.chat.attachError.SIZE)).toBeVisible();
   await expect(chips).toHaveCount(0);
@@ -114,7 +123,7 @@ test('refuses what the API cannot read, and files over the limits before they ar
   await attach(page, m, ...['a', 'b', 'c', 'd'].map((name) => textFile(`${name}.txt`, name)));
   await expect(page.getByText(m.chat.attachLimit.replace('{max}', '3'))).toBeVisible();
   await expect(chips).toHaveCount(3);
-  await expect(page.getByRole('button', { name: m.chat.attach })).toBeDisabled();
+  await expect(attachButton(page, m)).toBeDisabled();
   for (const name of ['a', 'b', 'c'])
     await page.getByRole('button', { name: m.chat.attachRemove.replace('{name}', `${name}.txt`) }).click();
   await expect(chips).toHaveCount(0);

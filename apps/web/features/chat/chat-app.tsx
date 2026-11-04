@@ -11,7 +11,7 @@ import { useEnumLabel } from '@/i18n/use-enum-label';
 import { ApiError } from '@/lib/api/client';
 import type { Message, Model } from '@/lib/api/types';
 import { useUIStore } from '@/stores/ui-store-provider';
-import { ChatComposer } from './chat-composer';
+import { ChatComposer, type ImageSupport } from './chat-composer';
 import {
   isConversationId,
   type Rating,
@@ -26,6 +26,7 @@ import { exportChat } from './export-chat';
 import type { MessageActions } from './message-bubble';
 import { MessageList } from './message-list';
 import { ModelPicker } from './model-picker';
+import { MAX_CHAT_IMAGES } from './prepare-image';
 import { PromptDialog } from './prompt-dialog';
 import { useSendMessage } from './use-send-message';
 
@@ -70,6 +71,18 @@ export function ChatApp() {
     (conversation.error instanceof ApiError && [400, 404].includes(conversation.error.status));
   const loadError = [models.error, conversations.error, notFound ? null : conversation.error].find(Boolean);
   const error = chatError || loadError?.message;
+  const images: ImageSupport = selectedModel?.capabilities.includes('vision')
+    ? 'accepted'
+    : modelList.some((model) => model.capabilities.includes('vision'))
+      ? 'otherModel'
+      : 'unavailable';
+  // Every image of the chat goes with each message, so a model that cannot read them cannot continue it.
+  const chatImages = new Set(
+    messages.flatMap((message) =>
+      (message.metadata.attachments ?? []).flatMap((file) => (file.kind === 'IMAGE' ? [file.id] : [])),
+    ),
+  ).size;
+  const chatNeedsVision = chatImages > 0 && images !== 'accepted';
   // The platform gateway reports every model as out of credit; say why nothing can be sent.
   const creditExhausted = modelList.some((model) => model.status === 'Credit exhausted');
   const title =
@@ -237,14 +250,17 @@ export function ChatApp() {
               <Alert type="warning" title={t('externalNotice', { provider: selectedModel.provider })} />
             )}
             {creditExhausted && !error && <Alert type="error" title={t('creditExhausted')} />}
+            {chatNeedsVision && <Alert type="warning" title={t('chatNeedsVision')} />}
             {error && (
               <Alert type="error" title={error} closable={Boolean(chatError)} onClose={() => setChatError('')} />
             )}
             {composerOptions}
             <ChatComposer
               generating={generating}
-              canSend={Boolean(selectedModel?.available)}
+              canSend={Boolean(selectedModel?.available) && !chatNeedsVision}
               disabled={notFound}
+              images={images}
+              imageRoom={MAX_CHAT_IMAGES - chatImages}
               onSend={(prompt, attachments) =>
                 send({ conversationId: activeId, prompt, attachments, modelId, useKnowledge: catalogOn })
               }

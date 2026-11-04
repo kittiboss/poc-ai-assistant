@@ -15,6 +15,7 @@ import type {
   Message,
   Model,
 } from '@/lib/api/types';
+import { isImage } from './prepare-image';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -147,8 +148,8 @@ export function useBranchConversation() {
 const ATTACHMENT_PROBLEMS = ['TYPE', 'SIZE', 'UNREADABLE', 'NO_TEXT', 'TOO_LONG', 'BUSY'] as const;
 
 /**
- * Files for the next message. The API keeps only their extracted text; a refused file comes back
- * with a code, so the error is worded here in the user's language.
+ * Files for the next message. The API keeps a document's extracted text and an image's file; a
+ * refused file comes back with a code, so the error is worded here in the user's language.
  */
 export function useAttachmentApi() {
   const { fetch } = useApi();
@@ -166,7 +167,7 @@ export function useAttachmentApi() {
       const problem = response.status === 413 ? 'SIZE' : ATTACHMENT_PROBLEMS.find((item) => item === code);
       throw new Error(
         problem
-          ? t(`attachError.${problem}`)
+          ? t(`attachError.${problem === 'SIZE' && isImage(file) ? 'IMAGE_SIZE' : problem}`)
           : (errorMessage(body) ?? tErrors('requestFailed', { status: response.status })),
       );
     },

@@ -707,10 +707,30 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * Attach a document to the caller's next chat message
-     * @description TXT, MD, CSV, JSON, text PDF or DOCX. Text is extracted in this deployment and only the text is kept. The attachment stays unsent until a message lists it in `attachmentIds`; unsent attachments are removed after 24 hours.
+     * Attach a document or image to the caller's next chat message
+     * @description TXT, MD, CSV, JSON, text PDF or DOCX: text is extracted in this deployment and only the text is kept. JPEG, PNG or WebP, where models report the `vision` capability: the file is kept in object storage. The type of an image is read from its first bytes. The attachment stays unsent until a message lists it in `attachmentIds`; unsent attachments are removed after 24 hours.
      */
     post: operations['AttachmentsController_upload'];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  '/api/attachments/{id}/content': {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Download an attached image
+     * @description For the image's owner only. Documents keep no file. The file never changes, so the browser may cache it.
+     */
+    get: operations['AttachmentsController_content'];
+    put?: never;
+    post?: never;
     delete?: never;
     options?: never;
     head?: never;
@@ -1000,6 +1020,7 @@ export interface components {
       /** @example 8192 */
       contextWindow: number;
       /**
+       * @description vision: the model can read images attached to a chat. Reported only where this deployment accepts images.
        * @example [
        *       "chat",
        *       "streaming"
@@ -1321,10 +1342,30 @@ export interface components {
        */
       pageCount: number | null;
       /**
-       * @description Characters of extracted text that the model reads.
+       * @description Characters of extracted text that the model reads; 0 for images.
        * @example 18350
        */
       charCount: number;
+      /**
+       * @description Absent on files sent before images were supported: a document.
+       * @enum {string}
+       */
+      kind?: 'DOCUMENT' | 'IMAGE';
+      /**
+       * @description Images only, read from the file's first bytes.
+       * @enum {string}
+       */
+      mimeType?: 'image/jpeg' | 'image/png' | 'image/webp';
+      /**
+       * @description Images only, in pixels.
+       * @example 1600
+       */
+      width?: number;
+      /**
+       * @description Images only, in pixels.
+       * @example 900
+       */
+      height?: number;
     };
     MessageMetadata: {
       /** @description Local tool that produced this message; no model was called. */
@@ -1679,10 +1720,30 @@ export interface components {
        */
       pageCount: number | null;
       /**
-       * @description Characters of extracted text that the model reads.
+       * @description Characters of extracted text that the model reads; 0 for images.
        * @example 18350
        */
       charCount: number;
+      /**
+       * @description Absent on files sent before images were supported: a document.
+       * @enum {string}
+       */
+      kind?: 'DOCUMENT' | 'IMAGE';
+      /**
+       * @description Images only, read from the file's first bytes.
+       * @enum {string}
+       */
+      mimeType?: 'image/jpeg' | 'image/png' | 'image/webp';
+      /**
+       * @description Images only, in pixels.
+       * @example 1600
+       */
+      width?: number;
+      /**
+       * @description Images only, in pixels.
+       * @example 900
+       */
+      height?: number;
       /** Format: date-time */
       createdAt: string;
     };
@@ -4630,7 +4691,7 @@ export interface operations {
         'multipart/form-data': {
           /**
            * Format: binary
-           * @description At most 5 MB.
+           * @description At most 5 MB; an image at most 1 MB and 1,600 px on its longer side.
            */
           file: string;
         };
@@ -4645,7 +4706,7 @@ export interface operations {
           'application/json': components['schemas']['AttachmentView'];
         };
       };
-      /** @description No file (no code), or code ATTACHMENT_TYPE (unsupported type), ATTACHMENT_SIZE (empty), ATTACHMENT_UNREADABLE, ATTACHMENT_NO_TEXT (such as a scanned PDF) or ATTACHMENT_TOO_LONG (more than 60,000 characters of text). */
+      /** @description No file (no code), or code ATTACHMENT_TYPE (unsupported type, or an image where images are unavailable), ATTACHMENT_SIZE (empty, or an image over 1 MB or 1,600 px), ATTACHMENT_UNREADABLE, ATTACHMENT_NO_TEXT (such as a scanned PDF) or ATTACHMENT_TOO_LONG (more than 60,000 characters of text). */
       400: {
         headers: {
           [name: string]: unknown;
@@ -4681,6 +4742,91 @@ export interface operations {
           'application/json': components['schemas']['ErrorResponse'];
         };
       };
+      /** @description Image storage is unavailable; retry shortly. */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+    };
+  };
+  AttachmentsController_content: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Image attachment ID owned by the caller. */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The image file, with the type read at upload. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'image/jpeg': string;
+          'image/png': string;
+          'image/webp': string;
+        };
+      };
+      /** @description Malformed ID: IDs must be UUIDs. */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'image/jpeg': components['schemas']['ErrorResponse'];
+          'image/png': components['schemas']['ErrorResponse'];
+          'image/webp': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Missing, expired, or invalid access token (signature, issuer, audience). */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Image attachment does not exist or is not visible to the caller. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'image/jpeg': components['schemas']['ErrorResponse'];
+          'image/png': components['schemas']['ErrorResponse'];
+          'image/webp': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Rate limit exceeded (60 requests per minute). */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'application/json': components['schemas']['ErrorResponse'];
+        };
+      };
+      /** @description Image storage is unavailable; retry shortly. */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          'image/jpeg': components['schemas']['ErrorResponse'];
+          'image/png': components['schemas']['ErrorResponse'];
+          'image/webp': components['schemas']['ErrorResponse'];
+        };
+      };
     };
   };
   AttachmentsController_remove: {
@@ -4695,7 +4841,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Removed. */
+      /** @description Removed, with its image file. */
       204: {
         headers: {
           [name: string]: unknown;
