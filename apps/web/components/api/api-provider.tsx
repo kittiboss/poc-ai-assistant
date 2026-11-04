@@ -53,18 +53,23 @@ export function ApiProvider({ children }: { children: ReactNode }) {
 }
 
 function QueryProvider({ children }: { children: ReactNode }) {
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: {
-            staleTime: 30_000,
-            // Client errors (bad id, no permission, expired session) won't succeed on retry.
-            retry: (failureCount, error) => !(error instanceof ApiError && error.status < 500) && failureCount < 2,
-          },
+  const [queryClient] = useState(() => {
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: {
+          staleTime: 30_000,
+          // Client errors (bad id, no permission, expired session) won't succeed on retry.
+          retry: (failureCount, error) => !(error instanceof ApiError && error.status < 500) && failureCount < 2,
         },
-      }),
-  );
+      },
+    });
+    // A query marked `objectUrl` holds a file in memory (an attached image); it is let go with the query.
+    client.getQueryCache().subscribe((event) => {
+      if (event.type === 'removed' && event.query.meta?.objectUrl && typeof event.query.state.data === 'string')
+        URL.revokeObjectURL(event.query.state.data);
+    });
+    return client;
+  });
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
 }
 

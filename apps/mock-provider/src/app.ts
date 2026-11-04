@@ -3,16 +3,33 @@ import { createHash, randomUUID } from 'node:crypto';
 
 export const MOCK_RESPONSE = 'This is a mock AI response for local POC testing.';
 
-type ChatMessage = { role: string; content: string };
+type ContentPart = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } };
+type ChatMessage = { role: string; content: string | ContentPart[] };
+
+/** Gemini 3's default media resolution, which the API also counts per image. */
+export const IMAGE_TOKENS = 1_120;
 
 function tokenCount(text: string) {
   return Math.max(1, Math.ceil(text.length / 4));
 }
 
+const textOf = (content: ChatMessage['content'] | undefined) =>
+  typeof content === 'string' ? content : (content || []).flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('\n');
+
+const imagesOf = (messages: ChatMessage[]) =>
+  messages.flatMap((message) => (Array.isArray(message.content) ? message.content : [])).flatMap((part) => (part.type === 'image_url' ? [part.image_url.url] : []));
+
+/** The mock never looks at a picture: it names each image's type and size, so tests can see every image arrived. */
+function describeImage(url: string) {
+  const data = /^data:([^;,]+);base64,(.*)$/.exec(url);
+  return data ? `${data[1]}, ${Buffer.byteLength(data[2], 'base64').toLocaleString('en')} bytes` : 'not inline data';
+}
+
 function responseFor(messages: ChatMessage[]) {
-  const prompt = messages.at(-1)?.content || '';
-  if (/explain docker compose/i.test(prompt)) return MOCK_RESPONSE;
-  return `${MOCK_RESPONSE}\n\nReceived: ${prompt.slice(0, 160)}`;
+  const prompt = textOf(messages.at(-1)?.content);
+  const images = imagesOf(messages);
+  const reply = /explain docker compose/i.test(prompt) ? MOCK_RESPONSE : `${MOCK_RESPONSE}\n\nReceived: ${prompt.slice(0, 160)}`;
+  return images.length ? `${reply}\n\nImages: ${images.map(describeImage).join('; ')}` : reply;
 }
 
 export const MOCK_EMBEDDING_DIMENSIONS = 768;
@@ -38,7 +55,8 @@ export function mockEmbedding(text: string, dimensions = MOCK_EMBEDDING_DIMENSIO
 
 export function createApp() {
   const app = express();
-  app.use(express.json({ limit: '1mb' }));
+  // As much as gemini-proxy accepts, so chats with images behave the same offline.
+  app.use(express.json({ limit: '8mb' }));
   app.get('/health', (_req, res) => res.json({ status: 'ok', provider: 'mock' }));
   app.get('/v1/models', (_req, res) =>
     res.json({ object: 'list', data: [{ id: 'mock-enterprise', object: 'model', owned_by: 'internal' }] }),
@@ -62,14 +80,14 @@ export function createApp() {
   });
   app.post('/v1/chat/completions', async (req, res) => {
     const messages = Array.isArray(req.body.messages) ? (req.body.messages as ChatMessage[]) : [];
-    const prompt = messages.at(-1)?.content || '';
+    const prompt = textOf(messages.at(-1)?.content);
     if (prompt.includes('[mock:error]')) return res.status(503).json({ error: { message: 'Simulated provider error' } });
     if (prompt.includes('[mock:timeout]')) await new Promise((resolve) => setTimeout(resolve, 5000));
 
     const id = `chatcmpl-${randomUUID()}`;
     const content = responseFor(messages);
     const usage = {
-      prompt_tokens: tokenCount(messages.map((m) => m.content).join(' ')),
+      prompt_tokens: tokenCount(messages.map((m) => textOf(m.content)).join(' ')) + imagesOf(messages).length * IMAGE_TOKENS,
       completion_tokens: tokenCount(content),
     };
     const created = Math.floor(Date.now() / 1000);

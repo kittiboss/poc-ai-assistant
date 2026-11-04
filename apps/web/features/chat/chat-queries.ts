@@ -1,9 +1,9 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { useApi } from '@/components/api/api-provider';
-import { apiUrl, errorMessage } from '@/lib/api/client';
+import { ApiError, apiUrl, errorMessage } from '@/lib/api/client';
 import { queryKeys, type ConversationFilters } from '@/lib/api/query-keys';
 import type {
   Attachment,
@@ -15,6 +15,7 @@ import type {
   Message,
   Model,
 } from '@/lib/api/types';
+import { isImage } from './prepare-image';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -147,8 +148,8 @@ export function useBranchConversation() {
 const ATTACHMENT_PROBLEMS = ['TYPE', 'SIZE', 'UNREADABLE', 'NO_TEXT', 'TOO_LONG', 'BUSY'] as const;
 
 /**
- * Files for the next message. The API keeps only their extracted text; a refused file comes back
- * with a code, so the error is worded here in the user's language.
+ * Files for the next message. The API keeps a document's extracted text and an image's file; a
+ * refused file comes back with a code, so the error is worded here in the user's language.
  */
 export function useAttachmentApi() {
   const { fetch } = useApi();
@@ -166,13 +167,34 @@ export function useAttachmentApi() {
       const problem = response.status === 413 ? 'SIZE' : ATTACHMENT_PROBLEMS.find((item) => item === code);
       throw new Error(
         problem
-          ? t(`attachError.${problem}`)
+          ? t(`attachError.${problem === 'SIZE' && isImage(file) ? 'IMAGE_SIZE' : problem}`)
           : (errorMessage(body) ?? tErrors('requestFailed', { status: response.status })),
       );
     },
     /** Only a file that was not sent can be removed; an unsent one left behind is removed by the API after a day. */
     remove: (id: string) => fetch(new Request(`${apiUrl()}/attachments/${id}`, { method: 'DELETE' })),
   };
+}
+
+/**
+ * Image attachments as object URLs. An <img> cannot send the bearer token, so each file is fetched
+ * with it; a file never changes, so it is fetched once and its URL revoked when the cache lets it go.
+ * A fetch is not cancelled when its message unmounts, so a remount shares it instead of fetching again.
+ */
+export function useAttachmentImages(ids: string[]) {
+  const { fetch } = useApi();
+  return useQueries({
+    queries: ids.map((id) => ({
+      queryKey: queryKeys.attachmentImage(id),
+      queryFn: async () => {
+        const response = await fetch(new Request(`${apiUrl()}/attachments/${id}/content`));
+        if (!response.ok) throw new ApiError(`Image ${id} is unavailable (${response.status})`, response.status);
+        return URL.createObjectURL(await response.blob());
+      },
+      staleTime: Infinity,
+      meta: { objectUrl: true },
+    })),
+  });
 }
 
 export type Rating = Message['feedback'] & number;

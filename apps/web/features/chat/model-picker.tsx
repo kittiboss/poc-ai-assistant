@@ -105,8 +105,12 @@ export function ModelPicker({
   );
 }
 
-/** Name and where it runs, whether it can be used now, then the provider and today's usage on smaller lines. */
+/**
+ * Name, where it runs, whether it reads images and whether it can be used now, then the provider and
+ * today's usage on smaller lines.
+ */
 function ModelOption({ model, usage }: { model: Model; usage?: ModelUsage }) {
+  const t = useTranslations('chat');
   const enums = useEnumLabel();
   return (
     // A model that cannot be picked fades as a whole, its tags too.
@@ -116,6 +120,11 @@ function ModelOption({ model, usage }: { model: Model; usage?: ModelUsage }) {
         <StatusTag tone={model.local ? 'success' : 'warning'} className="shrink-0">
           {enums.label('location', model.local ? 'LOCAL' : 'EXTERNAL')}
         </StatusTag>
+        {model.capabilities.includes('vision') && (
+          <StatusTag tone="primary" className="shrink-0">
+            {t('readsImages')}
+          </StatusTag>
+        )}
         <StatusTag tone={model.available ? 'success' : 'neutral'} className="ms-auto shrink-0">
           {enums.modelStatus(model.status)}
         </StatusTag>

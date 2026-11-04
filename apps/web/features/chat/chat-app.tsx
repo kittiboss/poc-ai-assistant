@@ -11,7 +11,7 @@ import { useEnumLabel } from '@/i18n/use-enum-label';
 import { ApiError } from '@/lib/api/client';
 import type { Message, Model } from '@/lib/api/types';
 import { useUIStore } from '@/stores/ui-store-provider';
-import { ChatComposer } from './chat-composer';
+import { ChatComposer, type ImageSupport } from './chat-composer';
 import {
   isConversationId,
   type Rating,
@@ -26,10 +26,19 @@ import { exportChat } from './export-chat';
 import type { MessageActions } from './message-bubble';
 import { MessageList } from './message-list';
 import { ModelPicker } from './model-picker';
+import { MAX_CHAT_IMAGES } from './prepare-image';
 import { PromptDialog } from './prompt-dialog';
 import { useSendMessage } from './use-send-message';
 
 type Dialog = { kind: 'edit'; message: Message } | { kind: 'feedback'; message: Message; rating: Rating };
+
+/** How many images the messages attached, each counted once. */
+const imagesIn = (messages: Message[]) =>
+  new Set(
+    messages.flatMap((message) =>
+      (message.metadata.attachments ?? []).flatMap((file) => (file.kind === 'IMAGE' ? [file.id] : [])),
+    ),
+  ).size;
 
 /** `/` is a new chat and `/c/<id>` an existing one; the id comes from the URL. */
 export function ChatApp() {
@@ -70,6 +79,14 @@ export function ChatApp() {
     (conversation.error instanceof ApiError && [400, 404].includes(conversation.error.status));
   const loadError = [models.error, conversations.error, notFound ? null : conversation.error].find(Boolean);
   const error = chatError || loadError?.message;
+  const images: ImageSupport = selectedModel?.capabilities.includes('vision')
+    ? 'accepted'
+    : modelList.some((model) => model.capabilities.includes('vision'))
+      ? 'otherModel'
+      : 'unavailable';
+  // Every image of the chat goes with each message, so a model that cannot read them cannot continue it.
+  const chatImages = imagesIn(messages);
+  const chatNeedsVision = chatImages > 0 && images !== 'accepted';
   // The platform gateway reports every model as out of credit; say why nothing can be sent.
   const creditExhausted = modelList.some((model) => model.status === 'Credit exhausted');
   const title =
@@ -86,6 +103,12 @@ export function ChatApp() {
   };
   // The new copy leaves out the message itself, so its files are sent again with it.
   const resend = async (userMessage: Message, prompt: string) => {
+    // The copy keeps the images up to this message; a model that cannot read them would refuse it
+    // only once the copy exists.
+    if (images !== 'accepted' && imagesIn(messages.slice(0, messages.indexOf(userMessage) + 1))) {
+      toast.warning(t('chatNeedsVision'));
+      return;
+    }
     const copy = await branch(userMessage, true);
     if (copy)
       await send({
@@ -237,14 +260,17 @@ export function ChatApp() {
               <Alert type="warning" title={t('externalNotice', { provider: selectedModel.provider })} />
             )}
             {creditExhausted && !error && <Alert type="error" title={t('creditExhausted')} />}
+            {chatNeedsVision && <Alert type="warning" title={t('chatNeedsVision')} />}
             {error && (
               <Alert type="error" title={error} closable={Boolean(chatError)} onClose={() => setChatError('')} />
             )}
             {composerOptions}
             <ChatComposer
               generating={generating}
-              canSend={Boolean(selectedModel?.available)}
+              canSend={Boolean(selectedModel?.available) && !chatNeedsVision}
               disabled={notFound}
+              images={images}
+              imageRoom={MAX_CHAT_IMAGES - chatImages}
               onSend={(prompt, attachments) =>
                 send({ conversationId: activeId, prompt, attachments, modelId, useKnowledge: catalogOn })
               }

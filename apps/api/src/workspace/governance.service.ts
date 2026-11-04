@@ -107,10 +107,15 @@ export class GovernanceService implements OnModuleInit, OnModuleDestroy {
     roles: string[];
     external: boolean;
     input: string;
+    /** Images count as a fixed number of tokens each, on top of the text's bytes. */
+    imageTokens?: number;
     outputTokens: number;
   }) {
     const tokens =
-      Buffer.byteLength(args.input, "utf8") + args.outputTokens + 512;
+      Buffer.byteLength(args.input, "utf8") +
+      (args.imageTokens ?? 0) +
+      args.outputTokens +
+      512;
     return this.prisma.$transaction(
       async (tx) => {
         // Serialize admissions, including simultaneous comparison requests, across API instances.

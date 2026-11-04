@@ -31,6 +31,15 @@ export function vendorGateway(env: NodeJS.ProcessEnv = process.env) {
   return env.MODEL_ACCESS === "vendor-gateway";
 }
 
+/**
+ * Chat images need object storage for their files, and vendor-control cannot meter them yet.
+ * Without a bucket, or in a vendor-managed deployment, no upload accepts images and no model
+ * reports `vision`.
+ */
+export function imagesAvailable(env: NodeJS.ProcessEnv = process.env) {
+  return Boolean(env.S3_BUCKET?.trim()) && !vendorGateway(env);
+}
+
 export const VENDOR_GATEWAY_CREDENTIAL = "vendor-gateway";
 
 export function credentialFor(

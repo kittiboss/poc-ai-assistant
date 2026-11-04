@@ -56,3 +56,11 @@ test('chats on a phone: send, reply and the chat menu without hover', async ({ p
   await actions.click();
   await expect(page.getByRole('menuitem', { name: m.chat.rename })).toBeVisible();
 });
+
+test('a phone takes a photo with the rear camera for a model that reads images', async ({ page, m }) => {
+  const chooser = page.waitForEvent('filechooser');
+  await page.getByRole('button', { name: m.chat.attachCamera }).click();
+  const camera = (await chooser).element();
+  expect(await camera.getAttribute('capture')).toBe('environment');
+  expect(await camera.getAttribute('accept')).toBe('image/*');
+});

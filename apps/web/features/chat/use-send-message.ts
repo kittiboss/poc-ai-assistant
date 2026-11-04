@@ -160,6 +160,7 @@ export function useSendMessage() {
         MODEL_NOT_ENTITLED: t('modelNotEntitled'),
         ATTACHMENT_LIMIT: t('attachChatLimit'),
         ATTACHMENT_NOT_FOUND: t('attachMissing'),
+        ATTACHMENT_NEEDS_VISION: t('chatNeedsVision'),
         CONTEXT_TOO_LONG: t('contextTooLong'),
       };
       const refusal = (code?: string) => (code ? refusals[code] : undefined);

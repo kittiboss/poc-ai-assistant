@@ -1,7 +1,15 @@
 import { BadGatewayException, HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { vendorGateway } from '../models/model-policies';
 
-export type GatewayMessage = { role: 'system' | 'user' | 'assistant'; content: string };
+/** OpenAI-style parts; LiteLLM turns an image's data URL into the provider's inline data. */
+export type ContentPart = { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } };
+/** Turns without images stay strings. */
+export type GatewayMessage = { role: 'system' | 'user' | 'assistant'; content: string | ContentPart[] };
+
+/** The text of a message, without its images. */
+export const messageText = (content: GatewayMessage['content']) =>
+  typeof content === 'string' ? content : content.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('\n');
+
 export type GatewayBilling = { requestId: string; charge: string; priceVersion: string; estimated: boolean; simulation: boolean };
 export type GatewayUsage = { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number; billing?: GatewayBilling };
 /** The organization's prepaid credit held by the platform gateway, in USD. */

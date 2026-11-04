@@ -63,6 +63,41 @@ services:
     networks: [backend, edge]
     restart: unless-stopped
 
+  # S3-compatible storage for chat images (SeaweedFS, Apache 2.0), which also creates the bucket.
+  # Its filer and volume ports have no authentication of their own, so only the backend shares
+  # its network. Production points the backend's S3_* settings at Amazon S3 or another S3 service.
+  seaweedfs:
+    image: chrislusf/seaweedfs:4.48
+    command:
+      [
+        "mini",
+        "-bucket=${S3_BUCKET:-attachments}",
+        "-webdav=false",
+        "-admin.ui=false",
+        "-master.telemetry=false",
+      ]
+    environment:
+      # The S3 gateway's only identity.
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-local-s3-key}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-local_dev_only_s3_secret}
+    volumes:
+      - seaweedfs-data:/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "-q",
+          "-O",
+          "/dev/null",
+          "http://127.0.0.1:8333/healthz",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [storage]
+    restart: unless-stopped
+
   mock-provider:
     build:
       context: .
@@ -152,6 +187,13 @@ services:
       RAG_EXTERNAL_BATCH_INTERVAL_MS: ${RAG_EXTERNAL_BATCH_INTERVAL_MS:-15500}
       EXTERNAL_DAILY_TOKEN_LIMIT: ${EXTERNAL_DAILY_TOKEN_LIMIT:-100000}
       LOG_CONTENT: "false"
+      # Chat images (docs/CHAT_ATTACHMENTS.md). Without S3_BUCKET the API accepts documents only.
+      S3_ENDPOINT: http://seaweedfs:8333
+      S3_REGION: us-east-1
+      S3_BUCKET: ${S3_BUCKET:-attachments}
+      S3_FORCE_PATH_STYLE: "true"
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-local-s3-key}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-local_dev_only_s3_secret}
       # Interactive API docs at /api/docs; set SWAGGER_ENABLED=false outside local development.
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-true}
       API_PUBLIC_URL: ${API_PUBLIC_URL:-http://localhost:3001}
@@ -163,6 +205,8 @@ services:
       keycloak:
         condition: service_healthy
       litellm:
+        condition: service_healthy
+      seaweedfs:
         condition: service_healthy
     ports:
       - "3001:3001"
@@ -178,7 +222,7 @@ services:
       timeout: 3s
       retries: 30
       start_period: 15s
-    networks: [backend, edge]
+    networks: [backend, edge, storage]
     restart: unless-stopped
 
   frontend:
@@ -222,8 +266,12 @@ volumes:
   valkey-data:
   keycloak-data:
   ollama-data:
+  seaweedfs-data:
 
 networks:
   edge:
   backend:
+    internal: true
+  # Object storage and the backend only.
+  storage:
     internal: true

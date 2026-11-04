@@ -1,13 +1,21 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 
 const upstreamOrigin = 'https://generativelanguage.googleapis.com';
-const maxRequestBytes = 2 * 1024 * 1024;
+// Room for a chat's images in base64; the API refuses requests over 7.5 MB before they get here.
+const maxRequestBytes = 8 * 1024 * 1024;
 const generationMethods = new Set(['generateContent', 'streamGenerateContent', 'countTokens']);
 const embeddingMethods = new Set(['embedContent', 'batchEmbedContents']);
 const maxEmbeddingBatch = 100;
 // Grounding (Search/Maps), code execution and URL context arrive as tools and can be billed
 // separately; cached content incurs storage charges. The POC never needs any of them.
 const forbiddenFields = ['tools', 'toolConfig', 'tool_config', 'cachedContent', 'cached_content'];
+// Inline data is billed by what it is: an image costs a fixed number of tokens, while a PDF,
+// audio or video costs per page or per second. Each type is checked by its first bytes as well.
+const imageSignatures: Record<string, (head: Buffer) => boolean> = {
+  'image/jpeg': (head) => head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff,
+  'image/png': (head) => head.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+  'image/webp': (head) => head.toString('latin1', 0, 4) === 'RIFF' && head.toString('latin1', 8, 12) === 'WEBP',
+};
 
 /** embeddingModel is optional: without it, no embedding call can leave the installation. */
 export type ProxyOptions = { apiKey: string; model: string; embeddingModel?: string; maxOutputTokens: number };
@@ -19,12 +27,38 @@ export function buildUpstreamUrl(requestUrl: string) {
   return url;
 }
 
-/** Only text generation (plus free token counting) for GEMINI_MODEL, and text embedding for GEMINI_EMBEDDING_MODEL, may leave the installation. */
+/** Only generation (plus free token counting) for GEMINI_MODEL, and embedding for GEMINI_EMBEDDING_MODEL, may leave the installation. */
 export function isAllowedRequest(method: string, upstream: URL, model: string, embeddingModel?: string) {
   const match = /^\/v1beta\/models\/([^/:]+):([A-Za-z]+)$/.exec(upstream.pathname);
   if (method !== 'POST' || !match) return false;
   const [, target, action] = match;
   return (target === model && generationMethods.has(action)) || (Boolean(embeddingModel) && target === embeddingModel && embeddingMethods.has(action));
+}
+
+/**
+ * Finds media other than inline JPEG, PNG or WebP images anywhere in the body, in either
+ * spelling Google accepts. File references (`fileData`) point at uploads or URLs and are refused.
+ */
+function mediaProblem(value: unknown): string | undefined {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const problem = mediaProblem(item);
+      if (problem) return problem;
+    }
+    return undefined;
+  }
+  if (!value || typeof value !== 'object') return undefined;
+  const fields = value as Record<string, unknown>;
+  if (fields.fileData !== undefined || fields.file_data !== undefined) return 'File references are disabled by the POC cost policy';
+  const inline = fields.inlineData ?? fields.inline_data;
+  if (inline !== undefined) {
+    const { mimeType, mime_type: mimeTypeSnake, data } = (inline ?? {}) as { mimeType?: unknown; mime_type?: unknown; data?: unknown };
+    const type = mimeType ?? mimeTypeSnake;
+    const matches = typeof type === 'string' && typeof data === 'string' && imageSignatures[type]?.(Buffer.from(data.slice(0, 16), 'base64'));
+    if (!matches) return 'Inline data must be a JPEG, PNG or WebP image';
+    return undefined;
+  }
+  return mediaProblem(Object.values(fields));
 }
 
 /** Returns the body to forward, or an error string when the request uses a feature outside the POC allowlist. */
@@ -33,6 +67,8 @@ export function sanitizeBody(raw: Buffer, maxOutputTokens: number, embeddingMode
   try { body = JSON.parse(raw.toString('utf8') || '{}'); } catch { return 'Request body must be JSON'; }
   const forbidden = forbiddenFields.find((field) => body[field] !== undefined);
   if (forbidden) return `Field "${forbidden}" is disabled by the POC cost policy`;
+  const media = mediaProblem(body);
+  if (media) return media;
   if (body.requests !== undefined) {
     const requests = body.requests;
     if (!Array.isArray(requests) || !requests.length || requests.length > maxEmbeddingBatch) return `Embedding batches must contain 1 to ${maxEmbeddingBatch} requests`;

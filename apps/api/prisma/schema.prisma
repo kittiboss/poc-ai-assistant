@@ -286,18 +286,32 @@ model SourceChunk {
   @@unique([sourceId, ordinal])
 }
 
-/// A document attached to a chat message; only its extracted text is kept.
-/// Messages reference it in metadata.attachments, so a branched chat keeps its files.
+enum AttachmentKind {
+  DOCUMENT
+  IMAGE
+}
+
+/// A file attached to a chat message: a document keeps only its extracted text, an image its
+/// file in object storage. Messages reference it in metadata.attachments, so a branched chat keeps its files.
 model Attachment {
   id String @id @default(uuid()) @db.Uuid
   userId String @db.Uuid
+  kind AttachmentKind @default(DOCUMENT)
   filename String @db.VarChar(200)
   byteSize Int
   /// PDFs only.
   pageCount Int?
+  /// 0 for images.
   charCount Int
-  /// Extracted text as the model reads it; PDF pages are marked [Page n].
+  /// Extracted text as the model reads it; PDF pages are marked [Page n]. Empty for images.
   content String @db.Text
+  /// Images only: image/jpeg, image/png or image/webp, read from the file's first bytes.
+  mimeType String? @db.VarChar(50)
+  /// Images only, in pixels.
+  width Int?
+  height Int?
+  /// Images only: the object key in S3_BUCKET. Never an endpoint, bucket or URL, so storage can move.
+  storageKey String? @unique @db.VarChar(200)
   /// Null until a message sends it; unsent attachments are removed after 24 hours.
   sentAt DateTime?
   createdAt DateTime @default(now())

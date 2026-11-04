@@ -13,9 +13,14 @@ export function exportChat(chat: ConversationDetail, format: ExportFormat) {
           `[${source.label}] ${source.filename}${source.page ? `, page ${source.page}` : ''}\n> ${source.content.replace(/\n/g, '\n> ')}`,
       )
       .join('\n\n');
+  // Images stay in the app, behind sign-in; the export names them with their size.
   const files = (message: Message) =>
     message.metadata.attachments?.length
-      ? `Attached: ${message.metadata.attachments.map((file) => file.filename).join(', ')}\n\n`
+      ? `Attached: ${message.metadata.attachments
+          .map((file) =>
+            file.kind === 'IMAGE' ? `${file.filename} (image, ${file.width} × ${file.height} px)` : file.filename,
+          )
+          .join(', ')}\n\n`
       : '';
   const body = chat.messages
     .map(

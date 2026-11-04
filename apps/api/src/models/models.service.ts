@@ -6,7 +6,7 @@ import { PrismaService } from '../common/prisma/prisma.service';
 import { GatewayService, gatewayError } from '../gateway/gateway.service';
 import { UsageService } from '../usage/usage.service';
 import { UsersService } from '../users/users.service';
-import { credentialFor, externalProviderAllowed, isExternalProvider, modelAllowedForUser, vendorGateway } from './model-policies';
+import { credentialFor, externalProviderAllowed, imagesAvailable, isExternalProvider, modelAllowedForUser, vendorGateway } from './model-policies';
 
 const externalSwitch = () => process.env.ENABLE_EXTERNAL_PROVIDERS === 'true';
 
@@ -32,6 +32,8 @@ export class ModelsService {
     const budgetExhausted = models.some((model) => model.enabled && isExternalProvider(model.provider)) && await this.usage.externalBudgetExhausted();
     // Every model, local ones included, is billed through the platform gateway's prepaid credit.
     const creditExhausted = credit?.exhausted === true;
+    // The composer offers images only for models that report vision.
+    const images = imagesAvailable();
     return models.map((model) => {
       const permitted = modelAllowedForUser(model.allowedRoles, auth.roles, model.permissions[0]?.allowed);
       const configured = externalProviderAllowed(model.provider, externalSwitch(), credentialFor(model.provider));
@@ -40,7 +42,7 @@ export class ModelsService {
       return {
         id: model.id, displayName: model.displayName, provider: model.provider, providerModelId: model.providerModelId,
         enabled: model.enabled, permitted, available, local: model.local, contextWindow: model.contextWindow,
-        capabilities: model.capabilities,
+        capabilities: images ? model.capabilities : model.capabilities.filter((capability) => capability !== 'vision'),
         status: !model.enabled ? 'Disabled' : !permitted ? 'Not permitted' : !configured ? 'Not configured' : creditExhausted ? 'Credit exhausted' : limited ? 'Daily limit reached' : available ? 'Available' : 'Unavailable',
       };
     });

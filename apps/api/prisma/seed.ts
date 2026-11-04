@@ -14,7 +14,8 @@ const modelSeeds = [
     enabled: true,
     allowedRoles: ["ADMIN", "USER"],
     contextWindow: 8192,
-    capabilities: ["chat", "streaming"],
+    // Offline tests and demos of images; the mock reports each image's type and size, not its content.
+    capabilities: ["chat", "streaming", "vision"],
     local: true,
   },
   {
@@ -58,7 +59,7 @@ const modelSeeds = [
     enabled: false,
     allowedRoles: ["ADMIN"],
     contextWindow: 1048576,
-    capabilities: ["chat", "streaming"],
+    capabilities: ["chat", "streaming", "vision"],
     local: false,
   },
   {

@@ -9,6 +9,8 @@ export const queryKeys = {
   conversationLists: ['conversations', 'list'] as const,
   conversationList: (filters: ConversationFilters) => ['conversations', 'list', filters] as const,
   conversation: (id: string) => ['conversations', id] as const,
+  /** An image attachment's file, as an object URL; the file never changes. */
+  attachmentImage: (id: string) => ['attachments', id, 'content'] as const,
   myUsage: ['usage', 'me'] as const,
   liveUsage: ['usage', 'me', 'live'] as const,
   /** Organization-wide use of each model today. */

@@ -1,6 +1,6 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { createApp, MOCK_RESPONSE, mockEmbedding } from './app';
+import { createApp, IMAGE_TOKENS, MOCK_RESPONSE, mockEmbedding } from './app';
 
 describe('OpenAI-compatible mock provider', () => {
   it('returns the required deterministic response', async () => {
@@ -35,6 +35,20 @@ describe('OpenAI-compatible mock provider', () => {
     const streamedText = stream.text.split('\n').filter((line) => line.startsWith('data: {')).map((line) => JSON.parse(line.slice(6)).choices?.[0]?.delta?.content || '').join('');
     expect(streamedText).toBe(whole.body.choices[0].message.content);
     expect(streamedText).toContain('items.reduce');
+  });
+
+  it('names every image of the request by type and size, and counts each as 1,120 tokens', async () => {
+    const image = (type: string, bytes: number) => ({ type: 'image_url', image_url: { url: `data:${type};base64,${Buffer.alloc(bytes).toString('base64')}` } });
+    const messages = [
+      { role: 'user', content: [{ type: 'text', text: 'Look' }, { type: 'text', text: '[Image: a.webp]' }, image('image/webp', 3_000_000)] },
+      { role: 'assistant', content: 'A picture' },
+      { role: 'user', content: [{ type: 'text', text: 'And this?' }, { type: 'text', text: '[Image: b.png]' }, image('image/png', 1200)] },
+    ];
+    const response = await request(createApp()).post('/v1/chat/completions').send({ messages });
+    expect(response.status).toBe(200);
+    expect(response.body.choices[0].message.content).toBe(`${MOCK_RESPONSE}\n\nReceived: And this?\n[Image: b.png]\n\nImages: image/webp, 3,000,000 bytes; image/png, 1,200 bytes`);
+    expect(response.body.usage.prompt_tokens).toBeGreaterThan(2 * IMAGE_TOKENS);
+    expect(response.body.usage.prompt_tokens).toBeLessThan(2 * IMAGE_TOKENS + 20);
   });
 
   it('embeds deterministically, normalised, and closer for texts that share words', async () => {

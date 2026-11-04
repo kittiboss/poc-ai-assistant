@@ -183,6 +183,10 @@ describe("governance admission", () => {
     });
     expect(external.quota.resetsAt.getTime() - Date.now()).toBeLessThanOrEqual(86_400_000);
     vi.unstubAllEnvs();
+    // Images count as their tokens, on top of the text's bytes.
+    expect(await refusal(setup({ dailyTokens: 1000 }).service.reserve({ ...args, imageTokens: 1120 }))).toMatchObject({
+      quota: { needed: 1737 },
+    });
   });
   it("enforces per-request tokens and decimal simulated budgets", async () => {
     await expect(

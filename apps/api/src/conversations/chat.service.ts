@@ -13,17 +13,21 @@ import { PrismaService } from "../common/prisma/prisma.service";
 import {
   GatewayService,
   gatewayErrorCode,
+  messageText,
   refusedByGateway,
 } from "../gateway/gateway.service";
+import { imagesAvailable } from "../models/model-policies";
 import { ModelsService } from "../models/models.service";
 import { UsageService } from "../usage/usage.service";
 import { UsersService } from "../users/users.service";
 import {
   AttachmentsService,
   FILES_ONLY_MAX_OUTPUT_TOKENS,
+  IMAGE_TOKENS,
+  attachmentError,
   attachmentInstructions,
 } from "../attachments/attachments.service";
-import { filesOnlyTurn, toGatewayHistory } from "./chat-history";
+import { toGatewayHistory } from "./chat-history";
 import type { SendMessageDto } from "./conversations.dto";
 import { ConversationsService } from "./conversations.service";
 import { WorkspaceService } from "../workspace/workspace.service";
@@ -34,6 +38,15 @@ import { KnowledgeService } from "../knowledge/knowledge.service";
 
 /** Longer than any gateway timeout; a stream this old cannot still be attached to a client. */
 export const STALE_STREAM_MS = 10 * 60_000;
+/** gemini-proxy accepts requests of at most 8 MB; within the chat limits a request stays under about 6.5 MB. */
+export const MAX_MODEL_REQUEST_BYTES = 7.5 * 1024 * 1024;
+
+const contextTooLong = (message: string) =>
+  new BadRequestException({
+    statusCode: 400,
+    code: "CONTEXT_TOO_LONG",
+    message,
+  });
 
 @Injectable()
 export class ChatService implements OnModuleInit, OnModuleDestroy {
@@ -182,6 +195,15 @@ export class ChatService implements OnModuleInit, OnModuleDestroy {
       conversationId,
       dto.attachmentIds,
     );
+    if (
+      attachments.files.some((file) => file.kind === "IMAGE") &&
+      !(imagesAvailable() && model.capabilities.includes("vision"))
+    )
+      throw attachmentError(
+        400,
+        "ATTACHMENT_NEEDS_VISION",
+        "This chat has images, and the chosen model cannot see them",
+      );
     // A message with only files has nothing to search for.
     const productCitations = (dto.useKnowledge || dto.useProductCatalog) && !filesOnly
       ? await this.knowledge.retrieve({
@@ -202,25 +224,24 @@ export class ChatService implements OnModuleInit, OnModuleDestroy {
       dto.templateId,
       productCitations,
     );
-    const previous = toGatewayHistory(
-      (
-        await this.prisma.message.findMany({
-          where: { conversationId },
-          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-          take: 49,
-        })
-      )
-        .reverse()
-        .filter(
-          (message) =>
-            !(
-              message.metadata &&
-              typeof message.metadata === "object" &&
-              !Array.isArray(message.metadata) &&
-              "tool" in message.metadata
-            ),
-        ),
-    );
+    const previous = (
+      await this.prisma.message.findMany({
+        where: { conversationId },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+        take: 49,
+      })
+    )
+      .reverse()
+      .filter(
+        (message) =>
+          !(
+            message.metadata &&
+            typeof message.metadata === "object" &&
+            !Array.isArray(message.metadata) &&
+            "tool" in message.metadata
+          ),
+      );
+    const images = await this.attachments.imageData(attachments.files);
     // The files' text is in the system message, so quotas, the sensitive check and the context limit count it.
     const instructions = [
       context.instructions,
@@ -233,30 +254,42 @@ export class ChatService implements OnModuleInit, OnModuleDestroy {
       .join("\n\n");
     const history: GatewayMessage[] = [
       { role: "system", content: instructions },
-      ...previous,
-      {
-        role: "user",
-        content: filesOnly
-          ? filesOnlyTurn(attachments.added.map((file) => file.filename))
-          : dto.content,
-      },
+      ...toGatewayHistory(
+        [
+          ...previous,
+          {
+            role: MessageRole.USER,
+            content: dto.content,
+            status: MessageStatus.COMPLETED,
+            metadata: { attachments: attachments.added },
+          },
+        ],
+        images,
+      ),
     ];
-    const input = history.map((m) => m.content).join("\n");
+    // The text only: an image counts as a fixed number of tokens, never as its base64.
+    const input = history.map((m) => messageText(m.content)).join("\n");
+    const imageTokens = images.size * IMAGE_TOKENS;
     const maxOutputTokens = Math.min(
       context.maxOutputTokens ?? this.gateway.maxOutputTokens(),
       this.gateway.maxOutputTokens(),
       filesOnly ? FILES_ONLY_MAX_OUTPUT_TOKENS : Infinity,
     );
     if (
-      Buffer.byteLength(input, "utf8") + maxOutputTokens + 512 >
+      Buffer.byteLength(input, "utf8") + imageTokens + maxOutputTokens + 512 >
       model.contextWindow
     )
-      throw new BadRequestException({
-        statusCode: 400,
-        code: "CONTEXT_TOO_LONG",
-        message:
-          "This conversation exceeds the conservative context limit. Start a new chat with a shorter prompt.",
-      });
+      throw contextTooLong(
+        "This conversation exceeds the conservative context limit. Start a new chat with a shorter prompt.",
+      );
+    if (
+      images.size &&
+      Buffer.byteLength(JSON.stringify(history), "utf8") >
+        MAX_MODEL_REQUEST_BYTES
+    )
+      throw contextTooLong(
+        "This conversation with its images is too large to send to the model. Start a new chat.",
+      );
     if (!model.local)
       await this.governance.checkSensitive(input, dto.acknowledgeSensitive);
     await this.governance.reserve({
@@ -266,6 +299,7 @@ export class ChatService implements OnModuleInit, OnModuleDestroy {
       roles: auth.roles,
       external: !model.local,
       input,
+      imageTokens,
       outputTokens: maxOutputTokens,
     });
     try {
@@ -372,6 +406,7 @@ export class ChatService implements OnModuleInit, OnModuleDestroy {
           conversationId,
           model,
           input,
+          imageTokens,
           output: content,
           durationMs: Date.now() - started,
           status,
@@ -398,6 +433,7 @@ export class ChatService implements OnModuleInit, OnModuleDestroy {
             conversationId,
             model,
             input,
+            imageTokens,
             output: content,
             durationMs: Date.now() - started,
             status,

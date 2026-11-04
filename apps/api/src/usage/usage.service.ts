@@ -31,6 +31,8 @@ export type UsageInput = {
   model: { id: string; provider: Provider; local: boolean };
   operation?: UsageOperation;
   input: string;
+  /** Images of the request, as tokens; counted when the provider reports no usage. */
+  imageTokens?: number;
   output: string;
   durationMs: number;
   status: RequestStatus;
@@ -49,7 +51,9 @@ export class UsageService {
   async record(args: UsageInput) {
     const pricing = await this.pricing.versionAt(args.model.id);
     if (!pricing) throw new Error("Pricing configuration missing");
-    const inputTokens = args.usage?.prompt_tokens ?? estimateTokens(args.input);
+    const inputTokens =
+      args.usage?.prompt_tokens ??
+      estimateTokens(args.input) + (args.imageTokens ?? 0);
     const outputTokens =
       args.usage?.completion_tokens ?? estimateTokens(args.output);
     const simulatedProvider = new Big(inputTokens)
