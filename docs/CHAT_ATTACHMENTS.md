@@ -220,6 +220,7 @@ An image costs about 1,120 input tokens on every turn while it is in the chat, w
 - Images are not checked for sensitive information. The notice shown before using an external model is the only safeguard; this is recorded in [PRODUCTION_GAPS.md](PRODUCTION_GAPS.md).
 - The API stores an image as uploaded. Only the web's re-encoding removes metadata such as GPS location, so a client calling the API directly can store it.
 - Object storage needs its own encryption, backup and lifecycle settings in production.
+- Deleting an image does not erase its bytes at once. SeaweedFS keeps them in its volume file until a vacuum compacts it, which happens only once enough of the volume is deleted; a versioned S3 bucket keeps the old version until a lifecycle rule expires it.
 
 ## Not in version 1
 
