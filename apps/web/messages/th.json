@@ -89,6 +89,8 @@
     "attachNeedsVision": "โมเดลที่เลือกอ่านรูปไม่ได้ เลือกโมเดลที่มีป้าย “อ่านรูปได้”",
     "chatNeedsVision": "แชทนี้มีรูปภาพ แต่โมเดลที่เลือกอ่านรูปไม่ได้ เลือกโมเดลที่มีป้าย “อ่านรูปได้”",
     "readsImages": "อ่านรูปได้",
+    "imageOpen": "เปิด {name}",
+    "imageUnavailable": "แสดงรูปนี้ไม่ได้",
     "attachChars": "{chars} ตัวอักษร",
     "attachPagesChars": "{pages} หน้า · {chars} ตัวอักษร",
     "attachError": {

@@ -89,6 +89,8 @@
     "attachNeedsVision": "The chosen model cannot read images. Choose a model marked “Reads images”.",
     "chatNeedsVision": "This chat has images, and the chosen model cannot read them. Choose a model marked “Reads images”.",
     "readsImages": "Reads images",
+    "imageOpen": "Open {name}",
+    "imageUnavailable": "This image cannot be shown",
     "attachChars": "{chars} characters",
     "attachPagesChars": "{pages, plural, one {# page} other {# pages}} · {chars} characters",
     "attachError": {

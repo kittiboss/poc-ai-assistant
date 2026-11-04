@@ -32,6 +32,14 @@ import { useSendMessage } from './use-send-message';
 
 type Dialog = { kind: 'edit'; message: Message } | { kind: 'feedback'; message: Message; rating: Rating };
 
+/** How many images the messages attached, each counted once. */
+const imagesIn = (messages: Message[]) =>
+  new Set(
+    messages.flatMap((message) =>
+      (message.metadata.attachments ?? []).flatMap((file) => (file.kind === 'IMAGE' ? [file.id] : [])),
+    ),
+  ).size;
+
 /** `/` is a new chat and `/c/<id>` an existing one; the id comes from the URL. */
 export function ChatApp() {
   const { id: activeId } = useParams<{ id?: string }>();
@@ -77,11 +85,7 @@ export function ChatApp() {
       ? 'otherModel'
       : 'unavailable';
   // Every image of the chat goes with each message, so a model that cannot read them cannot continue it.
-  const chatImages = new Set(
-    messages.flatMap((message) =>
-      (message.metadata.attachments ?? []).flatMap((file) => (file.kind === 'IMAGE' ? [file.id] : [])),
-    ),
-  ).size;
+  const chatImages = imagesIn(messages);
   const chatNeedsVision = chatImages > 0 && images !== 'accepted';
   // The platform gateway reports every model as out of credit; say why nothing can be sent.
   const creditExhausted = modelList.some((model) => model.status === 'Credit exhausted');
@@ -99,6 +103,12 @@ export function ChatApp() {
   };
   // The new copy leaves out the message itself, so its files are sent again with it.
   const resend = async (userMessage: Message, prompt: string) => {
+    // The copy keeps the images up to this message; a model that cannot read them would refuse it
+    // only once the copy exists.
+    if (images !== 'accepted' && imagesIn(messages.slice(0, messages.indexOf(userMessage) + 1))) {
+      toast.warning(t('chatNeedsVision'));
+      return;
+    }
     const copy = await branch(userMessage, true);
     if (copy)
       await send({

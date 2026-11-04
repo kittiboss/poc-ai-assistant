@@ -125,7 +125,8 @@ Images use the same upload-first flow, chips, `attachmentIds` and message metada
 1. The composer accepts images only while the selected model has the `vision` capability in `GET /api/models`. That list reports `vision` only where images are available.
 2. The browser resizes each image so its longer side is at most 1,600 px and re-encodes it as WebP (JPEG where the browser cannot write WebP), lowering the quality until the file is at most 1 MB. Re-encoding also drops metadata such as GPS location.
 3. The API keeps the image file itself, in object storage, because the model needs the pixels on every turn.
-4. The web shows an image through `GET /api/attachments/:id/content`, fetched with the user's token into a blob URL, because an `<img>` cannot send a bearer token.
+4. The web shows an image through `GET /api/attachments/:id/content`, fetched with the user's token into a blob URL, because an `<img>` cannot send a bearer token. Each file is fetched once while the page is open; a click or Enter opens a viewer that steps through the message's images. The Markdown export names each image with its size, as the file itself stays behind sign-in.
+5. Regenerate and edit copy the chat before resending; when the selected model cannot read the images that copy would hold, the web warns instead of making it.
 
 ### Storage
 

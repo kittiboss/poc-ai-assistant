@@ -1,9 +1,9 @@
 'use client';
 
-import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useMutation, useQueries, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { useApi } from '@/components/api/api-provider';
-import { apiUrl, errorMessage } from '@/lib/api/client';
+import { ApiError, apiUrl, errorMessage } from '@/lib/api/client';
 import { queryKeys, type ConversationFilters } from '@/lib/api/query-keys';
 import type {
   Attachment,
@@ -174,6 +174,27 @@ export function useAttachmentApi() {
     /** Only a file that was not sent can be removed; an unsent one left behind is removed by the API after a day. */
     remove: (id: string) => fetch(new Request(`${apiUrl()}/attachments/${id}`, { method: 'DELETE' })),
   };
+}
+
+/**
+ * Image attachments as object URLs. An <img> cannot send the bearer token, so each file is fetched
+ * with it; a file never changes, so it is fetched once and its URL revoked when the cache lets it go.
+ * A fetch is not cancelled when its message unmounts, so a remount shares it instead of fetching again.
+ */
+export function useAttachmentImages(ids: string[]) {
+  const { fetch } = useApi();
+  return useQueries({
+    queries: ids.map((id) => ({
+      queryKey: queryKeys.attachmentImage(id),
+      queryFn: async () => {
+        const response = await fetch(new Request(`${apiUrl()}/attachments/${id}/content`));
+        if (!response.ok) throw new ApiError(`Image ${id} is unavailable (${response.status})`, response.status);
+        return URL.createObjectURL(await response.blob());
+      },
+      staleTime: Infinity,
+      meta: { objectUrl: true },
+    })),
+  });
 }
 
 export type Rating = Message['feedback'] & number;
