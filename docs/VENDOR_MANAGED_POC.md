@@ -179,5 +179,10 @@ Chat images verification, on 2026-11-04, used mock models only:
 - `tenant:smoke -- a --images` passed: the image stayed in customer A's own storage, on a network holding only its backend and SeaweedFS. The mock received it, and the ledger counted 1,361 input tokens, of which 1,120 were the image. With images turned off, the next message was refused without a charge.
 - The browser smoke passed with the console's image limits. In customer A's web, Local Mock was tagged "Reads images" and read an attached image. With images turned off in the console, the chat warned and the attach button offered documents only.
 - This run found that image downloads failed with a 500 in vendor-managed deployments, because the customer response filter tried to serialize the file. The filter now passes files through.
+- A Gemini demo the same day, approved beforehand, sent customer A's browser-drawn sample receipt (1,600 × 900) to Gemini 3.5 Flash-Lite. It made two requests, with the knowledge base off: the image without a message, then a follow-up question in Thai that sent the image again.
+  - Gemini read the receipt's "123.45 THB" in both answers.
+  - The ledger settled on Gemini's own counts: 1,367 input and 89 output tokens, then 1,415 and 22.
+  - That cost $0.000633 and $0.000480 of test credit, at the default sale price; the free tier charged nothing.
+  - The demo chat was deleted afterwards.
 
 No real payment processing, invoices/tax, refunds, provider invoice reconciliation, cloud deployment, MFA/federated vendor administration, guaranteed uptime/SLA, cross-host HA or automated backups are provided. Basic Auth and localhost HTTP are for this local POC only. Use TLS, a vendor identity role, production database roles, secret management, backups/restore tests, distributed provider quota controls and security review before deployment. See [production gaps](PRODUCTION_GAPS.md).
