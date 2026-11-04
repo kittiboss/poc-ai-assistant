@@ -116,13 +116,13 @@ The files' text is sent again on every turn of the chat, like the rest of the hi
 
 ## Images
 
-Images are available in standalone deployments that have object storage configured. A vendor-managed deployment accepts documents only until vendor-control can meter image input.
+Images are available where the deployment has object storage. A standalone deployment needs `S3_BUCKET`, which the base Compose stack sets. In a vendor-managed deployment each customer runs its own SeaweedFS, and the vendor's image limits decide which models may receive images (see [Vendor-managed deployments](#vendor-managed-deployments)).
 
 ### Flow
 
 Images use the same upload-first flow, chips, `attachmentIds` and message metadata as documents. The differences:
 
-1. The composer accepts images only while the selected model has the `vision` capability in `GET /api/models`. That list reports `vision` only where images are available.
+1. The composer accepts images only while the selected model has the `vision` capability in `GET /api/models`. That list reports `vision` only where images are available, and in a vendor-managed deployment only for the models vendor-control lists with `vision` for that customer.
 2. The browser resizes each image so its longer side is at most 1,600 px and re-encodes it as WebP (JPEG where the browser cannot write WebP), lowering the quality until the file is at most 1 MB. Re-encoding also drops metadata such as GPS location.
 3. The API keeps the image file itself, in object storage, because the model needs the pixels on every turn.
 4. The web shows an image through `GET /api/attachments/:id/content`, fetched with the user's token into a blob URL, because an `<img>` cannot send a bearer token. Each file is fetched once while the page is open; a click or Enter opens a viewer that steps through the message's images. The Markdown export names each image with its size, as the file itself stays behind sign-in.
@@ -130,7 +130,7 @@ Images use the same upload-first flow, chips, `attachmentIds` and message metada
 
 ### Storage
 
-- SeaweedFS (Apache 2.0) runs in the base Compose stack with its own volume, and creates the bucket when it starts; the API never creates buckets. Its filer and volume ports have no authentication of their own, so it sits on an internal `storage` network that only the backend shares.
+- SeaweedFS (Apache 2.0) runs in the base Compose stack with its own volume, and creates the bucket when it starts; the API never creates buckets. Its filer and volume ports have no authentication of their own, so it sits on an internal `storage` network that only the backend shares. Each customer deployment of the vendor-managed POC runs its own SeaweedFS the same way (`deploy/tenant/docker-compose.yml`).
 - The API uses the AWS SDK (`@aws-sdk/client-s3`), so moving to Amazon S3 or another S3-compatible service is a configuration change:
 
 | Setting | SeaweedFS (Compose) | Amazon S3 |
@@ -143,7 +143,7 @@ Images use the same upload-first flow, chips, `attachmentIds` and message metada
 
 The `.env` names differ from the SDK's so that a developer's own AWS keys in the shell never reach the stack.
 
-- Without `S3_BUCKET`, or in a vendor-managed deployment, images are unavailable: uploads are refused with `ATTACHMENT_TYPE` and no model reports `vision`.
+- Without `S3_BUCKET`, images are unavailable: uploads are refused with `ATTACHMENT_TYPE` and no model reports `vision`. In a vendor-managed deployment, a model also needs `vision` from vendor-control for that customer.
 - To stay portable, the API uses only PutObject, GetObject, DeleteObject and ListObjectsV2, and the database keeps only the object key (`attachments/<id>`), never an endpoint, bucket or URL.
 - An object and its row cannot share a transaction:
   - upload writes the object first, then the row, and deletes the object if the row fails;
@@ -208,6 +208,7 @@ height?: number;
 | Images per chat | 6 | Each image costs about 1,120 tokens on every turn |
 | Image bytes per chat | 4 MB | About 5.3 MB in base64, leaving room for 1 MB of text under 7.5 MB |
 | Request to the model | 7.5 MB | gemini-proxy accepts 8 MB |
+| Images per chat, vendor-managed | The customer's limit, at most 6 | Set by the vendor; a request carries every image of its chat |
 
 `local-mock`'s 8,192 context window holds 4 images with a short message; more need Gemini (1M).
 
@@ -215,13 +216,49 @@ height?: number;
 
 An image costs about 1,120 input tokens on every turn while it is in the chat, whatever its file size. A chat with 6 images uses about 6,700 tokens a turn before any text: about $0.002 at Gemini 3.5 Flash-Lite's paid list price ($0.30 per 1M input tokens), and $0 on the free tier. The default external limit of 100,000 tokens a day covers about 14 such turns across all users; raise `EXTERNAL_DAILY_TOKEN_LIMIT` for a demo day if needed. Every turn sends the chat's images again, so a chat with many images answers more slowly. In a demo on 2026-11-04, Gemini 3.5 Flash-Lite counted 1,367 input tokens for a message that only sent one 1,600 × 900 image, system message included, and 1,410 for the follow-up question, which sent the image again; the image accounts for about 1,100 of them.
 
+### Vendor-managed deployments
+
+The customer API sends images to vendor-control in the same OpenAI-style parts. vendor-control checks and meters them, forwards them to LiteLLM and stores nothing but its ledger row, which never holds content.
+
+- **Storage.** Each customer deployment runs its own SeaweedFS with its own volume, on an internal `storage` network that only its API joins.
+  - `npm run tenant:create` generates the key pair once, as `TENANT_S3_ACCESS_KEY_ID` and `TENANT_S3_SECRET_ACCESS_KEY` in `deploy/tenants/<id>.env`, and never prints it; re-running it keeps the pair. Running it for an existing customer adds the storage and keeps the customer's data.
+  - `tenant:down` keeps the images; `tenant:down -- <id> --remove` deletes them with the rest of the customer's data.
+  - One SeaweedFS for every customer was not used: its filer port has no authentication, so every customer API that could reach it could read every customer's images.
+- **Image limits.** The vendor sets them per customer in the console (*Image limits*); they are stored in `vendor.tenants.images`:
+
+| Limit | Values | New customer |
+|---|---|---|
+| Images | on or off | on |
+| Models | the platform's vision models that are in the customer's plan: `local-mock`, `google-gemini` | `local-mock` |
+| Images per chat | 1–6 | 6 |
+
+They are stored as `{"enabled": true, "models": ["local-mock"], "maxImages": 6}`, and models outside the customer's plan never take effect. `deploy/tenants/<id>.json` seeds them once (`"images"`); after that the console owns them through `PATCH /admin/tenants/:id/images`, as with knowledge limits. The checked-in customers allow `local-mock` and `google-gemini`.
+
+- **What the customer API sees.**
+  - `GET /v1/models` on vendor-control lists `"capabilities": ["vision"]` and `"max_images"` for each model that may receive images for that customer.
+  - The customer API reports `vision` in `GET /api/models` only for those models, and only where its own model record has `vision`.
+  - It refuses a chat with more images than `max_images` with `ATTACHMENT_LIMIT` before anything is saved. A lowered limit applies to the next message.
+- **What vendor-control accepts** on `/v1/chat/completions`:
+  - `content` as a string, or a list of `{"type": "text", "text"}` and `{"type": "image_url", "image_url": {"url"}}` parts; it forwards each part with only those fields;
+  - an image only as a base64 data URL of a JPEG, PNG or WebP image, checked by its declared type and its first bytes; any other URL is refused;
+  - images only for a model in that customer's image limits, and at most its images per chat; otherwise `403 image_access_denied`, before any reservation;
+  - a body of at most 8 MB on this route, gemini-proxy's cap; every other route keeps 512 KB.
+
+  Malformed parts are refused with `400 invalid_request`. Neither refusal is charged.
+- **Metering.**
+  - An image is billed as input tokens at the model's input sale rate. There is no separate image price.
+  - Admission reserves the text's UTF-8 bytes plus 512, plus 1,120 tokens per image, plus the maximum output. The 250,000-byte input cap applies to the text alone.
+  - Settlement uses the provider's `prompt_tokens`, which include the images; mock-provider reports 1,120 per image. If a provider counts more than was reserved, the vendor absorbs the difference, as for text.
+- A refusal from vendor-control after the API's own check (the limits changed in between) ends the reply as a failed message, like other gateway refusals.
+
 ### Known gaps
 
 - Images are not checked for sensitive information. The notice shown before using an external model is the only safeguard; this is recorded in [PRODUCTION_GAPS.md](PRODUCTION_GAPS.md).
 - The API stores an image as uploaded. Only the web's re-encoding removes metadata such as GPS location, so a client calling the API directly can store it.
 - Object storage needs its own encryption, backup and lifecycle settings in production.
 - Deleting an image does not erase its bytes at once. SeaweedFS keeps them in its volume file until a vacuum compacts it, which happens only once enough of the volume is deleted; a versioned S3 bucket keeps the old version until a lifecycle rule expires it.
+- In a vendor-managed deployment the composer allows 6 images per chat whatever the vendor's limit; a lower limit is reported by the API when the message is sent.
 
 ## Not in version 1
 
-Images in vendor-managed deployments (the next piece of work), image generation, GIF and HEIC images (Safari on iPhone converts photos to JPEG when they are picked), choosing the media resolution to save tokens, OCR for scanned PDFs, retrieving only the relevant passages of large files, keeping original documents for download, and a project page for managing files.
+Images for Groq and OpenRouter models, a storage quota or storage charge per customer, image generation, GIF and HEIC images (Safari on iPhone converts photos to JPEG when they are picked), choosing the media resolution to save tokens, OCR for scanned PDFs, retrieving only the relevant passages of large files, keeping original documents for download, and a project page for managing files.

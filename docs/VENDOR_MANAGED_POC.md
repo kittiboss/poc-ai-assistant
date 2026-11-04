@@ -30,7 +30,7 @@ The customer application's **Test credits & billing** menu (`/billing`, ADMIN on
 
 ## Vendor operations
 
-The localhost vendor console supports tenant balances/status, simulated costs and margins, test credit grants, suspension/resumption, current prices, immutable version history, request history and stale-reservation reconciliation.
+The localhost vendor console supports tenant balances/status, simulated costs and margins, test credit grants, suspension/resumption, current prices, immutable version history, request history, stale-reservation reconciliation, and per-customer knowledge and image limits.
 
 Registering a tenant in the console creates a record and $2 opening test credit. Run the displayed `npm run tenant:create -- <id>` on the vendor host to generate the deployment config, provision its LiteLLM team/key and Keycloak realm, and start its own API/web/Postgres stack. This explicit host activation avoids exposing the Docker socket to a web service. Choose unique adjacent web/API ports. For custom model allowlists/rate shares, edit `deploy/tenants/<id>.json` and re-run the same command.
 
@@ -59,7 +59,7 @@ Customer web → Customer API → vendor-control → LiteLLM → mock / credenti
 - Only `vendor-control` and Keycloak join `platform-shared`. LiteLLM, gateway Postgres and credential proxies are on the private gateway network. LiteLLM's admin port and the vendor console bind to host loopback only. No automatic paid/provider fallback is configured.
 - **The authoritative balance is the central PostgreSQL ledger, not LiteLLM's asynchronously updated `spend`.** This intentionally strengthens the PDF's suggested `max_budget` approach: tenant key/team budgets are unset upstream to avoid two conflicting billing authorities. LiteLLM still enforces model entitlements and per-model RPM/TPM. Its YAML prices/spend are diagnostics only, not customer billing.
 - Ledger amounts are integer billionths of a simulated USD; rates are USD per million tokens. Charges round up to a nanodollar. Database triggers reject updates/deletes of ledger entries and price versions. Each request captures its price version when admitted, so later changes never reprice history.
-- Under a row lock per tenant, admission reserves a conservative text-input upper bound (UTF-8 bytes plus framing) and the requested maximum output tokens. All pending reservations count against available credit. Insufficient credit fails with `402 CREDIT_EXHAUSTED` **before** inference. Models cannot consume another tenant's balance; retrying a submitted request ID is rejected with 409.
+- Under a row lock per tenant, admission reserves a conservative input upper bound (the text's UTF-8 bytes plus framing, and 1,120 tokens per image) and the requested maximum output tokens. All pending reservations count against available credit. Insufficient credit fails with `402 CREDIT_EXHAUSTED` **before** inference. Models cannot consume another tenant's balance; retrying a submitted request ID is rejected with 409.
 - Completed chat and embeddings settle returned token usage, release unused reservation, and append a debit before the response is finalized. If unusual tokenization exceeds the bound, the vendor absorbs the difference; customer balances never become negative.
 - A definite upstream rejection (including rate limits) releases the reservation without a charge. If the connection fails and final usage is unknown, the reserved maximum is charged and explicitly labelled `ESTIMATED`. Client disconnects do not stop server-side metering. This is a POC accounting policy, **not invoice-grade provider reconciliation**.
 - A process crash retains pending reservations rather than releasing potentially consumed credit. The console's **Settle stale reservations** action settles requests older than 5 minutes at their reserved maximum, visibly as estimates. Investigate first; issue a compensating grant if appropriate.
@@ -105,6 +105,24 @@ Vendor console ─► vendor-control ─(RAG_ADMIN_KEY)─► rag-engine /admin 
 - **Embedding and credit.** The customer API embeds passages (`rag-index:<uuid>`) and questions (`<request>:retrieval`) through vendor-control, so they are charged to that customer's credit, count against its quotas and LiteLLM rate share, and appear in its usage and billing pages. With an external embedding model, the kill switch and sensitive-information review apply at upload, at model change and at search. Indexing pauses with a reason (credit used up, external providers paused, daily limit, rate limit). It resumes on retry, after a top-up, or when the limit resets.
 - **Removal.** `tenant:down -- <id> --remove` also purges the customer's knowledge.
 
+## Chat images
+
+Customers attach images to chats for the models the vendor allows them. The chat rules (sizes, limits per chat, how images are sent) are in [CHAT_ATTACHMENTS.md](CHAT_ATTACHMENTS.md#images); this section covers the platform.
+
+```text
+Customer web ─► Customer API ─► own SeaweedFS (storage network of that customer only)
+                    │
+                    └─ image parts (base64) ─► vendor-control ─► LiteLLM ─► mock / gemini-proxy
+                                               checks the image limits,
+                                               reserves 1,120 tokens per image
+```
+
+- **Storage per customer.** Every customer deployment runs its own SeaweedFS, with its own volume, on an internal network that only its API joins. `tenant:create` generates its key pair once into `deploy/tenants/<id>.env` (never printed). For an existing customer, re-running `tenant:create` adds the storage and keeps the customer's data. `tenant:down` keeps the images and `--remove` deletes them.
+- **Vendor limits** (console → *Image limits*, stored in `vendor.tenants.images`) control: on/off, the vision models (`local-mock`, `google-gemini`, also limited by the customer's model plan) and the images per chat (1–6). New customers start with `local-mock` only and 6 images. `deploy/tenants/<id>.json` seeds them once, like the knowledge limits.
+- **Customer API.** vendor-control's `GET /v1/models` marks each model that may receive images for that customer with `"capabilities": ["vision"]` and `"max_images"`. The customer app offers images only for those models.
+- **Admission.** `/v1/chat/completions` accepts a body of at most 8 MB (every other route keeps 512 KB) and image parts only as JPEG, PNG or WebP data URLs, checked by their first bytes. Images for a model outside the customer's limits, or more than its images per chat, are refused with `403 image_access_denied` before any reservation and without a charge.
+- **Credit.** An image is billed as input tokens at the model's input sale rate, with no separate price. Admission reserves 1,120 tokens per image (Gemini 3's default media resolution) on top of the text bound, and settlement uses the provider's returned `prompt_tokens`. Request rows keep no content, so the platform never stores an image.
+
 ## Quotas and no-paid-call boundaries
 
 The three checked-in tenant configs divide sample per-minute limits and daily external request/token limits. **These are example allocations, not authoritative current provider quotas.** Check the relevant provider console before enabling external models. Shared account quotas and other API users can still cause 429 responses; applications do not retry with paid fallbacks.
@@ -125,6 +143,7 @@ npm run tenant:smoke -- a
 npm run tenant:smoke -- b
 npm run tenant:smoke -- c
 npm run tenant:smoke -- a --rag
+npm run tenant:smoke -- a --images
 node scripts/platform/vendor-browser-smoke.mjs
 npm run typecheck -w @enterprise/web
 npm run lint -w @enterprise/web
@@ -136,6 +155,12 @@ npm run lint -w @enterprise/web
 - The earlier `platform:smoke` remains a low-level LiteLLM diagnostic. Its asynchronous LiteLLM spend checks are not the new ledger's acceptance criteria.
 - RAG engine integration tests also use their own temporary database, on `rag-db`, connected as `rag_app`. They verify isolation (listing, search, edits by ID, forged rows, no-context reads), every vendor limit, version switching, stale vectors, pause/resume, a small tenant beside a large one in the same HNSW index, and purge.
 - `tenant:smoke -- a --rag` uploads TXT, MD, PDF and CSV documents with conflicting facts to customers a and b (`--with <id>` picks the second). It checks that each customer's chat cites only its own documents, including a PDF page. It also checks the embedding ledger entries, that a vendor-lowered top-K is clamped, and that a chunking change switches the index version. It refuses any embedding model other than `mock-embedding` and deletes its uploads afterwards. The browser smoke verifies vendor/customer pages, mock top-up, mobile layout and browser errors using an installed Chrome (`CHROME_PATH` override supported).
+- `tenant:smoke -- a --images` uploads a sample image to the customer and sends it to `local-mock` only. It checks:
+  - the reply names the image it received;
+  - the image is in the customer's own SeaweedFS;
+  - the ledger debit counts 1,120 tokens for it.
+
+  It then turns images off for that customer through the console API, checks that the next image request is refused without a charge, restores the limits and deletes its chat.
 
 ## Production exclusions
 
