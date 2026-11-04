@@ -48,18 +48,45 @@ describe('model availability and external provider guardrails', () => {
     expect(error.getResponse()).toMatchObject({ code: 'CREDIT_EXHAUSTED' });
   });
 
-  it('reports vision only where this deployment accepts images', async () => {
+  it('reports vision only where this deployment accepts images, and in vendor mode only where the platform allows them', async () => {
     const prisma = prismaWith({ requests: 0, tokens: 0 });
     prisma.aIModel.findMany.mockResolvedValue(models.map((model) => ({ ...model, capabilities: ['chat', 'streaming', 'vision'] })));
     const vision = async () => (await modelsService(prisma).forUser(admin)).map((model) => model.capabilities.includes('vision'));
     vi.stubEnv('S3_BUCKET', 'attachments');
     expect(await vision()).toEqual([true, true]);
-    // vendor-control cannot meter images yet.
+    // The fixture's gateway marks no route with vision.
     vi.stubEnv('MODEL_ACCESS', 'vendor-gateway');
     expect(await vision()).toEqual([false, false]);
+    gateway.routes.mockResolvedValueOnce(new Map([['local-mock', { vision: true, maxImages: 3 }], ['google-gemini', { vision: false }]]));
+    expect(await vision()).toEqual([true, false]);
     vi.stubEnv('MODEL_ACCESS', '');
     vi.stubEnv('S3_BUCKET', '');
     expect(await vision()).toEqual([false, false]);
+  });
+
+  it("limits a chat's images to what the platform allows this organization for the model", async () => {
+    const service = modelsService(prismaWith({ requests: 0, tokens: 0 }));
+    const seeing = { id: 'local-mock', capabilities: ['chat', 'vision'] };
+    const route = (value: object) => gateway.routes.mockResolvedValueOnce(new Map([['local-mock', value]]));
+    vi.stubEnv('S3_BUCKET', 'attachments');
+    expect(await service.imageLimit(seeing)).toBe(6);
+    expect(await service.imageLimit({ ...seeing, capabilities: ['chat'] })).toBeNull();
+    vi.stubEnv('MODEL_ACCESS', 'vendor-gateway');
+    route({ vision: true, maxImages: 2 });
+    expect(await service.imageLimit(seeing)).toBe(2);
+    route({ vision: true });
+    expect(await service.imageLimit(seeing)).toBe(6);
+    // Never more than the API's own limit.
+    route({ vision: true, maxImages: 9 });
+    expect(await service.imageLimit(seeing)).toBe(6);
+    route({ vision: false });
+    expect(await service.imageLimit(seeing)).toBeNull();
+    // A model without vision in this deployment never takes images, whatever the gateway says.
+    gateway.routes.mockClear();
+    expect(await service.imageLimit({ ...seeing, capabilities: ['chat'] })).toBeNull();
+    vi.stubEnv('S3_BUCKET', '');
+    expect(await service.imageLimit(seeing)).toBeNull();
+    expect(gateway.routes).not.toHaveBeenCalled();
   });
 
   it("refuses to enable a model the platform gateway does not route for this organization", async () => {

@@ -249,7 +249,7 @@ They are stored as `{"enabled": true, "models": ["local-mock"], "maxImages": 6}`
   - An image is billed as input tokens at the model's input sale rate. There is no separate image price.
   - Admission reserves the text's UTF-8 bytes plus 512, plus 1,120 tokens per image, plus the maximum output. The 250,000-byte input cap applies to the text alone.
   - Settlement uses the provider's `prompt_tokens`, which include the images; mock-provider reports 1,120 per image. If a provider counts more than was reserved, the vendor absorbs the difference, as for text.
-- A refusal from vendor-control after the API's own check (the limits changed in between) ends the reply as a failed message, like other gateway refusals.
+- A refusal from vendor-control after the API's own check (the limits changed in between) ends the reply as a failed message with `ATTACHMENT_NEEDS_VISION`, so the web words it like the API's own check. Like other gateway refusals, it records no usage.
 
 ### Known gaps
 

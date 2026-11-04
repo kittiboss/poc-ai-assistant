@@ -240,7 +240,7 @@ describe("vendor-managed platform deployment", () => {
   const tenant = read("deploy/tenant/docker-compose.yml");
 
   it("gives a customer deployment no provider credential and no way around the gateway", () => {
-    expect(serviceNames(tenant)).toEqual(["postgres", "backend", "frontend"]);
+    expect(serviceNames(tenant)).toEqual(["postgres", "seaweedfs", "backend", "frontend"]);
     expect(tenant).not.toMatch(/MASTER_KEY|(GEMINI|GROQ|OPENROUTER|OPENAI|ANTHROPIC)_API_KEY|CREDENTIAL_CONFIGURED/);
     const backend = block(tenant, "services", "backend")!;
     expect(backend).toContain("MODEL_ACCESS: vendor-gateway");
@@ -250,6 +250,25 @@ describe("vendor-managed platform deployment", () => {
     expect(backend).toContain("RAG_ENGINE_URL: http://rag-engine:4060");
     expect(backend).not.toMatch(/RAG_ADMIN_KEY|RAG_DB_PASSWORD|RAG_APP_DB_PASSWORD/);
     expect(block(tenant, "networks", "platform-shared")).toMatch(/external: true\n\s+name: platform-shared/);
+  });
+
+  it("keeps each customer's chat images in its own storage, which only that customer's backend reaches", () => {
+    const storage = block(tenant, "services", "seaweedfs")!;
+    // Its filer and volume ports have no authentication, so it publishes no port and joins no other network.
+    expect(storage).toContain("networks: [storage]");
+    expect(storage).not.toMatch(/ports:/);
+    expect(block(tenant, "networks", "storage")).toContain("internal: true");
+    const onStorage = serviceNames(tenant).filter((name) => /networks: \[[^\]]*\bstorage\b/.test(block(tenant, "services", name)!));
+    expect(onStorage).toEqual(["seaweedfs", "backend"]);
+    // Its only identity is the customer's own generated key pair, required to start.
+    expect(storage).toContain("AWS_ACCESS_KEY_ID: ${TENANT_S3_ACCESS_KEY_ID:?");
+    expect(storage).toContain("AWS_SECRET_ACCESS_KEY: ${TENANT_S3_SECRET_ACCESS_KEY:?");
+    const backend = block(tenant, "services", "backend")!;
+    expect(backend).toContain("S3_ENDPOINT: http://seaweedfs:8333");
+    expect(backend).toContain("AWS_ACCESS_KEY_ID: ${TENANT_S3_ACCESS_KEY_ID}");
+    // Its own volume, which tenant:down --remove deletes with the rest.
+    expect(storage).toContain("- seaweedfs-data:/data");
+    expect(tenant).toMatch(/\nvolumes:\n {2}postgres-data:\n {2}seaweedfs-data:\n/);
   });
 
   it("lets customer deployments reach only Keycloak, the gateway and the RAG engine on the platform", () => {

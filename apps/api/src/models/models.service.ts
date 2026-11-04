@@ -3,12 +3,24 @@ import { Provider } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import type { AuthUser } from '../common/auth/auth.decorators';
 import { PrismaService } from '../common/prisma/prisma.service';
-import { GatewayService, gatewayError } from '../gateway/gateway.service';
+import { MAX_CHAT_IMAGES } from '../attachments/attachments.service';
+import { GatewayService, gatewayError, type GatewayRoute } from '../gateway/gateway.service';
 import { UsageService } from '../usage/usage.service';
 import { UsersService } from '../users/users.service';
 import { credentialFor, externalProviderAllowed, imagesAvailable, isExternalProvider, modelAllowedForUser, vendorGateway } from './model-policies';
 
 const externalSwitch = () => process.env.ENABLE_EXTERNAL_PROVIDERS === 'true';
+
+/**
+ * The images a chat may hold for `model`, or null when it cannot receive them: this deployment needs
+ * object storage and the model `vision`; a vendor-managed one also needs `vision` on the gateway's route.
+ */
+function imageLimitOf(model: { id: string; capabilities: string[] }, routes: Map<string, GatewayRoute>) {
+  if (!imagesAvailable() || !model.capabilities.includes('vision')) return null;
+  if (!vendorGateway()) return MAX_CHAT_IMAGES;
+  const route = routes.get(model.id);
+  return route?.vision ? Math.min(route.maxImages ?? MAX_CHAT_IMAGES, MAX_CHAT_IMAGES) : null;
+}
 
 @Injectable()
 export class ModelsService {
@@ -28,12 +40,12 @@ export class ModelsService {
       include: { permissions: { where: { userId: user.id } } },
       orderBy: [{ local: 'desc' }, { displayName: 'asc' }],
     });
-    const [reachable, credit] = await Promise.all([this.reachability(models.filter((model) => model.enabled)), this.gateway.credit()]);
+    const [{ reachable, routes }, credit] = await Promise.all([this.reachability(models.filter((model) => model.enabled)), this.gateway.credit()]);
     const budgetExhausted = models.some((model) => model.enabled && isExternalProvider(model.provider)) && await this.usage.externalBudgetExhausted();
     // Every model, local ones included, is billed through the platform gateway's prepaid credit.
     const creditExhausted = credit?.exhausted === true;
     // The composer offers images only for models that report vision.
-    const images = imagesAvailable();
+    const sees = (model: { id: string; capabilities: string[] }) => imageLimitOf(model, routes) !== null;
     return models.map((model) => {
       const permitted = modelAllowedForUser(model.allowedRoles, auth.roles, model.permissions[0]?.allowed);
       const configured = externalProviderAllowed(model.provider, externalSwitch(), credentialFor(model.provider));
@@ -42,7 +54,7 @@ export class ModelsService {
       return {
         id: model.id, displayName: model.displayName, provider: model.provider, providerModelId: model.providerModelId,
         enabled: model.enabled, permitted, available, local: model.local, contextWindow: model.contextWindow,
-        capabilities: images ? model.capabilities : model.capabilities.filter((capability) => capability !== 'vision'),
+        capabilities: sees(model) ? model.capabilities : model.capabilities.filter((capability) => capability !== 'vision'),
         status: !model.enabled ? 'Disabled' : !permitted ? 'Not permitted' : !configured ? 'Not configured' : creditExhausted ? 'Credit exhausted' : limited ? 'Daily limit reached' : available ? 'Available' : 'Unavailable',
       };
     });
@@ -66,9 +78,19 @@ export class ModelsService {
     return model;
   }
 
+  /**
+   * How many images a chat may hold for this model, or null when it cannot receive them here. In a
+   * vendor-managed deployment the platform gateway's image limits for this organization decide.
+   */
+  async imageLimit(model: { id: string; capabilities: string[] }) {
+    // The gateway is asked only when its answer decides.
+    const asks = vendorGateway() && imagesAvailable() && model.capabilities.includes('vision');
+    return imageLimitOf(model, asks ? await this.gateway.routes() : new Map());
+  }
+
   async adminList() {
     const models = await this.prisma.aIModel.findMany({ include: { pricing: { include: { versions: { orderBy: { version: 'desc' }, take: 1 } } } }, orderBy: { displayName: 'asc' } });
-    const reachable = await this.reachability(models);
+    const { reachable } = await this.reachability(models);
     return models.map((model) => {
       const configured = externalProviderAllowed(model.provider, externalSwitch(), credentialFor(model.provider));
       const routed = reachable(model);
@@ -90,11 +112,12 @@ export class ModelsService {
   /** One gateway route lookup per call; Ollama is asked only when an Ollama model is in scope. Neither reaches a paid provider. */
   private async reachability(models: Array<{ provider: Provider }>) {
     const [routes, ollama] = await Promise.all([
-      models.length ? this.gateway.routes() : Promise.resolve(new Set<string>()),
+      models.length ? this.gateway.routes() : Promise.resolve(new Map<string, GatewayRoute>()),
       models.some((model) => model.provider === Provider.OLLAMA) ? this.ollamaModels() : Promise.resolve(new Set<string>()),
     ]);
-    return (model: { id: string; provider: Provider; providerModelId: string }) =>
+    const reachable = (model: { id: string; provider: Provider; providerModelId: string }) =>
       routes.has(model.id) && (model.provider !== Provider.OLLAMA || ollama.has(model.providerModelId));
+    return { reachable, routes };
   }
 
   private async ollamaModels() {

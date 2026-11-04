@@ -579,11 +579,8 @@ describe("chat attachments", () => {
       expect(prisma.attachment.create).not.toHaveBeenCalled();
     });
 
-    it.each([
-      ["without object storage", { S3_BUCKET: "" }],
-      ["in a vendor-managed deployment", { MODEL_ACCESS: "vendor-gateway" }],
-    ])("refuses images %s as an unsupported type", async (_where, env) => {
-      for (const [name, value] of Object.entries(env)) vi.stubEnv(name, value);
+    it("refuses images without object storage as an unsupported type", async () => {
+      vi.stubEnv("S3_BUCKET", "");
       const { storage, service } = setup();
       await expect(
         service.upload(auth, image("photo.png", png(10, 10))),
@@ -592,6 +589,15 @@ describe("chat attachments", () => {
         response: { code: "ATTACHMENT_TYPE" },
       });
       expect(storage.put).not.toHaveBeenCalled();
+    });
+
+    it("keeps images in a vendor-managed deployment's own storage; the platform's limits apply when they are sent", async () => {
+      vi.stubEnv("MODEL_ACCESS", "vendor-gateway");
+      const { storage, service } = setup();
+      await expect(
+        service.upload(auth, image("photo.png", png(10, 10))),
+      ).resolves.toMatchObject({ kind: "IMAGE", mimeType: "image/png" });
+      expect(storage.put).toHaveBeenCalledTimes(1);
     });
 
     it("leaves a file that only has an image's name to the document checks", async () => {

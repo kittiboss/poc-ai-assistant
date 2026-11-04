@@ -10,7 +10,12 @@ export type GatewayMessage = { role: 'system' | 'user' | 'assistant'; content: s
 export const messageText = (content: GatewayMessage['content']) =>
   typeof content === 'string' ? content : content.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('\n');
 
-export type GatewayBilling = { requestId: string; charge: string; priceVersion: string; estimated: boolean; simulation: boolean };
+/**
+ * A route the gateway serves to this key. The platform gateway marks the models this organization
+ * may send images to with `vision` and the images a chat may hold; LiteLLM itself marks none.
+ */
+export type GatewayRoute = { vision: boolean; maxImages?: number };
+export type GatewayBilling ={ requestId: string; charge: string; priceVersion: string; estimated: boolean; simulation: boolean };
 export type GatewayUsage = { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number; billing?: GatewayBilling };
 /** The organization's prepaid credit held by the platform gateway, in USD. */
 export type GatewayCredit = { currency: 'USD'; limit: number; spent: number; remaining: number; exhausted: boolean };
@@ -20,6 +25,8 @@ export const GatewayErrorCode = {
   creditExhausted: 'CREDIT_EXHAUSTED',
   rateLimited: 'RATE_LIMITED',
   modelNotEntitled: 'MODEL_NOT_ENTITLED',
+  // The same code as the API's own check, so the web words it the same way.
+  imagesNotAllowed: 'ATTACHMENT_NEEDS_VISION',
 } as const;
 
 const coded = (status: HttpStatus, code: string, message: string) => new HttpException({ statusCode: status, code, message }, status);
@@ -40,6 +47,8 @@ const providerRefusals = new WeakSet<HttpException>();
 function clientError(status: number, type?: string) {
   if (type === 'budget_exceeded') return coded(HttpStatus.PAYMENT_REQUIRED, GatewayErrorCode.creditExhausted, "Your organization's prepaid AI credit is used up. Ask an administrator to add credit.");
   if (type === 'key_model_access_denied') return coded(HttpStatus.FORBIDDEN, GatewayErrorCode.modelNotEntitled, "This model is not included in your organization's plan.");
+  // The platform's image limits changed after this API checked them.
+  if (type === 'image_access_denied') return coded(HttpStatus.BAD_REQUEST, GatewayErrorCode.imagesNotAllowed, "Your organization's plan does not let the chosen model receive this chat's images.");
   if (status === 429) return coded(HttpStatus.TOO_MANY_REQUESTS, GatewayErrorCode.rateLimited, 'The AI provider rate limit or free-tier quota was reached. Wait a moment and try again.');
   if (status === 401 || status === 403) return new BadGatewayException('The AI provider rejected the configured server credential.');
   if (status === 400 || status === 404 || status === 422) return new BadGatewayException('The AI provider rejected the request.');
@@ -86,21 +95,26 @@ export class GatewayService {
   }
 
   /**
-   * Route names LiteLLM serves to this key. Reads gateway config only; never calls a model provider.
+   * Routes LiteLLM serves to this key, by name. Reads gateway config only; never calls a model provider.
    * The platform gateway refuses /v1/models once the prepaid budget is spent, so the key's own model list is used then.
    */
-  async routes(): Promise<Set<string>> {
+  async routes(): Promise<Map<string, GatewayRoute>> {
+    const plain = (ids: string[] = []) => new Map(ids.map((id) => [id, { vision: false }]));
     try {
       const headers = { Authorization: `Bearer ${this.key}` };
       const ready = await fetch(`${this.url}/health/readiness`, { headers, signal: AbortSignal.timeout(1500) });
-      if (!ready.ok) return new Set();
+      if (!ready.ok) return new Map();
       const response = await fetch(`${this.url}/v1/models`, { headers, signal: AbortSignal.timeout(1500) });
       if (!response.ok) {
-        return errorType(await response.text().catch(() => '')) === 'budget_exceeded' ? new Set((await this.keyInfo())?.models) : new Set();
+        return errorType(await response.text().catch(() => '')) === 'budget_exceeded' ? plain((await this.keyInfo())?.models) : new Map();
       }
-      const json = (await response.json()) as { data?: Array<{ id: string }> };
-      return new Set((json.data || []).map((item) => item.id));
-    } catch { return new Set(); }
+      const json = (await response.json()) as { data?: Array<{ id: string; capabilities?: unknown; max_images?: unknown }> };
+      return new Map((json.data || []).map((item) => {
+        const vision = Array.isArray(item.capabilities) && item.capabilities.includes('vision');
+        const maxImages = Number.isInteger(item.max_images) && (item.max_images as number) > 0 ? (item.max_images as number) : undefined;
+        return [item.id, vision ? { vision, maxImages } : { vision }];
+      }));
+    } catch { return new Map(); }
   }
 
   /**
