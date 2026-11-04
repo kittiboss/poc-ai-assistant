@@ -16,7 +16,7 @@ This repository is an enterprise-shaped POC, not a production security or billin
 - OpenRouter is pinned to its zero-price free router and blocks paid fallback, but the selected underlying model and its retention/training policy can vary per request. Production workloads need an approved fixed provider/model and contractual data controls.
 - Give OpenAI and Anthropic the same credential-proxy + allowlist treatment as Gemini before enabling them.
 - Add a production job/outbox strategy for audit/usage durability across abrupt process loss.
-- Define retention, legal hold, export/deletion, data residency, encryption, and backup policies. The POC's hourly retention sweep only purges inactive chat text, citations, and feedback; project documents, explicit memories, and usage records have separate lifecycles.
+- Define retention, legal hold, export/deletion, data residency, encryption, and backup policies. The POC's hourly retention sweep only purges inactive chat text, citations, and feedback, plus the chat attachments no other chat references; project documents, explicit memories, and usage records have separate lifecycles. To find those attachments it reads every message's references, without an index, which a large installation needs.
 - Add centralized metrics/traces/security events without logging prompt or response bodies by default.
 - Add browser CSP/security headers, ingress request limits, WAF controls where appropriate, and formal threat modeling.
 - Perform penetration testing and dependency/container/license review.

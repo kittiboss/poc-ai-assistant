@@ -31,6 +31,7 @@ model Attachment {
 
 - There is no `conversationId`. A chat finds its files through the references in its messages' metadata, so a branched chat keeps them without copying rows. Access is checked against `userId`.
 - Deleting a chat (a soft delete) keeps its attachments, as it keeps its messages.
+- The retention sweep deletes an expired chat's messages, and with them every attachment those messages sent that no other chat's messages reference, deleted chats included. A branched chat therefore keeps the files it shares with the expired one. Images lose their row first, then their file.
 
 ## Upload and remove
 
@@ -150,7 +151,7 @@ The `.env` names differ from the SDK's so that a developer's own AWS keys in the
   - removal and the unsent sweep delete the row first, then the object; the sweep deletes its rows and reads their keys in one `DELETE … RETURNING`, so a file sent meanwhile keeps its object;
   - a sweep at startup and then daily deletes objects older than 24 hours that have no row, so a failed delete, or a row removed by a cascade, leaves nothing behind for long.
 - A storage failure reaches the client as `503` without detail; the cause is logged.
-- Deleting a chat (a soft delete) keeps its images, as it keeps its messages.
+- Deleting a chat (a soft delete) keeps its images, as it keeps its messages. The retention sweep removes an expired chat's images that no other chat references, the row first and then the object.
 
 ### Data
 
