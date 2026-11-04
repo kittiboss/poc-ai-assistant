@@ -4,6 +4,9 @@ import { timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { Fault, Store, defaultConfig, validId } from "./store.mjs";
 import { validateRequest } from "./money.mjs";
+import { imagesAllowed } from "./images.mjs";
+
+const CHAT_PATH = "/v1/chat/completions";
 
 const same = (a, b) =>
   Boolean(
@@ -60,7 +63,12 @@ export function createApp(
         .json({ error: { message: "Cross-origin mutation denied" } });
     next();
   });
-  app.use(express.json({ limit: "512kb" }));
+  // Chat completions carry their chat's images in base64, up to gemini-proxy's 8 MB; that body is
+  // parsed only after the tenant is authenticated. Every other route keeps the small limit.
+  const smallJson = express.json({ limit: "512kb" });
+  app.use((req, res, next) =>
+    req.path === CHAT_PATH ? next() : smallJson(req, res, next),
+  );
   app.get("/health/readiness", async (_req, res) => {
     await store.pool.query("SELECT 1");
     res.json({ status: "ok", simulation: true });
@@ -263,6 +271,12 @@ export function createApp(
     } catch (error) {
       throw new Fault(400, "invalid_request", error.message);
     }
+    if (bounds.images && !imagesAllowed(req.body.model, bounds.images))
+      throw new Fault(
+        403,
+        "image_access_denied",
+        "Images are not allowed for this model, or there are too many for one request",
+      );
     const requestId = req.get("x-request-id");
     const reservation = await store.reserve(
       req.tenant,
@@ -404,7 +418,7 @@ export function createApp(
         );
     }
   };
-  app.post("/v1/chat/completions", inference(false));
+  app.post(CHAT_PATH, express.json({ limit: "8mb" }), inference(false));
   app.post("/v1/embeddings", inference(true));
   app.use((_req, res) =>
     res.status(404).json({ error: { message: "Not found" } }),
@@ -414,6 +428,11 @@ export function createApp(
       res.end();
       return;
     }
+    // A body over its route's limit; nothing was reserved.
+    if (error.type === "entity.too.large")
+      return res.status(413).json({
+        error: { type: "request_too_large", message: "Request body is too large" },
+      });
     const status =
       error instanceof Fault
         ? error.status

@@ -67,3 +67,81 @@ test("text-only requests strip routing overrides and reserve a conservative maxi
     0,
   );
 });
+
+test("images reserve fixed tokens each, never their base64 size, and are forwarded as parts", () => {
+  // A 1 MB PNG: far over the text cap in base64, but it counts as 1,120 tokens.
+  const png = Buffer.alloc(1024 * 1024);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(png);
+  const url = `data:image/png;base64,${png.toString("base64")}`;
+  const text = { role: "user", content: "What is this?" };
+  const withImage = {
+    role: "user",
+    content: [
+      { type: "text", text: "What is this?" },
+      { type: "image_url", image_url: { url, detail: "high" } },
+    ],
+  };
+  const body = { model: "local-mock", stream: true, max_tokens: 32 };
+  const plain = validateRequest({ ...body, messages: [text] }, false);
+  const result = validateRequest({ ...body, messages: [withImage] }, false);
+  assert.equal(plain.images, 0);
+  assert.equal(result.images, 1);
+  // The parts' framing adds a few bytes of text; the image adds its model's tokens.
+  const framing =
+    Buffer.byteLength(
+      JSON.stringify([
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "What is this?" },
+            { type: "image_url" },
+          ],
+        },
+      ]),
+    ) - Buffer.byteLength(JSON.stringify([text]));
+  assert.equal(result.input, plain.input + framing + 1120);
+  assert.deepEqual(result.upstream.messages, [
+    {
+      role: "user",
+      content: [
+        { type: "text", text: "What is this?" },
+        { type: "image_url", image_url: { url } },
+      ],
+    },
+  ]);
+  // Messages keep only their role and content.
+  assert.deepEqual(
+    validateRequest(
+      { ...body, messages: [{ ...text, name: "x", tool_calls: [] }] },
+      false,
+    ).upstream.messages,
+    [text],
+  );
+  // The text cap still applies to the text alone.
+  assert.throws(
+    () =>
+      validateRequest(
+        {
+          ...body,
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: "x".repeat(250000) },
+                withImage.content[1],
+              ],
+            },
+          ],
+        },
+        false,
+      ),
+    /Input too large/,
+  );
+  for (const content of [[], [{ type: "text" }], {}, null])
+    assert.throws(() =>
+      validateRequest(
+        { ...body, messages: [{ role: "user", content }] },
+        false,
+      ),
+    );
+});

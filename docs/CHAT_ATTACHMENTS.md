@@ -242,7 +242,7 @@ They are stored as `{"enabled": true, "models": ["local-mock"], "maxImages": 6}`
   - `content` as a string, or a list of `{"type": "text", "text"}` and `{"type": "image_url", "image_url": {"url"}}` parts; it forwards each part with only those fields;
   - an image only as a base64 data URL of a JPEG, PNG or WebP image, checked by its declared type and its first bytes; any other URL is refused;
   - images only for a model in that customer's image limits, and at most its images per chat; otherwise `403 image_access_denied`, before any reservation;
-  - a body of at most 8 MB on this route, gemini-proxy's cap; every other route keeps 512 KB.
+  - a body of at most 8 MB on this route, gemini-proxy's cap, parsed only after the customer's key is checked; every other route keeps 512 KB. A larger body gets `413 request_too_large`.
 
   Malformed parts are refused with `400 invalid_request`. Neither refusal is charged.
 - **Metering.**

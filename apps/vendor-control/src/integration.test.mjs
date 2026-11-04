@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { Store, defaultConfig } from "./store.mjs";
 import { createApp } from "./server.mjs";
+import { charge, validateRequest } from "./money.mjs";
 
 test(
   "transactional ledger and HTTP isolation (isolated temporary database, mock upstream only)",
@@ -208,6 +209,7 @@ test(
       },
     );
     let upstreamCalls = 0;
+    let lastUpstream;
     const ragCalls = [];
     const app = createApp(store, {
       adminKey: "vendor-test-key-that-is-not-a-real-secret",
@@ -221,6 +223,7 @@ test(
       fetchUpstream: async (path, init) => {
         upstreamCalls++;
         const body = JSON.parse(init.body);
+        lastUpstream = body;
         assert.ok(init.headers["x-request-id"]);
         assert.equal(body.api_base, undefined);
         if (body.messages?.[0]?.content === "rate")
@@ -351,6 +354,102 @@ test(
         );
       },
     );
+    // A PNG of `bytes` bytes (only its signature is real) as the data URL the customer API sends.
+    const png = (bytes) => {
+      const file = Buffer.alloc(bytes);
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(file);
+      return `data:image/png;base64,${file.toString("base64")}`;
+    };
+    const withImages = (model, ...urls) => ({
+      ...chat,
+      model,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "What is in these?" },
+            ...urls.map((url) => ({ type: "image_url", image_url: { url, detail: "high" } })),
+          ],
+        },
+      ],
+    });
+    const reservedFor = async (requestId) =>
+      (
+        await pool.query("SELECT reserved FROM vendor.requests WHERE request_id=$1", [requestId])
+      ).rows[0]?.reserved;
+    await t.test(
+      "images reach the model as parts, and reserve fixed tokens each instead of their size",
+      async () => {
+        // 1 MB in base64 is over every other route's limit and over the text cap.
+        const url = png(1024 * 1024);
+        const id = randomUUID();
+        const response = await call("/v1/chat/completions", withImages("local-mock", url), keyB, {
+          "x-request-id": id,
+        });
+        assert.equal(response.status, 200);
+        assert.match(await response.text(), /\[DONE\]/);
+        assert.deepEqual(lastUpstream.messages[0].content[1], {
+          type: "image_url",
+          image_url: { url },
+        });
+        const bounds = validateRequest(withImages("local-mock", url), false);
+        const {
+          rows: [price],
+        } = await pool.query(
+          "SELECT * FROM vendor.prices WHERE model='local-mock' ORDER BY id DESC LIMIT 1",
+        );
+        assert.equal(bounds.images, 1);
+        assert.equal(BigInt(await reservedFor(id)), charge(bounds.input, bounds.output, price));
+        assert.ok(bounds.input < 2000);
+        assert.equal((await store.balance("b")).reserved, 0);
+      },
+    );
+    await t.test(
+      "images for a model or a count the platform does not allow are refused before any reservation",
+      async () => {
+        const key = `sk-${randomUUID()}`;
+        await store.register(
+          { ...defaultConfig("img", "Images"), models: ["local-mock", "groq-llama"] },
+          key,
+          "2",
+        );
+        const before = upstreamCalls;
+        for (const body of [
+          withImages("groq-llama", png(64)),
+          withImages("local-mock", ...Array.from({ length: 7 }, () => png(64))),
+        ]) {
+          const id = randomUUID();
+          const response = await call("/v1/chat/completions", body, key, { "x-request-id": id });
+          assert.equal(response.status, 403);
+          assert.equal((await response.json()).error.type, "image_access_denied");
+          assert.equal(await reservedFor(id), undefined);
+        }
+        const remote = await call(
+          "/v1/chat/completions",
+          withImages("local-mock", "https://example.invalid/cat.png"),
+          key,
+        );
+        assert.equal(remote.status, 400);
+        assert.equal((await remote.json()).error.type, "invalid_request");
+        assert.equal(upstreamCalls, before);
+        assert.equal((await store.balance("img")).remaining, 2);
+      },
+    );
+    await t.test("only chat completions take a body over 512 KB, after authentication", async () => {
+      const big = await call("/customer/topups", {
+        amount: "1",
+        reference: "big",
+        padding: "x".repeat(600 * 1024),
+      });
+      assert.equal(big.status, 413);
+      assert.equal((await big.json()).error.type, "request_too_large");
+      const huge = await call("/v1/chat/completions", withImages("local-mock", png(6.5 * 1024 * 1024)));
+      assert.equal(huge.status, 413);
+      assert.equal(
+        (await call("/v1/chat/completions", withImages("local-mock", png(1024 * 1024)), "wrong")).status,
+        401,
+      );
+    });
     await t.test("embeddings are metered in the same ledger", async () => {
       const response = await call("/v1/embeddings", {
         model: "mock-embedding",
