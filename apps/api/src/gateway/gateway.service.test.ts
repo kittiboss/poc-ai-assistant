@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { GatewayService, gatewayError, gatewayErrorCode, refusedByGateway } from './gateway.service';
+import { GatewayService, ROUTES_GRACE_MS, gatewayError, gatewayErrorCode, refusedByGateway } from './gateway.service';
 
 describe('gateway abstraction', () => {
   afterEach(() => {
@@ -66,6 +66,71 @@ describe('gateway abstraction', () => {
     expect(fetchMock.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual(['/health/readiness', '/v1/models']);
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')));
     expect((await new GatewayService().routes()).size).toBe(0);
+  });
+
+  describe('when the gateway gives no answer', () => {
+    const ready = () => new Response('{}', { status: 200 });
+    const models = (...ids: string[]) => new Response(JSON.stringify({ data: ids.map((id) => ({ id })) }), { status: 200 });
+    const answers = (...responses: Response[]) => vi.stubGlobal('fetch', responses.reduce((mock, response) => mock.mockResolvedValueOnce(response), vi.fn()));
+    const timesOut = () => vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new DOMException('The operation was aborted due to timeout', 'TimeoutError')));
+    const ids = async (gateway: GatewayService) => [...(await gateway.routes()).keys()];
+    const start = new Date('2026-11-05T09:00:00Z').getTime();
+    const at = (ms: number) => vi.setSystemTime(start + ms);
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("keeps the gateway's last answer for a minute after it came, and standing in does not extend it", async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      at(0);
+      const gateway = new GatewayService();
+      answers(ready(), models('local-mock', 'google-gemini'));
+      expect(await ids(gateway)).toEqual(['local-mock', 'google-gemini']);
+
+      timesOut();
+      at(30_000);
+      expect(await ids(gateway)).toEqual(['local-mock', 'google-gemini']);
+      at(ROUTES_GRACE_MS);
+      expect(await ids(gateway)).toEqual(['local-mock', 'google-gemini']);
+      at(ROUTES_GRACE_MS + 1);
+      expect(await ids(gateway)).toEqual([]);
+
+      // Once the gateway answers again, its answer is used and starts a new minute.
+      answers(ready(), models('local-mock'));
+      expect(await ids(gateway)).toEqual(['local-mock']);
+      timesOut();
+      at(ROUTES_GRACE_MS + 30_000);
+      expect(await ids(gateway)).toEqual(['local-mock']);
+    });
+
+    it('stands in for a gateway that is not ready or fails, but believes one that refuses', async () => {
+      const gateway = new GatewayService();
+      answers(ready(), models('local-mock'));
+      await gateway.routes();
+
+      answers(new Response('{"status":"unhealthy"}', { status: 503 }));
+      expect(await ids(gateway)).toEqual(['local-mock']);
+      answers(ready(), new Response('{"error":{"message":"upstream"}}', { status: 502 }));
+      expect(await ids(gateway)).toEqual(['local-mock']);
+
+      // A revoked key gets no routes at once, and no older answer comes back after it.
+      answers(ready(), new Response('{"error":{"message":"Invalid key"}}', { status: 401 }));
+      expect(await ids(gateway)).toEqual([]);
+      timesOut();
+      expect(await ids(gateway)).toEqual([]);
+    });
+
+    it('asks the gateway once for calls at the same time, and again for the next call', async () => {
+      const fetchMock = vi.fn().mockImplementation(async (url: string) => (String(url).endsWith('/v1/models') ? models('local-mock') : ready()));
+      vi.stubGlobal('fetch', fetchMock);
+      const gateway = new GatewayService();
+      const [first, second] = await Promise.all([gateway.routes(), gateway.routes()]);
+      expect([...first.keys()]).toEqual(['local-mock']);
+      expect(second).toBe(first);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      await gateway.routes();
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+    });
   });
 
   it('runs the default suite with non-local network access blocked', async () => {

@@ -116,7 +116,7 @@ NestJS ──► LiteLLM (internal network only) ──► gemini-proxy ──�
                                                clamps output tokens, forces one response
 ```
 
-The API also enforces an installation-wide daily request and token ceiling across all external providers, computed from usage records, before a request is persisted or streamed. Model availability checks read LiteLLM's configured routes and Ollama's local tag list; they never call a provider.
+The API also enforces an installation-wide daily request and token ceiling across all external providers, computed from usage records, before a request is persisted or streamed. Model availability checks read LiteLLM's configured routes and Ollama's local tag list; they never call a provider. When the gateway gives no answer (unreachable, slower than 1.5 seconds, not ready, a server error), its last answer stands in for up to 60 seconds after it came, so one slow moment does not mark every model unavailable or refuse a chat's images; an answer, a refusal included, is used at once.
 
 ## Repository layout
 

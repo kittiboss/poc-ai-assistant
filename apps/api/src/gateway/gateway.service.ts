@@ -15,6 +15,8 @@ export const messageText = (content: GatewayMessage['content']) =>
  * may send images to with `vision` and the images a chat may hold; LiteLLM itself marks none.
  */
 export type GatewayRoute = { vision: boolean; maxImages?: number };
+/** How long the gateway's last answer about its routes stands in when it gives none (a timeout, a restart). */
+export const ROUTES_GRACE_MS = 60_000;
 export type GatewayBilling ={ requestId: string; charge: string; priceVersion: string; estimated: boolean; simulation: boolean };
 export type GatewayUsage = { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number; billing?: GatewayBilling };
 /** The organization's prepaid credit held by the platform gateway, in USD. */
@@ -94,19 +96,51 @@ export class GatewayService {
     return Number.isFinite(configured) ? Math.min(4096, Math.max(1, Math.trunc(configured))) : 1024;
   }
 
+  /** The gateway's last answer about its routes, and when it came. */
+  private lastRoutes?: { routes: Map<string, GatewayRoute>; at: number };
+  private pendingRoutes?: Promise<Map<string, GatewayRoute>>;
+
   /**
    * Routes LiteLLM serves to this key, by name. Reads gateway config only; never calls a model provider.
-   * The platform gateway refuses /v1/models once the prepaid budget is spent, so the key's own model list is used then.
+   * The gateway is asked every time. When it gives no answer (unreachable, too slow, not ready, a server
+   * error), its last answer stands in for up to ROUTES_GRACE_MS after it came, so one slow moment does not
+   * make every model unavailable; standing in never makes an answer last longer. An answer, a refusal
+   * included, is used at once. Calls at the same time share one question.
    */
-  async routes(): Promise<Map<string, GatewayRoute>> {
-    const plain = (ids: string[] = []) => new Map(ids.map((id) => [id, { vision: false }]));
+  routes(): Promise<Map<string, GatewayRoute>> {
+    this.pendingRoutes ??= this.askRoutes().finally(() => {
+      this.pendingRoutes = undefined;
+    });
+    return this.pendingRoutes;
+  }
+
+  private async askRoutes() {
+    const answer = await this.fetchRoutes();
+    if (answer) {
+      this.lastRoutes = { routes: answer, at: Date.now() };
+      return answer;
+    }
+    const last = this.lastRoutes;
+    return last && Date.now() - last.at <= ROUTES_GRACE_MS ? last.routes : new Map<string, GatewayRoute>();
+  }
+
+  /**
+   * The gateway's routes, or null when it gave no answer. The platform gateway refuses /v1/models once the
+   * prepaid budget is spent, so the key's own model list is used then.
+   */
+  private async fetchRoutes(): Promise<Map<string, GatewayRoute> | null> {
     try {
       const headers = { Authorization: `Bearer ${this.key}` };
       const ready = await fetch(`${this.url}/health/readiness`, { headers, signal: AbortSignal.timeout(1500) });
-      if (!ready.ok) return new Map();
+      if (!ready.ok) return null;
       const response = await fetch(`${this.url}/v1/models`, { headers, signal: AbortSignal.timeout(1500) });
       if (!response.ok) {
-        return errorType(await response.text().catch(() => '')) === 'budget_exceeded' ? plain((await this.keyInfo())?.models) : new Map();
+        if (errorType(await response.text().catch(() => '')) === 'budget_exceeded') {
+          const info = await this.keyInfo();
+          return info ? new Map((info.models ?? []).map((id) => [id, { vision: false }])) : null;
+        }
+        // A refusal (a revoked key, say) is an answer: no routes.
+        return response.status >= 500 ? null : new Map();
       }
       const json = (await response.json()) as { data?: Array<{ id: string; capabilities?: unknown; max_images?: unknown }> };
       return new Map((json.data || []).map((item) => {
@@ -114,7 +148,7 @@ export class GatewayService {
         const maxImages = Number.isInteger(item.max_images) && (item.max_images as number) > 0 ? (item.max_images as number) : undefined;
         return [item.id, vision ? { vision, maxImages } : { vision }];
       }));
-    } catch { return new Map(); }
+    } catch { return null; }
   }
 
   /**
