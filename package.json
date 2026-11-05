@@ -14,7 +14,6 @@
     "test:rag": "node scripts/rag-smoke.mjs",
     "test:rag:gemini": "ALLOW_EXTERNAL_EMBEDDINGS=1 RAG_CHAT_AS=admin RAG_CHAT_MODEL=${RAG_CHAT_MODEL:-google-gemini} node scripts/rag-smoke.mjs",
     "test:workspace": "node scripts/workspace-smoke.mjs",
-    "test:browser": "node scripts/browser-smoke.mjs",
     "test:gemini": "node --env-file=.env scripts/gemini-smoke.mjs",
     "test:groq": "node --env-file=.env scripts/groq-smoke.mjs",
     "test:openrouter": "node --env-file=.env scripts/openrouter-smoke.mjs",

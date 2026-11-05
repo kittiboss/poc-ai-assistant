@@ -178,12 +178,10 @@ With the Compose stack running, exercise real PKCE login, all three demo users, 
 ```bash
 npm run test:e2e
 npm run test:workspace
-npm run test:browser   # optional: requires local Chrome
 ```
 
 The default suite never needs external credentials and has no active paid-provider route. The API test setup also replaces `fetch` with a guard that fails any non-loopback request, so a test cannot reach a paid provider even by mistake. The Ollama integration test remains skipped unless an operator explicitly supplies `OLLAMA_TEST_URL`. `npm run test:e2e` additionally checks the admin console APIs and the pricing example below (3,000 in / 700 out → `$0` actual, `$0.01` simulated provider cost, `$0.015` simulated charge).
 `npm run test:workspace` is a backward-compatibility API smoke: it signs in with all three demo accounts and exercises ownership, retained workspace APIs, branches, feedback, quotas, and CSV export against the running stack. It sends chat only to `local-mock`.
-The optional browser smoke checks the simplified mock chat, absence of the removed controls, live-token dashboard, and admin controls through the real UI; set `CHROME_PATH` if Chrome is installed elsewhere.
 
 ### Web end-to-end tests (Playwright)
 
@@ -194,7 +192,7 @@ npm run test:e2e:install -w @enterprise/web   # once: downloads Playwright's Chr
 npm run test:e2e:web
 ```
 
-The tests sign in through the Keycloak development realm (`admin` and `employee1`), send a message to the mock model and stop one mid-reply, rename and delete chats, switch theme and language, and open every page at desktop (1440 px) and phone (390 px, touch) sizes, checking there is no sideways scrolling. Any console error or warning from the app fails a test. Chats the tests create are deleted afterwards. The files are in `apps/web/e2e`.
+The tests sign in through the Keycloak development realm (`admin` and `employee1`), send a message to the mock model and stop one mid-reply, check that the live token page charts the reply, rename and delete chats, switch theme and language, and open every page at desktop (1440 px) and phone (390 px, touch) sizes, checking there is no sideways scrolling. Any console error or warning from the app fails a test. Chats the tests create are deleted afterwards. The files are in `apps/web/e2e`.
 
 - `npm run test:e2e:ui -w @enterprise/web` opens Playwright's UI mode to run and watch tests one at a time.
 - `npm run test:e2e:report -w @enterprise/web` opens the HTML report of the last run; a failed test keeps a screenshot, a retried one (on CI) a trace.
