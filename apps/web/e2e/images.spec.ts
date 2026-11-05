@@ -42,6 +42,11 @@ const composerFiles = (page: Page, m: Messages) =>
 const sentFiles = (page: Page, m: Messages): Locator =>
   page.locator('.ant-bubble-end').last().getByRole('list', { name: m.chat.attachedFiles });
 
+async function choose(page: Page, m: Messages, name: string) {
+  await page.getByRole('combobox', { name: m.chat.chatModel }).click();
+  await page.locator('.ant-select-item-option').filter({ hasText: name }).click();
+}
+
 async function waitForReply(page: Page, m: Messages) {
   await expect(lastReply(page)).toContainText('This is a mock AI response');
   // The reply text arrives before the stream ends, and the composer ignores Enter until it has.
@@ -97,6 +102,8 @@ test('an image is resized before upload, sent without a message, shown in the ch
 
 test('a pasted screenshot is attached, and removing it deletes the upload', async ({ page, m }) => {
   const screenshot = (await drawImage(page, 300, 200)).toString('base64');
+  // Until the models have loaded, no model is known to read images and the paste would be refused.
+  await expect(page.getByRole('button', { name: m.chat.attachWithImages })).toBeVisible();
   await page.evaluate((base64) => {
     const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
     const data = new DataTransfer();
@@ -128,11 +135,6 @@ test.describe('a model that cannot read images', () => {
     await expect(composer(page, m)).toBeVisible();
   });
 
-  async function choose(page: Page, m: Messages, name: string) {
-    await page.getByRole('combobox', { name: m.chat.chatModel }).click();
-    await page.locator('.ant-select-item-option').filter({ hasText: name }).click();
-  }
-
   test('offers documents only, and an image attached before the switch cannot be sent', async ({ page, m }) => {
     await attach(page, m.chat.attachWithImages, {
       name: 'chart.png',
@@ -156,5 +158,79 @@ test.describe('a model that cannot read images', () => {
     });
     await expect(page.getByText(`again.png: ${m.chat.attachNeedsVision}`)).toBeVisible();
     await expect(composerFiles(page, m)).toHaveCount(0);
+  });
+});
+
+test.describe('models that take fewer images a chat', () => {
+  // A vendor-managed deployment reports the vendor's limit as maxImages. Here local-mock takes 2 images
+  // a chat, and a stand-in next to it takes 1; nothing is ever sent to the stand-in.
+  test.beforeEach(async ({ page, m }) => {
+    await page.route('**/api/models', async (route) => {
+      const response = await route.fetch();
+      const models: { id: string; maxImages?: number }[] = await response.json();
+      const mock = models.find((model) => model.id === 'local-mock')!;
+      mock.maxImages = 2;
+      models.push({ ...mock, id: 'one-image', displayName: 'One Image', maxImages: 1 } as never);
+      await route.fulfill({ response, json: models });
+    });
+    await page.reload();
+    await expect(composer(page, m)).toBeVisible();
+  });
+
+  const images = async (page: Page, ...names: string[]) =>
+    Promise.all(names.map(async (name) => ({ name, mimeType: 'image/png', buffer: await drawImage(page, 120, 90) })));
+
+  test('the composer attaches no more images than the model takes, and a chat over the limit cannot go on', async ({
+    page,
+    m,
+    createdChats,
+  }) => {
+    await attach(page, m.chat.attachWithImages, ...(await images(page, 'one.png', 'two.png', 'three.png')));
+    await expect(page.getByText('A chat holds at most 2 images')).toBeVisible();
+    await expect(composerFiles(page, m)).toHaveCount(2);
+    await expect(composerFiles(page, m).getByRole('img', { name: 'two.webp' })).toBeVisible();
+
+    await sendButton(page, m).click();
+    await expect(page).toHaveURL(CHAT_PATH);
+    const id = chatId(page);
+    createdChats.add(id);
+    await waitForReply(page, m);
+    await expect(lastReply(page)).toContainText(/Images: image\/webp, [\d,]+ bytes; image\/webp, [\d,]+ bytes(?!;)/);
+
+    // The chat is full now: another image is not attached.
+    await page.getByText('A chat holds at most 2 images').waitFor({ state: 'detached' });
+    await attach(page, m.chat.attachWithImages, ...(await images(page, 'four.png')));
+    await expect(page.getByText('A chat holds at most 2 images')).toBeVisible();
+    await expect(composerFiles(page, m)).toHaveCount(0);
+
+    // A model that takes fewer images cannot continue it, nor regenerate a reply that has them all.
+    await choose(page, m, 'One Image');
+    const overLimit = m.chat.chatImageLimit.replace('{count}', '2').replace('{max}', '1');
+    await expect(page.locator('footer').getByRole('alert').filter({ hasText: overLimit })).toBeVisible();
+    await composer(page, m).fill('And now?');
+    await expect(sendButton(page, m)).toBeDisabled();
+    await lastReply(page).getByRole('button', { name: m.chat.regenerate }).click();
+    // Warned before any copy of the chat is made.
+    await expect(page.locator('.ant-message').getByText(overLimit)).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/c/${id}$`));
+
+    await choose(page, m, 'Local Mock');
+    await expect(page.locator('footer').getByText(overLimit)).toHaveCount(0);
+    await expect(sendButton(page, m)).toBeEnabled();
+  });
+
+  test('images beyond what the chosen model takes stay in the composer but cannot be sent', async ({ page, m }) => {
+    await attach(page, m.chat.attachWithImages, ...(await images(page, 'one.png', 'two.png')));
+    await expect(composerFiles(page, m).getByRole('img', { name: 'two.webp' })).toBeVisible();
+    await composer(page, m).fill('Compare them');
+    await expect(sendButton(page, m)).toBeEnabled();
+
+    await choose(page, m, 'One Image');
+    await expect(
+      page.locator('footer').getByText('The chosen model takes at most 1 image a chat. Remove 1 image to send.'),
+    ).toBeVisible();
+    await expect(sendButton(page, m)).toBeDisabled();
+    await page.getByRole('button', { name: m.chat.attachRemove.replace('{name}', 'two.webp') }).click();
+    await expect(sendButton(page, m)).toBeEnabled();
   });
 });

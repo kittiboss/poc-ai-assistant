@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Provider } from '@prisma/client';
 import { DATE } from '../common/swagger/schema-types';
 
@@ -13,6 +13,7 @@ export class ModelView {
   @ApiProperty({ description: 'Local models have $0 external API cost.' }) local!: boolean;
   @ApiProperty({ example: 8192 }) contextWindow!: number;
   @ApiProperty({ type: [String], example: ['chat', 'streaming'], description: 'vision: the model can read images attached to a chat. Reported only where this deployment accepts images.' }) capabilities!: string[];
+  @ApiPropertyOptional({ minimum: 1, maximum: 6, example: 6, description: 'The images a chat may hold with this model, counting every image its messages attached. Only on models with vision; in a vendor-managed deployment the platform gateway\'s image limits for this organization decide (at most 6).' }) maxImages?: number;
   @ApiProperty({ enum: ['Disabled', 'Not permitted', 'Not configured', 'Credit exhausted', 'Daily limit reached', 'Available', 'Unavailable'], description: 'Credit exhausted: the prepaid credit on the platform gateway is used up (vendor-managed deployments).' }) status!: string;
 }
 

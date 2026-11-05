@@ -3,8 +3,6 @@ export const MAX_IMAGE_SIDE = 1600;
 export const MAX_IMAGE_BYTES = 1024 * 1024;
 export const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 export const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];
-/** Every turn sends all of a chat's images again. */
-export const MAX_CHAT_IMAGES = 6;
 /** A photo larger than this is not decoded at all; phone cameras write well under it. */
 export const MAX_SOURCE_IMAGE_BYTES = 40 * 1024 * 1024;
 /** Lower qualities are tried in turn until the image fits, then smaller sizes. */
