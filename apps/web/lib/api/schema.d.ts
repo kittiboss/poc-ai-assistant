@@ -1028,6 +1028,11 @@ export interface components {
        */
       capabilities: string[];
       /**
+       * @description The images a chat may hold with this model, counting every image its messages attached. Only on models with vision; in a vendor-managed deployment the platform gateway's image limits for this organization decide (at most 6).
+       * @example 6
+       */
+      maxImages?: number;
+      /**
        * @description Credit exhausted: the prepaid credit on the platform gateway is used up (vendor-managed deployments).
        * @enum {string}
        */

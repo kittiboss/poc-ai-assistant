@@ -9,14 +9,7 @@ import type { Attachment, AttachmentRef } from '@/lib/api/types';
 import { cn } from '@/lib/cn';
 import { useAttachmentSize } from './attached-files';
 import { useAttachmentApi } from './chat-queries';
-import {
-  IMAGE_EXTENSIONS,
-  IMAGE_TYPES,
-  MAX_CHAT_IMAGES,
-  MAX_SOURCE_IMAGE_BYTES,
-  isImage,
-  prepareImage,
-} from './prepare-image';
+import { IMAGE_EXTENSIONS, IMAGE_TYPES, MAX_SOURCE_IMAGE_BYTES, isImage, prepareImage } from './prepare-image';
 
 const MAX_LENGTH = 20000;
 // The API's limits (docs/CHAT_ATTACHMENTS.md), checked here too so a file over them is never uploaded.
@@ -62,6 +55,8 @@ interface ChatComposerProps {
   canSend: boolean;
   disabled?: boolean;
   images: ImageSupport;
+  /** How many images a chat holds with the selected model (GET /api/models `maxImages`) */
+  imageLimit: number;
   /** How many more images the chat holds */
   imageRoom: number;
   /** The prompt may be empty when files are sent. Resolves to false when the message was refused unsaved. */
@@ -74,6 +69,7 @@ export function ChatComposer({
   canSend,
   disabled = false,
   images,
+  imageLimit,
   imageRoom,
   onSend,
   onStop,
@@ -108,15 +104,18 @@ export function ChatComposer({
   const imagesAccepted = images === 'accepted';
   // Files the API has read go with the message; a refused one stays behind with its reason.
   const ready = files.flatMap((file) => (file.status === 'done' && file.response ? [file.response] : []));
-  // Images attached before the user picked a model that cannot read them stay, but cannot be sent.
+  // Images attached before the user picked a model that cannot read them stay, but cannot be sent;
+  // so do images beyond what the chat still holds with a model that takes fewer.
   const blockedImages = !imagesAccepted && ready.some((file) => file.kind === 'IMAGE');
+  const imagesAttached = files.filter((file) => isImage(file) && file.status !== 'error').length;
+  const extraImages = imagesAccepted ? Math.max(imagesAttached - imageRoom, 0) : 0;
   const canSubmit =
     canSend &&
     !generating &&
     !blockedImages &&
+    !extraImages &&
     !files.some((file) => file.status === 'uploading') &&
     Boolean(draft.trim() || ready.length);
-  const imagesAttached = files.filter((file) => isImage(file) && file.status !== 'error').length;
 
   const describe = (file: ComposerFile) =>
     file.status === 'uploading'
@@ -153,7 +152,7 @@ export function ChatComposer({
     if (isImage(file)) {
       const imagePosition = imagesAttached + accepted.filter(isImage).indexOf(file);
       if (imagePosition >= imageRoom) {
-        if (imagePosition === imageRoom) toast.warning(t('attachImageLimit', { max: MAX_CHAT_IMAGES }));
+        if (imagePosition === imageRoom) toast.warning(t('attachImageLimit', { max: imageLimit }));
         return Upload.LIST_IGNORE;
       }
     }
@@ -201,7 +200,7 @@ export function ChatComposer({
           break;
         }
         if (isImage(file) && imagesLeft-- <= 0) {
-          toast.warning(t('attachImageLimit', { max: MAX_CHAT_IMAGES }));
+          toast.warning(t('attachImageLimit', { max: imageLimit }));
           continue;
         }
         room--;
@@ -289,6 +288,11 @@ export function ChatComposer({
             ))}
           </ul>
           {blockedImages && <p className="px-3 pb-2 text-xs text-warning">{t('attachNeedsVision')}</p>}
+          {extraImages > 0 && (
+            <p className="px-3 pb-2 text-xs text-warning">
+              {t('attachOverImageLimit', { max: imageLimit, count: extraImages })}
+            </p>
+          )}
         </Sender.Header>
       }
       // Attachments runs the uploads and the drop area; the attach button opens its file picker.

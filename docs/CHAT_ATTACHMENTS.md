@@ -123,11 +123,12 @@ Images are available where the deployment has object storage. A standalone deplo
 
 Images use the same upload-first flow, chips, `attachmentIds` and message metadata as documents. The differences:
 
-1. The composer accepts images only while the selected model has the `vision` capability in `GET /api/models`. That list reports `vision` only where images are available, and in a vendor-managed deployment only for the models vendor-control lists with `vision` for that customer.
+1. The composer accepts images only while the selected model has the `vision` capability in `GET /api/models`, and no more than that model's `maxImages` in a chat. That list reports `vision` only where images are available, and in a vendor-managed deployment only for the models vendor-control lists with `vision` for that customer. `maxImages` comes only with `vision`: 6, or the customer's limit in a vendor-managed deployment.
+   - A chat that already holds more images than the selected model's `maxImages` (the vendor lowered the limit, or the user chose another model) cannot continue with that model: the web says so and keeps the send button off, as for a model that cannot read images. Images in the composer beyond what the chat still holds stay there, but cannot be sent until enough are removed.
 2. The browser resizes each image so its longer side is at most 1,600 px and re-encodes it as WebP (JPEG where the browser cannot write WebP), lowering the quality until the file is at most 1 MB. Re-encoding also drops metadata such as GPS location.
 3. The API keeps the image file itself, in object storage, because the model needs the pixels on every turn.
 4. The web shows an image through `GET /api/attachments/:id/content`, fetched with the user's token into a blob URL, because an `<img>` cannot send a bearer token. Each file is fetched once while the page is open; a click or Enter opens a viewer that steps through the message's images. The Markdown export names each image with its size, as the file itself stays behind sign-in.
-5. Regenerate and edit copy the chat before resending; when the selected model cannot read the images that copy would hold, the web warns instead of making it.
+5. Regenerate and edit copy the chat before resending; when the selected model cannot read the images that copy would hold, or takes fewer, the web warns instead of making it.
 
 ### Storage
 
@@ -237,8 +238,8 @@ They are stored as `{"enabled": true, "models": ["local-mock"], "maxImages": 6}`
 
 - **What the customer API sees.**
   - `GET /v1/models` on vendor-control lists `"capabilities": ["vision"]` and `"max_images"` for each model that may receive images for that customer.
-  - The customer API reports `vision` in `GET /api/models` only for those models, and only where its own model record has `vision`.
-  - It refuses a chat with more images than `max_images` with `ATTACHMENT_LIMIT` before anything is saved. A lowered limit applies to the next message.
+  - The customer API reports `vision` in `GET /api/models` only for those models, and only where its own model record has `vision`, with `max_images` as `maxImages`, so the composer stops at the customer's limit.
+  - It refuses a chat with more images than `max_images` with `ATTACHMENT_LIMIT` before anything is saved. A lowered limit applies to the next message; the web shows it once it loads the model list again, such as when the user comes back to the tab.
 - **What vendor-control accepts** on `/v1/chat/completions`:
   - `content` as a string, or a list of `{"type": "text", "text"}` and `{"type": "image_url", "image_url": {"url"}}` parts; it forwards each part with only those fields;
   - an image only as a base64 data URL of a JPEG, PNG or WebP image, checked by its declared type and its first bytes; any other URL is refused;
@@ -258,7 +259,6 @@ They are stored as `{"enabled": true, "models": ["local-mock"], "maxImages": 6}`
 - The API stores an image as uploaded. Only the web's re-encoding removes metadata such as GPS location, so a client calling the API directly can store it.
 - Object storage needs its own encryption, backup and lifecycle settings in production.
 - Deleting an image does not erase its bytes at once. SeaweedFS keeps them in its volume file until a vacuum compacts it, which happens only once enough of the volume is deleted; a versioned S3 bucket keeps the old version until a lifecycle rule expires it.
-- In a vendor-managed deployment the composer allows 6 images per chat whatever the vendor's limit; a lower limit is reported by the API when the message is sent.
 
 ## Not in version 1
 

@@ -64,6 +64,23 @@ describe('model availability and external provider guardrails', () => {
     expect(await vision()).toEqual([false, false]);
   });
 
+  it('reports how many images a chat may hold, only on the models it reports vision for', async () => {
+    const prisma = prismaWith({ requests: 0, tokens: 0 });
+    prisma.aIModel.findMany.mockResolvedValue(models.map((model) => ({ ...model, capabilities: ['chat', 'streaming', 'vision'] })));
+    const limits = async () => (await modelsService(prisma).forUser(admin)).map((model) => [model.id, model.maxImages]);
+    vi.stubEnv('S3_BUCKET', 'attachments');
+    expect(await limits()).toEqual([['local-mock', 6], ['google-gemini', 6]]);
+    vi.stubEnv('MODEL_ACCESS', 'vendor-gateway');
+    gateway.routes.mockResolvedValueOnce(new Map([['local-mock', { vision: true, maxImages: 2 }], ['google-gemini', { vision: false, maxImages: 4 }]]));
+    const listed = await modelsService(prisma).forUser(admin);
+    expect(listed.map((model) => [model.id, model.maxImages])).toEqual([['local-mock', 2], ['google-gemini', undefined]]);
+    // A model without vision carries no limit at all, so the web never reads one for it.
+    expect(listed[1]).not.toHaveProperty('maxImages');
+    vi.stubEnv('MODEL_ACCESS', '');
+    vi.stubEnv('S3_BUCKET', '');
+    expect(await limits()).toEqual([['local-mock', undefined], ['google-gemini', undefined]]);
+  });
+
   it("limits a chat's images to what the platform allows this organization for the model", async () => {
     const service = modelsService(prismaWith({ requests: 0, tokens: 0 }));
     const seeing = { id: 'local-mock', capabilities: ['chat', 'vision'] };

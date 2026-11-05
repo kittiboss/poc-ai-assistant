@@ -26,7 +26,6 @@ import { exportChat } from './export-chat';
 import type { MessageActions } from './message-bubble';
 import { MessageList } from './message-list';
 import { ModelPicker } from './model-picker';
-import { MAX_CHAT_IMAGES } from './prepare-image';
 import { PromptDialog } from './prompt-dialog';
 import { useSendMessage } from './use-send-message';
 
@@ -84,9 +83,12 @@ export function ChatApp() {
     : modelList.some((model) => model.capabilities.includes('vision'))
       ? 'otherModel'
       : 'unavailable';
-  // Every image of the chat goes with each message, so a model that cannot read them cannot continue it.
+  // Every image of the chat goes with each message, so a model that cannot read them cannot continue it,
+  // nor can one that takes fewer images a chat (the vendor may lower the limit, or the user switch models).
   const chatImages = imagesIn(messages);
+  const imageLimit = selectedModel?.maxImages ?? 0;
   const chatNeedsVision = chatImages > 0 && images !== 'accepted';
+  const chatOverImageLimit = !chatNeedsVision && chatImages > imageLimit;
   // The platform gateway reports every model as out of credit; say why nothing can be sent.
   const creditExhausted = modelList.some((model) => model.status === 'Credit exhausted');
   const title =
@@ -103,10 +105,15 @@ export function ChatApp() {
   };
   // The new copy leaves out the message itself, so its files are sent again with it.
   const resend = async (userMessage: Message, prompt: string) => {
-    // The copy keeps the images up to this message; a model that cannot read them would refuse it
-    // only once the copy exists.
-    if (images !== 'accepted' && imagesIn(messages.slice(0, messages.indexOf(userMessage) + 1))) {
+    // The copy keeps the images up to this message; a model that cannot read them, or not that many,
+    // would refuse it only once the copy exists.
+    const copyImages = imagesIn(messages.slice(0, messages.indexOf(userMessage) + 1));
+    if (copyImages && images !== 'accepted') {
       toast.warning(t('chatNeedsVision'));
+      return;
+    }
+    if (copyImages > imageLimit) {
+      toast.warning(t('chatImageLimit', { count: copyImages, max: imageLimit }));
       return;
     }
     const copy = await branch(userMessage, true);
@@ -261,16 +268,20 @@ export function ChatApp() {
             )}
             {creditExhausted && !error && <Alert type="error" title={t('creditExhausted')} />}
             {chatNeedsVision && <Alert type="warning" title={t('chatNeedsVision')} />}
+            {chatOverImageLimit && (
+              <Alert type="warning" title={t('chatImageLimit', { count: chatImages, max: imageLimit })} />
+            )}
             {error && (
               <Alert type="error" title={error} closable={Boolean(chatError)} onClose={() => setChatError('')} />
             )}
             {composerOptions}
             <ChatComposer
               generating={generating}
-              canSend={Boolean(selectedModel?.available) && !chatNeedsVision}
+              canSend={Boolean(selectedModel?.available) && !chatNeedsVision && !chatOverImageLimit}
               disabled={notFound}
               images={images}
-              imageRoom={MAX_CHAT_IMAGES - chatImages}
+              imageLimit={imageLimit}
+              imageRoom={Math.max(imageLimit - chatImages, 0)}
               onSend={(prompt, attachments) =>
                 send({ conversationId: activeId, prompt, attachments, modelId, useKnowledge: catalogOn })
               }
