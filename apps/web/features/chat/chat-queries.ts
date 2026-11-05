@@ -2,6 +2,7 @@
 
 import { useMutation, useQueries, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
+import { useRef } from 'react';
 import { useApi } from '@/components/api/api-provider';
 import { ApiError, apiUrl, errorMessage } from '@/lib/api/client';
 import { queryKeys, type ConversationFilters } from '@/lib/api/query-keys';
@@ -15,6 +16,7 @@ import type {
   Message,
   Model,
 } from '@/lib/api/types';
+import { recheckAfter, recheckHelps } from './model-recheck';
 import { isImage } from './prepare-image';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -22,11 +24,35 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Conversation ids are UUIDs; anything else in the URL cannot be a conversation (the API answers 400). */
 export const isConversationId = (id: string | undefined): id is string => Boolean(id && UUID.test(id));
 
+/**
+ * The models the user may chat with. While none can be used because the gateway is unreachable for now,
+ * or the API itself fails, the list is checked again, less often each time (model-recheck.ts); a hidden
+ * tab does not check.
+ */
 export function useModels() {
   const { client, unwrap } = useApi();
+  // Checks in a row that found no model to use, or failed.
+  const misses = useRef(0);
   return useQuery<Model[]>({
     queryKey: queryKeys.models,
-    queryFn: async ({ signal }) => unwrap(await client.GET('/api/models', { signal })),
+    queryFn: async ({ signal }) => {
+      try {
+        const models = unwrap(await client.GET('/api/models', { signal }));
+        misses.current = recheckHelps(models) ? misses.current + 1 : 0;
+        return models;
+      } catch (error) {
+        misses.current += 1;
+        throw error;
+      }
+    },
+    // The checks below take the place of retries, so each failed check counts once.
+    retry: false,
+    refetchInterval: (query) => {
+      const { data, error } = query.state;
+      // A client error (an expired session, say) does not go away by asking again.
+      const helps = error ? !(error instanceof ApiError && error.status < 500) : Boolean(data && recheckHelps(data));
+      return helps ? recheckAfter(misses.current) : false;
+    },
   });
 }
 
