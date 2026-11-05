@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { GatewayService, gatewayErrorCode, refusedByGateway } from './gateway.service';
+import { GatewayService, gatewayError, gatewayErrorCode, refusedByGateway } from './gateway.service';
 
 describe('gateway abstraction', () => {
   afterEach(() => {
@@ -62,7 +62,7 @@ describe('gateway abstraction', () => {
       .mockResolvedValueOnce(new Response('{}', { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ data: [{ id: 'local-mock' }, { id: 'qwen-local' }] }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
-    expect([...await new GatewayService().routes()]).toEqual(['local-mock', 'qwen-local']);
+    expect([...(await new GatewayService().routes()).keys()]).toEqual(['local-mock', 'qwen-local']);
     expect(fetchMock.mock.calls.map(([url]) => new URL(String(url)).pathname)).toEqual(['/health/readiness', '/v1/models']);
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')));
     expect((await new GatewayService().routes()).size).toBe(0);
@@ -156,8 +156,32 @@ describe('vendor-managed gateway', () => {
       .mockResolvedValueOnce(new Response(budgetExceeded, { status: 400 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ info: { spend: 0.0002, max_budget: 0.0001, models: ['local-mock', 'mock-embedding'] } }), { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
-    expect([...await new GatewayService().routes()]).toEqual(['local-mock', 'mock-embedding']);
+    expect([...(await new GatewayService().routes()).keys()]).toEqual(['local-mock', 'mock-embedding']);
     expect(new URL(String(fetchMock.mock.calls[2][0])).pathname).toBe('/key/info');
+  });
+
+  it('reads which routes may receive images, and how many a chat may hold, from the platform gateway', async () => {
+    vendorMode();
+    const data = [
+      { id: 'local-mock', object: 'model', capabilities: ['vision'], max_images: 3 },
+      { id: 'groq-llama', object: 'model' },
+      { id: 'google-gemini', object: 'model', capabilities: ['vision'], max_images: 'many' },
+    ];
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data }), { status: 200 })));
+    expect(Object.fromEntries(await new GatewayService().routes())).toEqual({
+      'local-mock': { vision: true, maxImages: 3 },
+      'groq-llama': { vision: false },
+      'google-gemini': { vision: true },
+    });
+  });
+
+  it("words the platform's image refusal like the API's own check, as a refusal that processed no tokens", () => {
+    const error = gatewayError(403, 'image_access_denied');
+    expect(error.getStatus()).toBe(400);
+    expect(gatewayErrorCode(error)).toBe('ATTACHMENT_NEEDS_VISION');
+    expect(refusedByGateway(error)).toBe(true);
   });
 
   it("reports the organization's prepaid credit from its own key, never below zero", async () => {

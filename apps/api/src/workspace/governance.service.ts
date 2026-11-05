@@ -10,6 +10,7 @@ import {
 import { Prisma, Provider } from "@prisma/client";
 import { sensitiveFindings, toCsv } from "@enterprise/shared";
 import Big from "big.js";
+import { AttachmentsService } from "../attachments/attachments.service";
 import { AuditService } from "../audit/audit.service";
 import type { AuthUser } from "../common/auth/auth.decorators";
 import { PrismaService } from "../common/prisma/prisma.service";
@@ -42,6 +43,7 @@ export class GovernanceService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly users: UsersService,
     private readonly audit: AuditService,
+    private readonly attachments: AttachmentsService,
   ) {}
   onModuleInit() {
     this.timer = setInterval(
@@ -480,8 +482,8 @@ export class GovernanceService implements OnModuleInit, OnModuleDestroy {
   }
   async purgeExpired() {
     const { retentionDays } = await this.settings();
-    if (!retentionDays) return { purged: 0 };
-    return this.prisma.$transaction(async (tx) => {
+    if (!retentionDays) return { purged: 0, attachments: 0 };
+    const result = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(72196512)`;
       const chats = await tx.conversation.findMany({
         where: {
@@ -492,11 +494,14 @@ export class GovernanceService implements OnModuleInit, OnModuleDestroy {
         take: 500,
       });
       const ids = chats.map((c) => c.id);
+      // Read before the messages go: the files they sent leave with them unless another chat still has them.
+      const sent = await this.attachments.sentIn(tx, ids);
       await tx.message.deleteMany({ where: { conversationId: { in: ids } } });
       await tx.conversation.updateMany({
         where: { id: { in: ids } },
         data: { title: "Expired conversation", deletedAt: new Date() },
       });
+      const attachments = await this.attachments.deleteUnreferenced(tx, sent);
       await tx.usageReservation.deleteMany({
         where: { expiresAt: { lt: new Date() } },
       });
@@ -506,10 +511,17 @@ export class GovernanceService implements OnModuleInit, OnModuleDestroy {
             action: "RETENTION_PURGE",
             entityType: "Conversation",
             entityId: "retention",
-            after: { count: ids.length, retentionDays },
+            after: {
+              count: ids.length,
+              retentionDays,
+              attachments: attachments.removed,
+            },
           },
         });
-      return { purged: ids.length };
+      return { purged: ids.length, ...attachments };
     });
+    // The rows are gone; their image files follow, and the daily orphan sweep retries a failed delete.
+    await this.attachments.removeFiles(result.files);
+    return { purged: result.purged, attachments: result.removed };
   }
 }

@@ -4,6 +4,9 @@ import { timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { Fault, Store, defaultConfig, validId } from "./store.mjs";
 import { validateRequest } from "./money.mjs";
+import { effectiveImages, imagesAllowed } from "./images.mjs";
+
+const CHAT_PATH = "/v1/chat/completions";
 
 const same = (a, b) =>
   Boolean(
@@ -60,7 +63,12 @@ export function createApp(
         .json({ error: { message: "Cross-origin mutation denied" } });
     next();
   });
-  app.use(express.json({ limit: "512kb" }));
+  // Chat completions carry their chat's images in base64, up to gemini-proxy's 8 MB; that body is
+  // parsed only after the tenant is authenticated. Every other route keeps the small limit.
+  const smallJson = express.json({ limit: "512kb" });
+  app.use((req, res, next) =>
+    req.path === CHAT_PATH ? next() : smallJson(req, res, next),
+  );
   app.get("/health/readiness", async (_req, res) => {
     await store.pool.query("SELECT 1");
     res.json({ status: "ok", simulation: true });
@@ -148,6 +156,9 @@ export function createApp(
     if (!result.rowCount) throw new Fault(404, "not_found", "Unknown tenant");
     res.json(result.rows[0]);
   });
+  app.patch("/admin/tenants/:id/images", async (req, res) =>
+    res.json(await store.setImages(req.params.id, req.body)),
+  );
   app.patch("/admin/tenants/:id/rag", async (req, res) =>
     res.json(await store.setRag(req.params.id, req.body)),
   );
@@ -224,11 +235,19 @@ export function createApp(
     req.tenant = await store.authenticate(bearer(req));
     next();
   });
-  app.get("/v1/models", (req, res) =>
+  // A model this tenant may send images to carries `vision` and the images a request may hold.
+  app.get("/v1/models", (req, res) => {
+    const images = effectiveImages(req.tenant.images, req.tenant.config);
     res.json({
-      data: req.tenant.config.models.map((id) => ({ id, object: "model" })),
-    }),
-  );
+      data: req.tenant.config.models.map((id) => ({
+        id,
+        object: "model",
+        ...(images.models.includes(id)
+          ? { capabilities: ["vision"], max_images: images.maxImages }
+          : {}),
+      })),
+    });
+  });
   app.get("/key/info", async (req, res) => {
     const credit = await store.balance(req.tenant.id);
     res.json({
@@ -263,6 +282,15 @@ export function createApp(
     } catch (error) {
       throw new Fault(400, "invalid_request", error.message);
     }
+    if (
+      bounds.images &&
+      !imagesAllowed(req.tenant, req.body.model, bounds.images)
+    )
+      throw new Fault(
+        403,
+        "image_access_denied",
+        "This plan's image limits do not allow these images for this model",
+      );
     const requestId = req.get("x-request-id");
     const reservation = await store.reserve(
       req.tenant,
@@ -404,7 +432,7 @@ export function createApp(
         );
     }
   };
-  app.post("/v1/chat/completions", inference(false));
+  app.post(CHAT_PATH, express.json({ limit: "8mb" }), inference(false));
   app.post("/v1/embeddings", inference(true));
   app.use((_req, res) =>
     res.status(404).json({ error: { message: "Not found" } }),
@@ -414,6 +442,11 @@ export function createApp(
       res.end();
       return;
     }
+    // A body over its route's limit; nothing was reserved.
+    if (error.type === "entity.too.large")
+      return res.status(413).json({
+        error: { type: "request_too_large", message: "Request body is too large" },
+      });
     const status =
       error instanceof Fault
         ? error.status

@@ -179,6 +179,28 @@ describe('chat streaming lifecycle', () => {
         }
       });
 
+      it("follows the platform's image limits in a vendor-managed deployment, before anything is saved", async () => {
+        vi.stubEnv('MODEL_ACCESS', 'vendor-gateway');
+        const two = { files: [{ ...photo('i1'), content: '' }, { ...photo('i2'), content: '' }], added: [photo('i2')] };
+        const send = (chat: ChatService, response: unknown) =>
+          chat.stream(admin, 'conversation-1', { content: 'Compare them', modelId: 'local-mock', attachmentIds: ['i2'] }, response as never);
+        const refused = async (route: object | undefined, code: string) => {
+          gateway.routes.mockResolvedValueOnce(new Map(route ? [['local-mock', route]] : []));
+          const { prisma, chat, response } = setup(two, { model: seeing, images: dataOf('i1', 'i2') });
+          const error = await send(chat, response).catch((cause) => cause);
+          expect(error.getResponse()).toMatchObject({ statusCode: 400, code });
+          expect(prisma.message.create).not.toHaveBeenCalled();
+          expect(response.status).not.toHaveBeenCalled();
+        };
+        await refused({ vision: false }, 'ATTACHMENT_NEEDS_VISION');
+        await refused(undefined, 'ATTACHMENT_NEEDS_VISION');
+        await refused({ vision: true, maxImages: 1 }, 'ATTACHMENT_LIMIT');
+        gateway.routes.mockResolvedValueOnce(new Map([['local-mock', { vision: true, maxImages: 2 }]]));
+        const { chat, response, sent } = setup(two, { model: seeing, images: dataOf('i1', 'i2') });
+        await send(chat, response);
+        expect(sent().user).toEqual(expect.arrayContaining([{ type: 'image_url', image_url: { url: 'data:image/webp;base64,i2' } }]));
+      });
+
       it('sends images as parts of their turn, and counts each as 1,120 tokens rather than its base64', async () => {
         const { prisma, chat, attachments, governance, usage, response, sent } = setup(
           { files: [{ ...photo('i1'), content: '' }, { ...photo('i2'), content: '' }], added: [photo('i2')] },

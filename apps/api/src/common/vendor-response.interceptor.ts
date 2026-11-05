@@ -1,11 +1,14 @@
-import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
+import { CallHandler, ExecutionContext, Injectable, NestInterceptor, StreamableFile } from '@nestjs/common';
 import { map } from 'rxjs';
 import { vendorGateway } from '../models/model-policies';
 
 const internal = new Set(['actualProviderCost', 'simulatedProviderCost', 'providerInputRate', 'providerOutputRate', 'cachedInputRate', 'additionalFee', 'markupPercent', 'simulationInputRate', 'simulationOutputRate', 'grossMargin', 'simulatedGrossMargin', 'pricingSnapshot']);
-/** Defense in depth for JSON responses, including nested model pricing and audit snapshots. */
+/**
+ * Defense in depth for JSON responses, including nested model pricing and audit snapshots. A file
+ * (a chat image) is not JSON and passes through: serializing its stream would fail the request.
+ */
 export function customerResponse(value: unknown): unknown {
-  if (value === undefined) return value;
+  if (value === undefined || value instanceof StreamableFile) return value;
   return JSON.parse(JSON.stringify(value, (key, item) => internal.has(key) ? undefined : item));
 }
 @Injectable()

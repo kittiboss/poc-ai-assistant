@@ -497,6 +497,57 @@ describe("chat attachments", () => {
     expect(storage.remove.mock.calls).toEqual([["attachments/i1"]]);
   });
 
+  it("names the files expired chats sent, once each, before the retention sweep deletes their messages", async () => {
+    const { service } = setup();
+    const id = (n: number) => `00000000-0000-4000-8000-00000000000${n}`;
+    const ref = (fileId: string) => ({ id: fileId, filename: "file" });
+    const db = {
+      message: {
+        findMany: vi
+          .fn()
+          .mockResolvedValue([
+            { metadata: { attachments: [ref(id(1)), ref(id(2))] } },
+            { metadata: { attachments: [ref(id(1)), ref("not-a-uuid")] } },
+            { metadata: {} },
+            { metadata: null },
+          ]),
+      },
+    };
+    expect(await service.sentIn(db as never, ["c1"])).toEqual([id(1), id(2)]);
+    expect(db.message.findMany).toHaveBeenCalledWith({
+      where: { conversationId: { in: ["c1"] } },
+      select: { metadata: true },
+    });
+    expect(await service.sentIn(db as never, [])).toEqual([]);
+  });
+
+  it("deletes only sent rows that no message references any more, and names their image files", async () => {
+    const { service } = setup();
+    const db = {
+      $queryRaw: vi
+        .fn()
+        .mockResolvedValue([
+          { storageKey: null },
+          { storageKey: "attachments/i1" },
+        ]),
+    };
+    expect(await service.deleteUnreferenced(db as never, ["a1", "a2"])).toEqual(
+      { removed: 2, files: ["attachments/i1"] },
+    );
+    const [sql, ids] = db.$queryRaw.mock.calls[0] as [string[], string[]];
+    expect(ids).toEqual(["a1", "a2"]);
+    const text = sql.join("?").replace(/\s+/g, " ");
+    expect(text).toContain('"sentAt" IS NOT NULL');
+    expect(text).toContain(
+      `id::text NOT IN ( SELECT file ->> 'id' FROM "Message" m`,
+    );
+    expect(await service.deleteUnreferenced(db as never, [])).toEqual({
+      removed: 0,
+      files: [],
+    });
+    expect(db.$queryRaw).toHaveBeenCalledTimes(1);
+  });
+
   describe("images", () => {
     beforeEach(() => {
       vi.stubEnv("S3_BUCKET", "attachments");
@@ -579,11 +630,8 @@ describe("chat attachments", () => {
       expect(prisma.attachment.create).not.toHaveBeenCalled();
     });
 
-    it.each([
-      ["without object storage", { S3_BUCKET: "" }],
-      ["in a vendor-managed deployment", { MODEL_ACCESS: "vendor-gateway" }],
-    ])("refuses images %s as an unsupported type", async (_where, env) => {
-      for (const [name, value] of Object.entries(env)) vi.stubEnv(name, value);
+    it("refuses images without object storage as an unsupported type", async () => {
+      vi.stubEnv("S3_BUCKET", "");
       const { storage, service } = setup();
       await expect(
         service.upload(auth, image("photo.png", png(10, 10))),
@@ -592,6 +640,15 @@ describe("chat attachments", () => {
         response: { code: "ATTACHMENT_TYPE" },
       });
       expect(storage.put).not.toHaveBeenCalled();
+    });
+
+    it("keeps images in a vendor-managed deployment's own storage; the platform's limits apply when they are sent", async () => {
+      vi.stubEnv("MODEL_ACCESS", "vendor-gateway");
+      const { storage, service } = setup();
+      await expect(
+        service.upload(auth, image("photo.png", png(10, 10))),
+      ).resolves.toMatchObject({ kind: "IMAGE", mimeType: "image/png" });
+      expect(storage.put).toHaveBeenCalledTimes(1);
     });
 
     it("leaves a file that only has an image's name to the document checks", async () => {

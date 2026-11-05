@@ -142,8 +142,14 @@ function renderRag(tenants, usage) {
       t.rag.maxTopK,
     ]);
   }
-  const selected = $("rag-tenant").value;
-  $("rag-tenant").replaceChildren(
+  tenantOptions($("rag-tenant"), tenants);
+  // Do not overwrite limits the vendor is editing during the periodic refresh.
+  if (!$("rag-limits").contains(document.activeElement)) showRag();
+}
+/** Lists the tenants in a limits form's picker, keeping the one selected. */
+function tenantOptions(select, tenants) {
+  const selected = select.value;
+  select.replaceChildren(
     ...tenants.map((t) => {
       const option = document.createElement("option");
       option.value = t.id;
@@ -151,9 +157,37 @@ function renderRag(tenants, usage) {
       return option;
     }),
   );
-  if (selected) $("rag-tenant").value = selected;
-  // Do not overwrite limits the vendor is editing during the periodic refresh.
-  if (!$("rag-limits").contains(document.activeElement)) showRag();
+  if (selected) select.value = selected;
+}
+let imageTenants = [];
+/** Fill the image limits form with the selected tenant's current limits. */
+function showImages() {
+  const tenant = imageTenants.find((t) => t.id === $("images-tenant").value);
+  if (!tenant) return;
+  for (const input of $("image-limits").querySelectorAll("input")) {
+    const value = tenant.images[input.name];
+    if (input.type === "checkbox")
+      input.checked = Array.isArray(value)
+        ? value.includes(input.value)
+        : value === true;
+    else input.value = value;
+  }
+}
+function renderImages(tenants) {
+  imageTenants = tenants;
+  $("images").replaceChildren();
+  for (const t of tenants) {
+    const missing = t.images.models.filter(
+      (m) => !t.config.models.includes(m),
+    );
+    row($("images"), [
+      `${t.name} (${t.id})${t.images.enabled ? "" : " · Off"}`,
+      `${t.imagesEntitled.join(", ") || "none"}${missing.length ? ` · not in plan: ${missing.join(", ")}` : ""}`,
+      t.images.maxImages,
+    ]);
+  }
+  tenantOptions($("images-tenant"), tenants);
+  if (!$("image-limits").contains(document.activeElement)) showImages();
 }
 async function refresh() {
   const [tenants, prices, versions, ragUsage, usage] = await Promise.all([
@@ -166,6 +200,7 @@ async function refresh() {
   ]);
   renderUsage(usage);
   renderRag(tenants, ragUsage);
+  renderImages(tenants);
   $("price-history").replaceChildren();
   for (const p of versions)
     row($("price-history"), [
@@ -281,6 +316,32 @@ $("rag-limits").onsubmit = (event) => {
         `Knowledge limits saved for ${tenant}. The RAG engine applies them within 30 seconds.`;
       await refresh();
       showRag();
+    } finally {
+      submit.disabled = false;
+    }
+  });
+};
+$("images-tenant").onchange = showImages;
+$("image-limits").onsubmit = (event) => {
+  event.preventDefault();
+  const form = event.target;
+  const body = {
+    enabled: form.elements.enabled.checked,
+    models: [...form.querySelectorAll('input[name="models"]:checked')].map(
+      (input) => input.value,
+    ),
+    maxImages: Number(form.elements.maxImages.value),
+  };
+  run(async () => {
+    const submit = form.querySelector("button");
+    submit.disabled = true;
+    try {
+      const tenant = $("images-tenant").value;
+      await api(`/tenants/${tenant}/images`, "PATCH", body);
+      $("status").textContent =
+        `Image limits saved for ${tenant}. They apply to the customer's next message.`;
+      await refresh();
+      showImages();
     } finally {
       submit.disabled = false;
     }

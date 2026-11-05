@@ -1,3 +1,5 @@
+import { VISION_MODELS, contentPart } from "./images.mjs";
+
 // All ledger arithmetic uses integer billionths of a simulated USD, never floating point.
 export const SCALE = 1_000_000_000n;
 export function money(value) {
@@ -44,11 +46,31 @@ export function priceInput(body) {
   return { input, output, inputCost, outputCost, strategy, markup };
 }
 
-// Text-only requests. UTF-8 bytes + framing is deliberately conservative compared to tokenizer counts.
+/** Each message rebuilt with only its role and content; a list of parts keeps only text and images. */
+function chatMessages(messages) {
+  if (
+    !Array.isArray(messages) ||
+    !messages.length ||
+    messages.length > 256 ||
+    messages.some((m) => !["system", "user", "assistant"].includes(m?.role))
+  )
+    throw new Error("Only streaming chat is supported");
+  return messages.map(({ role, content }) => {
+    if (typeof content === "string") return { role, content };
+    if (!Array.isArray(content) || !content.length || content.length > 64)
+      throw new Error("Message content must be text or a list of parts");
+    return { role, content: content.map((part) => contentPart(part, role)) };
+  });
+}
+
+// Text input is bounded by its UTF-8 bytes + framing, deliberately conservative compared to tokenizer
+// counts; each image adds the fixed tokens of its model (images.mjs), never its base64 size.
 export function validateRequest(body, embedding) {
   if (!body || typeof body.model !== "string")
     throw new Error("model is required");
   let text;
+  let messages;
+  let images = 0;
   if (embedding) {
     const inputs = typeof body.input === "string" ? [body.input] : body.input;
     if (
@@ -60,19 +82,23 @@ export function validateRequest(body, embedding) {
       throw new Error("Expected 1–100 text inputs");
     text = JSON.stringify(inputs);
   } else {
-    if (
-      body.stream !== true ||
-      !Array.isArray(body.messages) ||
-      !body.messages.length ||
-      body.messages.length > 256 ||
-      body.messages.some(
-        (m) =>
-          !["system", "user", "assistant"].includes(m.role) ||
-          typeof m.content !== "string",
-      )
-    )
-      throw new Error("Only streaming text chat is supported");
-    text = JSON.stringify(body.messages);
+    if (body.stream !== true)
+      throw new Error("Only streaming chat is supported");
+    messages = chatMessages(body.messages);
+    // The text as sent, with each image's data left out: images are counted below.
+    text = JSON.stringify(
+      messages.map(({ role, content }) => ({
+        role,
+        content:
+          typeof content === "string"
+            ? content
+            : content.map((part) => {
+                if (part.type === "text") return part;
+                images++;
+                return { type: "image_url" };
+              }),
+      })),
+    );
   }
   const maxOutput = embedding ? 0 : Number(body.max_tokens ?? 1024);
   if (
@@ -81,8 +107,9 @@ export function validateRequest(body, embedding) {
     maxOutput > 4096
   )
     throw new Error("max_tokens must be between 1 and 4096");
-  const input = Buffer.byteLength(text, "utf8") + 512;
-  if (input > 250000) throw new Error("Input too large");
+  const textInput = Buffer.byteLength(text, "utf8") + 512;
+  if (textInput > 250000) throw new Error("Input too large");
+  const input = textInput + images * (VISION_MODELS.get(body.model) ?? 0);
   // Do not forward user-controlled routing, metadata, credentials, tools or fallback parameters.
   const upstream = embedding
     ? {
@@ -97,7 +124,7 @@ export function validateRequest(body, embedding) {
       }
     : {
         model: body.model,
-        messages: body.messages,
+        messages,
         max_tokens: maxOutput,
         stream: true,
         stream_options: { include_usage: true },
@@ -107,5 +134,5 @@ export function validateRequest(body, embedding) {
           ? { temperature: body.temperature }
           : {}),
       };
-  return { input, output: maxOutput, upstream };
+  return { input, output: maxOutput, upstream, images };
 }

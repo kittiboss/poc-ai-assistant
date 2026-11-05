@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { charge, money, priceInput, usd } from "./money.mjs";
 import { defaultRag, effectiveRag, ragInput } from "./rag.mjs";
+import { defaultImages, effectiveImages, imagesInput } from "./images.mjs";
 
 export const hash = (key) => createHash("sha256").update(key).digest("hex");
 export class Fault extends Error {
@@ -112,8 +113,8 @@ export class Store {
     return tenant;
   }
   async register(input, key, opening = 0) {
-    // Knowledge limits seed the rag column once; after that the vendor console owns them.
-    const { rag: seed, ...config } = input ?? {};
+    // Knowledge and image limits seed their columns once; after that the vendor console owns them.
+    const { rag: seed, images: imageSeed, ...config } = input ?? {};
     if (
       !validId(config?.id) ||
       typeof config.name !== "string" ||
@@ -130,20 +131,22 @@ export class Store {
     )
       throw bad("Invalid gateway credential");
     let rag;
+    let images;
     try {
       rag = ragInput(seed ?? defaultRag());
+      images = imagesInput(imageSeed ?? defaultImages());
     } catch (error) {
       throw bad(error.message);
     }
     return this.tx(async (db) => {
       const created = await db.query(
-        "INSERT INTO vendor.tenants(id,name,config,token_hash,rag) VALUES($1,$2,$3,$4,$5) ON CONFLICT(id) DO NOTHING RETURNING id",
-        [config.id, config.name, config, key ? hash(key) : null, rag],
+        "INSERT INTO vendor.tenants(id,name,config,token_hash,rag,images) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(id) DO NOTHING RETURNING id",
+        [config.id, config.name, config, key ? hash(key) : null, rag, images],
       );
       if (!created.rowCount && key)
         await db.query(
-          "UPDATE vendor.tenants SET name=$2,config=$3,token_hash=$4,rag=COALESCE(rag,$5) WHERE id=$1",
-          [config.id, config.name, config, hash(key), rag],
+          "UPDATE vendor.tenants SET name=$2,config=$3,token_hash=$4,rag=COALESCE(rag,$5),images=COALESCE(images,$6) WHERE id=$1",
+          [config.id, config.name, config, hash(key), rag, images],
         );
       if (created.rowCount)
         await this.grant(config.id, opening, "opening", "OPENING", db);
@@ -168,6 +171,25 @@ export class Store {
       rag,
     ]);
     return rag;
+  }
+  async setImages(id, body) {
+    const {
+      rows: [tenant],
+    } = await this.pool.query("SELECT images FROM vendor.tenants WHERE id=$1", [
+      id,
+    ]);
+    if (!tenant) throw new Fault(404, "not_found", "Unknown tenant");
+    let images;
+    try {
+      images = imagesInput(body, tenant.images ?? defaultImages());
+    } catch (error) {
+      throw bad(error.message);
+    }
+    await this.pool.query("UPDATE vendor.tenants SET images=$2 WHERE id=$1", [
+      id,
+      images,
+    ]);
+    return images;
   }
   /** The tenant's knowledge entitlements, as the central RAG engine enforces them. */
   ragFor(tenant) {
@@ -529,7 +551,7 @@ export class Store {
   }
   async tenants() {
     const { rows } = await this.pool
-      .query(`SELECT t.id,t.name,t.enabled,t.config,t.rag,t.token_hash IS NOT NULL AS provisioned,
+      .query(`SELECT t.id,t.name,t.enabled,t.config,t.rag,t.images,t.token_hash IS NOT NULL AS provisioned,
       (SELECT COALESCE(sum(cost),0) FROM vendor.requests WHERE tenant=t.id) cost,
       (SELECT count(*) FROM vendor.requests WHERE tenant=t.id AND state='PENDING') pending,
       (SELECT count(*) FROM vendor.requests WHERE tenant=t.id) requests FROM vendor.tenants t ORDER BY id`);
@@ -538,6 +560,8 @@ export class Store {
         ...t,
         rag: t.rag ?? defaultRag(),
         ragEntitled: effectiveRag(t.rag, t.config).embeddingModels,
+        images: t.images ?? defaultImages(),
+        imagesEntitled: effectiveImages(t.images, t.config).models,
         credit: await this.balance(t.id),
         simulatedProviderCost: usd(cost),
         actualProviderCost: "0.000000000",

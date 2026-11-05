@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import pg from "pg";
 import { Store, defaultConfig } from "./store.mjs";
 import { createApp } from "./server.mjs";
+import { charge, validateRequest } from "./money.mjs";
 
 test(
   "transactional ledger and HTTP isolation (isolated temporary database, mock upstream only)",
@@ -151,6 +152,43 @@ test(
       },
     );
     await t.test(
+      "image limits are seeded once and survive re-provisioning",
+      async () => {
+        const config = {
+          ...defaultConfig("pics", "Pictures"),
+          models: ["local-mock", "google-gemini"],
+        };
+        await store.register(
+          { ...config, images: { models: ["local-mock", "google-gemini"], maxImages: 3 } },
+          `sk-${randomUUID()}`,
+          "1",
+        );
+        await store.setImages("pics", { maxImages: 2 });
+        // tenant:create and tenant:rotate re-register with the checked-in seed.
+        await store.register(
+          { ...config, images: { models: ["local-mock"], maxImages: 6 } },
+          `sk-${randomUUID()}`,
+        );
+        const [row] = (await store.tenants()).filter((t) => t.id === "pics");
+        assert.equal(row.config.images, undefined);
+        assert.deepEqual(row.images, {
+          enabled: true,
+          models: ["local-mock", "google-gemini"],
+          maxImages: 2,
+        });
+        assert.deepEqual(row.imagesEntitled, ["local-mock", "google-gemini"]);
+        // A tenant registered without a seed gets the defaults.
+        const [plain] = (await store.tenants()).filter((t) => t.id === "a");
+        assert.deepEqual(plain.images, { enabled: true, models: ["local-mock"], maxImages: 6 });
+        await assert.rejects(
+          store.register({ ...config, id: "bad-pics", images: { models: ["groq-llama"] } }),
+          { status: 400 },
+        );
+        await assert.rejects(store.setImages("pics", { maxImages: 7 }), { status: 400 });
+        await assert.rejects(store.setImages("missing", {}), { status: 404 });
+      },
+    );
+    await t.test(
       "database refuses updates/deletes of historical prices and ledger entries",
       async () => {
         await assert.rejects(
@@ -208,6 +246,7 @@ test(
       },
     );
     let upstreamCalls = 0;
+    let lastUpstream;
     const ragCalls = [];
     const app = createApp(store, {
       adminKey: "vendor-test-key-that-is-not-a-real-secret",
@@ -221,6 +260,7 @@ test(
       fetchUpstream: async (path, init) => {
         upstreamCalls++;
         const body = JSON.parse(init.body);
+        lastUpstream = body;
         assert.ok(init.headers["x-request-id"]);
         assert.equal(body.api_base, undefined);
         if (body.messages?.[0]?.content === "rate")
@@ -351,6 +391,169 @@ test(
         );
       },
     );
+    // A PNG of `bytes` bytes (only its signature is real) as the data URL the customer API sends.
+    const png = (bytes) => {
+      const file = Buffer.alloc(bytes);
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(file);
+      return `data:image/png;base64,${file.toString("base64")}`;
+    };
+    const withImages = (model, ...urls) => ({
+      ...chat,
+      model,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "What is in these?" },
+            ...urls.map((url) => ({ type: "image_url", image_url: { url, detail: "high" } })),
+          ],
+        },
+      ],
+    });
+    const reservedFor = async (requestId) =>
+      (
+        await pool.query("SELECT reserved FROM vendor.requests WHERE request_id=$1", [requestId])
+      ).rows[0]?.reserved;
+    await t.test(
+      "images reach the model as parts, and reserve fixed tokens each instead of their size",
+      async () => {
+        // 1 MB in base64 is over every other route's limit and over the text cap.
+        const url = png(1024 * 1024);
+        const id = randomUUID();
+        const response = await call("/v1/chat/completions", withImages("local-mock", url), keyB, {
+          "x-request-id": id,
+        });
+        assert.equal(response.status, 200);
+        assert.match(await response.text(), /\[DONE\]/);
+        assert.deepEqual(lastUpstream.messages[0].content[1], {
+          type: "image_url",
+          image_url: { url },
+        });
+        const bounds = validateRequest(withImages("local-mock", url), false);
+        const {
+          rows: [price],
+        } = await pool.query(
+          "SELECT * FROM vendor.prices WHERE model='local-mock' ORDER BY id DESC LIMIT 1",
+        );
+        assert.equal(bounds.images, 1);
+        assert.equal(BigInt(await reservedFor(id)), charge(bounds.input, bounds.output, price));
+        assert.ok(bounds.input < 2000);
+        assert.equal((await store.balance("b")).reserved, 0);
+      },
+    );
+    await t.test(
+      "images for a model or a count outside the tenant's image limits are refused before any reservation",
+      async () => {
+        const key = `sk-${randomUUID()}`;
+        await store.register(
+          { ...defaultConfig("img", "Images"), models: ["local-mock", "groq-llama"] },
+          key,
+          "2",
+        );
+        const before = upstreamCalls;
+        for (const body of [
+          withImages("groq-llama", png(64)),
+          withImages("local-mock", ...Array.from({ length: 7 }, () => png(64))),
+        ]) {
+          const id = randomUUID();
+          const response = await call("/v1/chat/completions", body, key, { "x-request-id": id });
+          assert.equal(response.status, 403);
+          assert.equal((await response.json()).error.type, "image_access_denied");
+          assert.equal(await reservedFor(id), undefined);
+        }
+        const remote = await call(
+          "/v1/chat/completions",
+          withImages("local-mock", "https://example.invalid/cat.png"),
+          key,
+        );
+        assert.equal(remote.status, 400);
+        assert.equal((await remote.json()).error.type, "invalid_request");
+        assert.equal(upstreamCalls, before);
+        assert.equal((await store.balance("img")).remaining, 2);
+      },
+    );
+    await t.test(
+      "the vendor's image limits decide what /v1/models offers and what a request may carry",
+      async () => {
+        const key = `sk-${randomUUID()}`;
+        await store.register(
+          {
+            ...defaultConfig("lim", "Limits"),
+            // google-gemini is in the limits but not the plan, so it never takes effect.
+            models: ["local-mock", "groq-llama"],
+            images: { models: ["local-mock", "google-gemini"], maxImages: 3 },
+          },
+          key,
+          "2",
+        );
+        const offered = async () =>
+          Object.fromEntries(
+            (await (await call("/v1/models", undefined, key)).json()).data.map(
+              ({ id, ...rest }) => [id, rest],
+            ),
+          );
+        assert.deepEqual(await offered(), {
+          "local-mock": { object: "model", capabilities: ["vision"], max_images: 3 },
+          "groq-llama": { object: "model" },
+        });
+        const vendor = {
+          Authorization: "Bearer vendor-test-key-that-is-not-a-real-secret",
+          "Content-Type": "application/json",
+        };
+        const patch = (body, headers = vendor) =>
+          fetch(`${base}/admin/tenants/lim/images`, {
+            method: "PATCH",
+            headers,
+            body: JSON.stringify(body),
+          });
+        assert.equal(
+          (await patch({ enabled: false }, { ...vendor, Authorization: `Bearer ${key}` })).status,
+          401,
+        );
+        assert.equal((await patch({ models: ["groq-llama"] })).status, 400);
+        const send = async (count) => {
+          const id = randomUUID();
+          const urls = Array.from({ length: count }, () => png(64));
+          const response = await call("/v1/chat/completions", withImages("local-mock", ...urls), key, {
+            "x-request-id": id,
+          });
+          return { status: response.status, body: await response.text(), reserved: await reservedFor(id) };
+        };
+        // Off: no model offers vision, and an image request is refused before any reservation.
+        assert.equal((await patch({ enabled: false })).status, 200);
+        assert.deepEqual((await offered())["local-mock"], { object: "model" });
+        const off = await send(1);
+        assert.equal(off.status, 403);
+        assert.match(off.body, /image_access_denied/);
+        assert.equal(off.reserved, undefined);
+        // On again with fewer images a chat; the change applies to the next request.
+        assert.equal((await patch({ enabled: true, maxImages: 1 })).status, 200);
+        assert.equal((await offered())["local-mock"].max_images, 1);
+        assert.equal((await send(2)).status, 403);
+        const one = await send(1);
+        assert.equal(one.status, 200);
+        assert.ok(BigInt(one.reserved) > 0n);
+        // Text still goes to every model of the plan.
+        const text = await call("/v1/chat/completions", { ...chat, model: "groq-llama" }, key);
+        assert.equal(text.status, 200);
+        await text.text();
+      },
+    );
+    await t.test("only chat completions take a body over 512 KB, after authentication", async () => {
+      const big = await call("/customer/topups", {
+        amount: "1",
+        reference: "big",
+        padding: "x".repeat(600 * 1024),
+      });
+      assert.equal(big.status, 413);
+      assert.equal((await big.json()).error.type, "request_too_large");
+      const huge = await call("/v1/chat/completions", withImages("local-mock", png(6.5 * 1024 * 1024)));
+      assert.equal(huge.status, 413);
+      assert.equal(
+        (await call("/v1/chat/completions", withImages("local-mock", png(1024 * 1024)), "wrong")).status,
+        401,
+      );
+    });
     await t.test("embeddings are metered in the same ledger", async () => {
       const response = await call("/v1/embeddings", {
         model: "mock-embedding",

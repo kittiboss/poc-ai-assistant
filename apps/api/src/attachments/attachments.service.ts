@@ -8,7 +8,7 @@ import {
   type OnModuleDestroy,
   type OnModuleInit,
 } from "@nestjs/common";
-import type { AttachmentKind } from "@prisma/client";
+import type { AttachmentKind, Prisma } from "@prisma/client";
 import type { AuthUser } from "../common/auth/auth.decorators";
 import { PrismaService } from "../common/prisma/prisma.service";
 import { StorageService } from "../common/storage/storage.service";
@@ -37,6 +37,7 @@ const IMAGE_LIMIT =
   "An image may be at most 1 MB and 1,600 px on its longer side";
 /** Image files are kept under this prefix as `attachments/<id>`. */
 const STORAGE_PREFIX = "attachments/";
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** One page of ListObjectsV2. */
 const ORPHAN_BATCH = 1_000;
 /**
@@ -455,6 +456,43 @@ export class AttachmentsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /** The attachments these chats' messages sent; the retention sweep reads them before deleting the messages. */
+  async sentIn(db: Prisma.TransactionClient, conversationIds: string[]) {
+    if (!conversationIds.length) return [];
+    const messages = await db.message.findMany({
+      where: { conversationId: { in: conversationIds } },
+      select: { metadata: true },
+    });
+    const ids = messages.flatMap((message) =>
+      attachedFiles(message.metadata).map((file) => file.id),
+    );
+    // References are read from stored JSON; only real IDs reach the query.
+    return [...new Set(ids)].filter((id) => UUID.test(id));
+  }
+
+  /**
+   * Deletes the sent attachments among `ids` that no message references any more, and returns the
+   * keys of their image files, which the caller removes once its transaction has committed. Every
+   * chat's messages count, deleted chats' included: a branched chat references the same files as
+   * the chat it came from, and keeps them.
+   */
+  async deleteUnreferenced(db: Prisma.TransactionClient, ids: string[]) {
+    if (!ids.length) return { removed: 0, files: [] as string[] };
+    const rows = await db.$queryRaw<{ storageKey: string | null }[]>`
+      DELETE FROM "Attachment"
+      WHERE id = ANY(${ids}::uuid[]) AND "sentAt" IS NOT NULL
+        AND id::text NOT IN (
+          SELECT file ->> 'id' FROM "Message" m
+          CROSS JOIN LATERAL jsonb_array_elements(m.metadata -> 'attachments') AS file
+          WHERE jsonb_typeof(m.metadata -> 'attachments') = 'array' AND file ->> 'id' IS NOT NULL
+        )
+      RETURNING "storageKey"`;
+    return {
+      removed: rows.length,
+      files: rows.flatMap((row) => row.storageKey ?? []),
+    };
+  }
+
   /**
    * Image files without a row, once they are older than any unsent attachment: a removal or
    * upload whose file delete failed, or a user deleted together with their rows.
@@ -502,7 +540,7 @@ export class AttachmentsService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Files whose rows are gone. Storage logs a failure, and the daily sweep removes the file later. */
-  private async removeFiles(keys: string[]) {
+  async removeFiles(keys: string[]) {
     for (const key of keys)
       await this.storage.remove(key).catch(() => undefined);
   }

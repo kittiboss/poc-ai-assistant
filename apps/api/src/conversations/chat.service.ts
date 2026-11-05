@@ -16,7 +16,6 @@ import {
   messageText,
   refusedByGateway,
 } from "../gateway/gateway.service";
-import { imagesAvailable } from "../models/model-policies";
 import { ModelsService } from "../models/models.service";
 import { UsageService } from "../usage/usage.service";
 import { UsersService } from "../users/users.service";
@@ -195,15 +194,25 @@ export class ChatService implements OnModuleInit, OnModuleDestroy {
       conversationId,
       dto.attachmentIds,
     );
-    if (
-      attachments.files.some((file) => file.kind === "IMAGE") &&
-      !(imagesAvailable() && model.capabilities.includes("vision"))
-    )
-      throw attachmentError(
-        400,
-        "ATTACHMENT_NEEDS_VISION",
-        "This chat has images, and the chosen model cannot see them",
-      );
+    const imageCount = attachments.files.filter(
+      (file) => file.kind === "IMAGE",
+    ).length;
+    if (imageCount) {
+      const limit = await this.models.imageLimit(model);
+      if (limit === null)
+        throw attachmentError(
+          400,
+          "ATTACHMENT_NEEDS_VISION",
+          "This chat has images, and the chosen model cannot see them",
+        );
+      // forMessage holds a chat to the API's own limit; only a platform's image limits can be lower.
+      if (imageCount > limit)
+        throw attachmentError(
+          400,
+          "ATTACHMENT_LIMIT",
+          `This chat would have ${imageCount} images; your organization's plan allows ${limit} a chat.`,
+        );
+    }
     // A message with only files has nothing to search for.
     const productCitations = (dto.useKnowledge || dto.useProductCatalog) && !filesOnly
       ? await this.knowledge.retrieve({

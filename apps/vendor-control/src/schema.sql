@@ -7,6 +7,8 @@ CREATE TABLE IF NOT EXISTS vendor.tenants (
 );
 -- Knowledge (RAG) limits, set by the vendor console. Kept out of config, which tenant:create rewrites.
 ALTER TABLE vendor.tenants ADD COLUMN IF NOT EXISTS rag jsonb;
+-- Chat image limits, set by the vendor console the same way (images.mjs).
+ALTER TABLE vendor.tenants ADD COLUMN IF NOT EXISTS images jsonb;
 CREATE TABLE IF NOT EXISTS vendor.prices (
   id bigserial PRIMARY KEY, model text NOT NULL,
   input_rate bigint NOT NULL, output_rate bigint NOT NULL,

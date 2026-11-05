@@ -145,6 +145,7 @@ describe("governance admission", () => {
         prisma as never,
         usersWith(prisma),
         {} as never,
+        {} as never,
       ),
     };
   };
@@ -218,6 +219,7 @@ describe("governance admission", () => {
       prisma as never,
       {} as never,
       {} as never,
+      {} as never,
     );
     await expect(
       service.checkSensitive("password=example123", true),
@@ -231,5 +233,80 @@ describe("governance admission", () => {
     await expect(
       service.checkSensitive("password=example123", false),
     ).rejects.toMatchObject({ status: 400 });
+  });
+});
+
+describe("retention purge", () => {
+  const setup = (retentionDays: number) => {
+    const order: string[] = [];
+    const tx = {
+      $executeRaw: vi.fn(),
+      conversation: {
+        findMany: vi.fn().mockResolvedValue([{ id: "c1" }, { id: "c2" }]),
+        updateMany: vi.fn(async () => void order.push("chats")),
+      },
+      message: { deleteMany: vi.fn(async () => void order.push("messages")) },
+      usageReservation: { deleteMany: vi.fn() },
+      auditLog: { create: vi.fn() },
+    };
+    const prisma = {
+      ...tx,
+      applicationSetting: {
+        findUnique: vi.fn().mockResolvedValue({ value: { retentionDays } }),
+      },
+      $transaction: vi.fn((fn: (tx: unknown) => unknown) => fn(tx)),
+    };
+    const attachments = {
+      sentIn: vi.fn(async () => {
+        order.push("read files");
+        return ["a1", "a2"];
+      }),
+      deleteUnreferenced: vi.fn(async () => {
+        order.push("delete rows");
+        return { removed: 2, files: ["attachments/a1"] };
+      }),
+      removeFiles: vi.fn(async () => void order.push("delete files")),
+    };
+    const service = new GovernanceService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      attachments as never,
+    );
+    return { tx, attachments, service, order };
+  };
+
+  it("removes the files of expired chats that no other chat references: rows with the chats, files after", async () => {
+    const { tx, attachments, service, order } = setup(30);
+    await expect(service.purgeExpired()).resolves.toEqual({
+      purged: 2,
+      attachments: 2,
+    });
+    expect(attachments.sentIn).toHaveBeenCalledWith(tx, ["c1", "c2"]);
+    expect(attachments.deleteUnreferenced).toHaveBeenCalledWith(tx, ["a1", "a2"]);
+    expect(attachments.removeFiles).toHaveBeenCalledWith(["attachments/a1"]);
+    // The references are read before the messages go; files leave only once the rows have.
+    expect(order).toEqual([
+      "read files",
+      "messages",
+      "chats",
+      "delete rows",
+      "delete files",
+    ]);
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        after: { count: 2, retentionDays: 30, attachments: 2 },
+      }),
+    });
+  });
+
+  it("touches nothing while retention is off", async () => {
+    const { tx, attachments, service } = setup(0);
+    await expect(service.purgeExpired()).resolves.toEqual({
+      purged: 0,
+      attachments: 0,
+    });
+    expect(tx.message.deleteMany).not.toHaveBeenCalled();
+    expect(attachments.removeFiles).not.toHaveBeenCalled();
   });
 });

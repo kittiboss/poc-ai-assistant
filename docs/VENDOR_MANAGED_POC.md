@@ -24,13 +24,13 @@ npm run tenant:create -- c
 | Customer C | http://localhost:3300 | Same usernames, unique passwords in `c.env` |
 | Keycloak admin | http://localhost:8180 | `admin` / `KEYCLOAK_ADMIN_PASSWORD` from platform `.env` |
 
-Secrets are generated randomly, stored owner-readable only, ignored by Git, and never printed by provisioning commands. Customer containers receive only their gateway credential, database password and realm settings—not provider/master/vendor credentials. There are no demo users in new customer realms. On upgrading an existing POC realm, `admin`, `employee1`, and `employee2` are disabled (not deleted); their historical data is preserved. Each realm gets its own `tenant-admin` (ADMIN) plus the accounts listed under `users` in `deploy/tenants/<id>.json` (each `{ "username", "name", "roles" }`, roles from `ADMIN`/`USER`; the checked-in customers have `user-1` and `user-2` with `USER`). `tenant:create` creates missing accounts, keeps their app roles as listed and never changes an existing password; each password is `<USERNAME>_PASSWORD` in the customer's `.env`. The list stays in the provisioning script and is not sent to vendor-control.
+Secrets are generated randomly, stored owner-readable only, ignored by Git, and never printed by provisioning commands. Customer containers receive only their gateway credential, database password, image storage key pair and realm settings—not provider/master/vendor credentials. There are no demo users in new customer realms. On upgrading an existing POC realm, `admin`, `employee1`, and `employee2` are disabled (not deleted); their historical data is preserved. Each realm gets its own `tenant-admin` (ADMIN) plus the accounts listed under `users` in `deploy/tenants/<id>.json` (each `{ "username", "name", "roles" }`, roles from `ADMIN`/`USER`; the checked-in customers have `user-1` and `user-2` with `USER`). `tenant:create` creates missing accounts, keeps their app roles as listed and never changes an existing password; each password is `<USERNAME>_PASSWORD` in the customer's `.env`. The list stays in the provisioning script and is not sent to vendor-control.
 
 The customer application's **Test credits & billing** menu (`/billing`, ADMIN only) shows available/reserved/spent credit, current sale prices, the latest 100 ledger entries and requests, and downloadable JSON SIM receipts. It refreshes every 5 seconds. Top-ups here only grant test credit, with no card, payment gateway, bank transfer or payment integration.
 
 ## Vendor operations
 
-The localhost vendor console supports tenant balances/status, simulated costs and margins, test credit grants, suspension/resumption, current prices, immutable version history, request history and stale-reservation reconciliation.
+The localhost vendor console supports tenant balances/status, simulated costs and margins, test credit grants, suspension/resumption, current prices, immutable version history, request history, stale-reservation reconciliation, and per-customer knowledge and image limits.
 
 Registering a tenant in the console creates a record and $2 opening test credit. Run the displayed `npm run tenant:create -- <id>` on the vendor host to generate the deployment config, provision its LiteLLM team/key and Keycloak realm, and start its own API/web/Postgres stack. This explicit host activation avoids exposing the Docker socket to a web service. Choose unique adjacent web/API ports. For custom model allowlists/rate shares, edit `deploy/tenants/<id>.json` and re-run the same command.
 
@@ -59,7 +59,7 @@ Customer web → Customer API → vendor-control → LiteLLM → mock / credenti
 - Only `vendor-control` and Keycloak join `platform-shared`. LiteLLM, gateway Postgres and credential proxies are on the private gateway network. LiteLLM's admin port and the vendor console bind to host loopback only. No automatic paid/provider fallback is configured.
 - **The authoritative balance is the central PostgreSQL ledger, not LiteLLM's asynchronously updated `spend`.** This intentionally strengthens the PDF's suggested `max_budget` approach: tenant key/team budgets are unset upstream to avoid two conflicting billing authorities. LiteLLM still enforces model entitlements and per-model RPM/TPM. Its YAML prices/spend are diagnostics only, not customer billing.
 - Ledger amounts are integer billionths of a simulated USD; rates are USD per million tokens. Charges round up to a nanodollar. Database triggers reject updates/deletes of ledger entries and price versions. Each request captures its price version when admitted, so later changes never reprice history.
-- Under a row lock per tenant, admission reserves a conservative text-input upper bound (UTF-8 bytes plus framing) and the requested maximum output tokens. All pending reservations count against available credit. Insufficient credit fails with `402 CREDIT_EXHAUSTED` **before** inference. Models cannot consume another tenant's balance; retrying a submitted request ID is rejected with 409.
+- Under a row lock per tenant, admission reserves a conservative input upper bound (the text's UTF-8 bytes plus framing, and 1,120 tokens per image) and the requested maximum output tokens. All pending reservations count against available credit. Insufficient credit fails with `402 CREDIT_EXHAUSTED` **before** inference. Models cannot consume another tenant's balance; retrying a submitted request ID is rejected with 409.
 - Completed chat and embeddings settle returned token usage, release unused reservation, and append a debit before the response is finalized. If unusual tokenization exceeds the bound, the vendor absorbs the difference; customer balances never become negative.
 - A definite upstream rejection (including rate limits) releases the reservation without a charge. If the connection fails and final usage is unknown, the reserved maximum is charged and explicitly labelled `ESTIMATED`. Client disconnects do not stop server-side metering. This is a POC accounting policy, **not invoice-grade provider reconciliation**.
 - A process crash retains pending reservations rather than releasing potentially consumed credit. The console's **Settle stale reservations** action settles requests older than 5 minutes at their reserved maximum, visibly as estimates. Investigate first; issue a compensating grant if appropriate.
@@ -105,6 +105,24 @@ Vendor console ─► vendor-control ─(RAG_ADMIN_KEY)─► rag-engine /admin 
 - **Embedding and credit.** The customer API embeds passages (`rag-index:<uuid>`) and questions (`<request>:retrieval`) through vendor-control, so they are charged to that customer's credit, count against its quotas and LiteLLM rate share, and appear in its usage and billing pages. With an external embedding model, the kill switch and sensitive-information review apply at upload, at model change and at search. Indexing pauses with a reason (credit used up, external providers paused, daily limit, rate limit). It resumes on retry, after a top-up, or when the limit resets.
 - **Removal.** `tenant:down -- <id> --remove` also purges the customer's knowledge.
 
+## Chat images
+
+Customers attach images to chats for the models the vendor allows them. The chat rules (sizes, limits per chat, how images are sent) are in [CHAT_ATTACHMENTS.md](CHAT_ATTACHMENTS.md#images); this section covers the platform.
+
+```text
+Customer web ─► Customer API ─► own SeaweedFS (storage network of that customer only)
+                    │
+                    └─ image parts (base64) ─► vendor-control ─► LiteLLM ─► mock / gemini-proxy
+                                               checks the image limits,
+                                               reserves 1,120 tokens per image
+```
+
+- **Storage per customer.** Every customer deployment runs its own SeaweedFS, with its own volume, on an internal network that only its API joins. `tenant:create` generates its key pair once into `deploy/tenants/<id>.env` (never printed). For an existing customer, re-running `tenant:create` adds the storage and keeps the customer's data; `tenant:rotate` and `tenant:down` also add the key pair when it is missing, because Compose needs it to read the file. `tenant:down` keeps the images and `--remove` deletes them. Each customer's SeaweedFS uses about 150 MiB of memory when idle.
+- **Vendor limits** (console → *Image limits*, stored in `vendor.tenants.images`) control: on/off, the vision models (`local-mock`, `google-gemini`, also limited by the customer's model plan) and the images per chat (1–6). New customers start with `local-mock` only and 6 images. `deploy/tenants/<id>.json` seeds them once, like the knowledge limits.
+- **Customer API.** vendor-control's `GET /v1/models` marks each model that may receive images for that customer with `"capabilities": ["vision"]` and `"max_images"`. The customer app offers images only for those models.
+- **Admission.** `/v1/chat/completions` accepts a body of at most 8 MB (every other route keeps 512 KB) and image parts only as JPEG, PNG or WebP data URLs, checked by their first bytes. Images for a model outside the customer's limits, or more than its images per chat, are refused with `403 image_access_denied` before any reservation and without a charge.
+- **Credit.** An image is billed as input tokens at the model's input sale rate, with no separate price. Admission reserves 1,120 tokens per image (Gemini 3's default media resolution) on top of the text bound, and settlement uses the provider's returned `prompt_tokens`. Request rows keep no content, so the platform never stores an image.
+
 ## Quotas and no-paid-call boundaries
 
 The three checked-in tenant configs divide sample per-minute limits and daily external request/token limits. **These are example allocations, not authoritative current provider quotas.** Check the relevant provider console before enabling external models. Shared account quotas and other API users can still cause 429 responses; applications do not retry with paid fallbacks.
@@ -125,6 +143,7 @@ npm run tenant:smoke -- a
 npm run tenant:smoke -- b
 npm run tenant:smoke -- c
 npm run tenant:smoke -- a --rag
+npm run tenant:smoke -- a --images
 node scripts/platform/vendor-browser-smoke.mjs
 npm run typecheck -w @enterprise/web
 npm run lint -w @enterprise/web
@@ -136,6 +155,12 @@ npm run lint -w @enterprise/web
 - The earlier `platform:smoke` remains a low-level LiteLLM diagnostic. Its asynchronous LiteLLM spend checks are not the new ledger's acceptance criteria.
 - RAG engine integration tests also use their own temporary database, on `rag-db`, connected as `rag_app`. They verify isolation (listing, search, edits by ID, forged rows, no-context reads), every vendor limit, version switching, stale vectors, pause/resume, a small tenant beside a large one in the same HNSW index, and purge.
 - `tenant:smoke -- a --rag` uploads TXT, MD, PDF and CSV documents with conflicting facts to customers a and b (`--with <id>` picks the second). It checks that each customer's chat cites only its own documents, including a PDF page. It also checks the embedding ledger entries, that a vendor-lowered top-K is clamped, and that a chunking change switches the index version. It refuses any embedding model other than `mock-embedding` and deletes its uploads afterwards. The browser smoke verifies vendor/customer pages, mock top-up, mobile layout and browser errors using an installed Chrome (`CHROME_PATH` override supported).
+- `tenant:smoke -- a --images` uploads a sample image to the customer and sends it to `local-mock` only. It checks:
+  - the image is in the customer's own SeaweedFS, whose network holds only that customer's backend and SeaweedFS, and comes back unchanged;
+  - the reply names the image it received;
+  - the ledger counts at least 1,120 input tokens for the request.
+
+  It then turns images off for that customer through the console API, checks that the next image request is refused without a charge, restores the limits and deletes its chat. The delete is a soft delete, so the image file stays, as in the app. In PowerShell, which drops the `--`, run `node scripts/platform/tenant-smoke.mjs a --images` instead.
 
 ## Production exclusions
 
@@ -147,5 +172,17 @@ Central knowledge base verification, also on 2026-10-22, used mock models only:
 - `tenant:smoke -- a --rag` and `-- b --rag` passed. Each customer cited only its own TXT/MD/PDF/CSV documents, including the PDF page. A vendor-lowered top-K was clamped, a chunking change switched the index version, and the embedding requests appeared in each ledger.
 - The browser smoke passed for the console limits and the `/knowledge` page (upload, ready, delete, mobile).
 - `rag-db` and the engine used about 95 MB together.
+
+Chat images verification, on 2026-11-04, used mock models only:
+- 11 vendor unit tests and all 22 vendor integration tests passed, the latter inside the platform's vendor-control container.
+- Re-running `tenant:create -- a` on an existing customer added its SeaweedFS and key pair and seeded its image limits; its data and knowledge base stayed.
+- `tenant:smoke -- a --images` passed: the image stayed in customer A's own storage, on a network holding only its backend and SeaweedFS. The mock received it, and the ledger counted 1,361 input tokens, of which 1,120 were the image. With images turned off, the next message was refused without a charge.
+- The browser smoke passed with the console's image limits. In customer A's web, Local Mock was tagged "Reads images" and read an attached image. With images turned off in the console, the chat warned and the attach button offered documents only.
+- This run found that image downloads failed with a 500 in vendor-managed deployments, because the customer response filter tried to serialize the file. The filter now passes files through.
+- A Gemini demo the same day, approved beforehand, sent customer A's browser-drawn sample receipt (1,600 × 900) to Gemini 3.5 Flash-Lite. It made two requests, with the knowledge base off: the image without a message, then a follow-up question in Thai that sent the image again.
+  - Gemini read the receipt's "123.45 THB" in both answers.
+  - The ledger settled on Gemini's own counts: 1,367 input and 89 output tokens, then 1,415 and 22.
+  - That cost $0.000633 and $0.000480 of test credit, at the default sale price; the free tier charged nothing.
+  - The demo chat was deleted afterwards.
 
 No real payment processing, invoices/tax, refunds, provider invoice reconciliation, cloud deployment, MFA/federated vendor administration, guaranteed uptime/SLA, cross-host HA or automated backups are provided. Basic Auth and localhost HTTP are for this local POC only. Use TLS, a vendor identity role, production database roles, secret management, backups/restore tests, distributed provider quota controls and security review before deployment. See [production gaps](PRODUCTION_GAPS.md).
