@@ -24,17 +24,15 @@ test('streams a reply from the mock model into a new chat', async ({ page, m, cr
   await expect(lastReply(page)).toContainText(MOCK_REPLY);
 });
 
-test('each model in the list shows where it runs, its status and provider; the field only its name', async ({
-  page,
-  m,
-}) => {
+test('each model in the list shows where it runs and its provider; the field only its name', async ({ page, m }) => {
   // The mock model is always there and available, and the first one, so it is chosen.
   await expect(chosenModel(page, m)).toHaveText('Local Mock');
   await modelField(page, m).click();
   const mock = page.getByRole('option', { name: /^Local Mock/ });
   await expect(mock).toContainText(m.enums.location.LOCAL);
-  await expect(mock).toContainText(m.enums.modelStatus.available);
   await expect(mock).toContainText('MOCK');
+  // A model that can be used says nothing about its status.
+  await expect(mock).not.toContainText(m.enums.modelStatus.available);
 
   await mock.click();
   await expect(page.getByRole('listbox')).toBeHidden();
