@@ -118,40 +118,87 @@ function UsageBar({
   );
 }
 
-/** One line under a model in the picker: the limit closest to stopping it, or today's count when none applies. */
-export function ModelUsageLine({ modelId, usage }: { modelId: string; usage?: ModelUsage }) {
+/** The short text of a picker line; the whole sentence shows on hover. */
+function ShortText({ text, title, danger }: { text: string; title?: string; danger?: boolean }) {
+  return (
+    <span title={title} className={cn('min-w-0 truncate', danger && 'text-error')}>
+      {text}
+    </span>
+  );
+}
+
+/**
+ * The rest of a model's second line in the picker, after its provider: a small ring for the limit
+ * closest to stopping the model and what is left of it, or that no limit applies.
+ * `reason`, why the model cannot be used now, takes the text's place. The text is short; its title
+ * has the whole sentence.
+ */
+export function ModelUsageLine({ modelId, usage, reason }: { modelId: string; usage?: ModelUsage; reason?: string }) {
   const t = useTranslations('modelUsage');
   const format = useFormatter();
   const sharedNeed = useRefusedNeed('INSTALLATION', 'tokens', modelId);
   const ownNeed = useRefusedNeed('MODEL', 'tokens', modelId);
   const model = usage?.models.find((row) => row.modelId === modelId);
-  if (!usage || !model) return null;
+  const separator = <span aria-hidden="true">·</span>;
+  if (!usage || !model)
+    return reason ? (
+      <>
+        {separator}
+        <ShortText text={reason} />
+      </>
+    ) : null;
   // The limit that refused this model's latest message comes first, otherwise the fullest one.
   const limits = limitsFor(model, usage);
   const nearest =
     limits.find((limit) => limit.unit === 'tokens' && (limit.shared ? sharedNeed : ownNeed) !== undefined) ?? limits[0];
-  if (nearest?.shared)
+  if (!nearest) {
+    const counts = { requests: format.number(model.requests.used), tokens: format.number(model.tokens.used) };
     return (
-      <UsageBar
-        meter={nearest.meter}
-        unit={nearest.unit}
-        part={model[nearest.unit]}
-        refused={nearest.unit === 'tokens' ? sharedNeed : undefined}
-      />
+      <>
+        {separator}
+        <ShortText text={reason ?? t('shortNoLimit')} title={t('noLimit', counts)} />
+      </>
     );
-  if (nearest)
-    return (
-      <UsageBar
-        meter={nearest.meter}
-        unit={nearest.unit}
-        note={t('modelLimit')}
-        refused={nearest.unit === 'tokens' ? ownNeed : undefined}
-      />
-    );
+  }
+  const { meter, unit, shared } = nearest;
+  const refused = unit === 'tokens' ? (shared ? sharedNeed : ownNeed) : undefined;
+  const blocked = refused !== undefined && refused > left(meter);
+  const share = ratio(meter);
+  const values = { left: format.number(left(meter)), limit: format.number(meter.limit ?? 0) };
+  const running = meter.reserved > 0 ? t('running', { count: format.number(meter.reserved) }) : '';
+  // What running requests hold is already out of what is left; only the whole sentence names it.
+  const short = blocked
+    ? t('shortNeeded', { needed: format.number(refused), left: values.left })
+    : [t(unit === 'tokens' ? 'shortTokens' : 'shortRequests', values), shared && t('shortShared')]
+        .filter(Boolean)
+        .join(' · ');
+  const whole = [
+    shared
+      ? t(unit === 'tokens' ? 'sharedTokens' : 'sharedRequests', { ...values, part: format.number(model[unit].used) })
+      : t(unit, values),
+    running,
+    !shared && t('modelLimit'),
+    blocked && t('lastNeeded', { needed: format.number(refused) }),
+  ]
+    .filter(Boolean)
+    .join(' · ');
   return (
-    <p className="truncate text-[11px] text-fg-secondary">
-      {t('noLimit', { requests: format.number(model.requests.used), tokens: format.number(model.tokens.used) })}
-    </p>
+    <>
+      {separator}
+      {/* Next to a reason only when the limit is that reason. The text says the same, so screen readers skip it. */}
+      {(!reason || share >= 1) && (
+        <Progress
+          type="circle"
+          size={14}
+          percent={share * 100}
+          showInfo={false}
+          strokeColor={tone(blocked ? 1 : share)}
+          aria-hidden="true"
+          className="flex shrink-0"
+        />
+      )}
+      <ShortText text={reason ?? short} title={whole} danger={!reason && (share >= 1 || blocked)} />
+    </>
   );
 }
 

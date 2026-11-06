@@ -11,9 +11,9 @@ import { cn } from '@/lib/cn';
 type Option = { value: string; label: string; disabled: boolean; model: Model };
 
 /**
- * The model for the next message. The field shows the name only; each choice adds where the model
- * runs, whether it can be used now, its provider and how close today's use is to its limit. A
- * dropdown on a wider screen, a drawer on a phone.
+ * The model for the next message. The field shows the name only; each choice adds, in two lines,
+ * where the model runs, whether it reads images, its provider and how close today's use is to its
+ * limit, or why it cannot be used now. A dropdown on a wider screen, a drawer on a phone.
  */
 export function ModelPicker({
   models,
@@ -56,9 +56,9 @@ export function ModelPicker({
         }}
         popupMatchSelectWidth={352}
         classNames={{ popup: { listItem: 'py-1' } }}
-        // About six models with their usage lines fit; more scroll. A plain list keeps its scroll bar
-        // in view, and the options' own text is what screen readers read.
-        listHeight={360}
+        // Six and a half two-line options, so a longer list shows it scrolls. A plain list keeps its
+        // scroll bar in view, and the options' own text is what screen readers read.
+        listHeight={340}
         virtual={false}
         options={models.map((model) => ({
           value: model.id,
@@ -106,31 +106,36 @@ export function ModelPicker({
 }
 
 /**
- * Name, where it runs, whether it reads images and whether it can be used now, then the provider and
- * today's usage on smaller lines.
+ * Two lines: the name, then whether it reads images and where it runs at the end; the provider and
+ * today's usage below. A model that can be used says nothing more; one that cannot fades and says why.
  */
 function ModelOption({ model, usage }: { model: Model; usage?: ModelUsage }) {
   const t = useTranslations('chat');
   const enums = useEnumLabel();
+  const vision = model.capabilities.includes('vision');
   return (
     // A model that cannot be picked fades as a whole, its tags too.
-    <div className={cn('flex min-w-0 flex-col gap-0.5', !model.available && 'opacity-50')}>
-      <div className="flex items-center gap-2">
+    <div className={cn('flex min-w-0 flex-col', !model.available && 'opacity-50')}>
+      <div className="flex min-w-0 items-center gap-2">
         <span className="truncate font-semibold text-fg">{model.displayName}</span>
-        <StatusTag tone={model.local ? 'success' : 'warning'} className="shrink-0">
-          {enums.label('location', model.local ? 'LOCAL' : 'EXTERNAL')}
-        </StatusTag>
-        {model.capabilities.includes('vision') && (
-          <StatusTag tone="primary" className="shrink-0">
+        {vision && (
+          <StatusTag tone="primary" className="ms-auto shrink-0">
             {t('readsImages')}
           </StatusTag>
         )}
-        <StatusTag tone={model.available ? 'success' : 'neutral'} className="ms-auto shrink-0">
-          {enums.modelStatus(model.status)}
+        {/* Always last, so the locations line up down the list. */}
+        <StatusTag tone={model.local ? 'success' : 'warning'} className={cn('shrink-0', !vision && 'ms-auto')}>
+          {enums.label('location', model.local ? 'LOCAL' : 'EXTERNAL')}
         </StatusTag>
       </div>
-      <span className="truncate text-xs text-fg-secondary">{model.provider}</span>
-      <ModelUsageLine modelId={model.id} usage={usage} />
+      <div className="flex min-w-0 items-center gap-1.5 text-xs text-fg-secondary">
+        <span className="shrink-0">{model.provider}</span>
+        <ModelUsageLine
+          modelId={model.id}
+          usage={usage}
+          reason={model.available ? undefined : enums.modelStatus(model.status)}
+        />
+      </div>
     </div>
   );
 }

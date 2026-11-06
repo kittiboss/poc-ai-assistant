@@ -36,7 +36,9 @@ test('the model list opens in a drawer on a phone', async ({ page, m }) => {
   const drawer = page.getByRole('dialog', { name: m.chat.chatModel });
   const mock = drawer.getByRole('button', { name: /^Local Mock/ });
   await expect(mock).toHaveAttribute('aria-current', 'true');
-  await expect(mock).toContainText(m.enums.modelStatus.available);
+  await expect(mock).toContainText(m.enums.location.LOCAL);
+  // A model that can be used says nothing about its status.
+  await expect(mock).not.toContainText(m.enums.modelStatus.available);
   // The drawer replaces the dropdown list.
   await expect(page.getByRole('listbox')).toHaveCount(0);
 
