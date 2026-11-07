@@ -1,0 +1,58 @@
+/* Layer order: AntD sits above Tailwind's preflight but below utilities, so `className="mt-4"` on
+   an AntD component still wins. Any layer missing from this list would land after `utilities`. */
+@layer theme, base, antd, components, utilities;
+
+@import 'tailwindcss';
+
+/* Colors, radii and the font come from the AntD theme (theme/css-vars.ts). */
+@theme inline {
+  --color-primary: var(--app-color-primary);
+  --color-primary-hover: var(--app-color-primary-hover);
+  --color-primary-soft: var(--app-color-primary-bg);
+  --color-primary-border: var(--app-color-primary-border);
+  --color-primary-text: var(--app-color-primary-text);
+
+  --color-layout: var(--app-color-bg-layout);
+  --color-surface: var(--app-color-bg-container);
+  --color-elevated: var(--app-color-bg-elevated);
+  --color-sider: var(--app-color-bg-sider);
+  --color-header: var(--app-color-bg-header);
+
+  --color-fill: var(--app-color-fill);
+  --color-fill-secondary: var(--app-color-fill-secondary);
+  --color-fill-tertiary: var(--app-color-fill-tertiary);
+  --color-fill-quaternary: var(--app-color-fill-quaternary);
+
+  --color-line: var(--app-color-border);
+  --color-line-secondary: var(--app-color-border-secondary);
+
+  --color-fg: var(--app-color-text);
+  --color-fg-secondary: var(--app-color-text-secondary);
+  --color-fg-tertiary: var(--app-color-text-tertiary);
+
+  --color-success: var(--app-color-success);
+  --color-warning: var(--app-color-warning);
+  --color-error: var(--app-color-error);
+
+  --radius-brand-sm: var(--app-radius-sm);
+  --radius-brand: var(--app-radius);
+  --radius-brand-lg: var(--app-radius-lg);
+
+  --font-sans: var(--app-font-sans);
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--app-color-bg-layout);
+    color: var(--app-color-text);
+    font-family: var(--font-sans);
+  }
+
+  ::selection {
+    background-color: color-mix(in srgb, var(--app-color-primary) 55%, transparent);
+  }
+}
