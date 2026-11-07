@@ -2,6 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import pg from "pg";
+import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from "jose";
+import { STAFF_AUDIENCE, STAFF_ROLE, staffVerifier } from "./staff.mjs";
 import { Store, defaultConfig } from "./store.mjs";
 import { createApp } from "./server.mjs";
 import { charge, validateRequest } from "./money.mjs";
@@ -248,7 +250,25 @@ test(
     let upstreamCalls = 0;
     let lastUpstream;
     const ragCalls = [];
+    // Vendor staff tokens, signed by a local key in place of the vendor realm's.
+    const staffIssuer = "http://idp.test/realms/vendor";
+    const consoleOrigin = "http://console.test";
+    const { publicKey, privateKey } = await generateKeyPair("RS256");
+    const staffKeys = createLocalJWKSet({
+      keys: [{ ...(await exportJWK(publicKey)), kid: "k1", alg: "RS256", use: "sig" }],
+    });
+    const staffToken = (roles = [STAFF_ROLE], iss = staffIssuer) =>
+      new SignJWT({ realm_access: { roles }, preferred_username: "vendor-admin" })
+        .setProtectedHeader({ alg: "RS256", kid: "k1" })
+        .setSubject("staff-1")
+        .setIssuer(iss)
+        .setAudience(STAFF_AUDIENCE)
+        .setIssuedAt()
+        .setExpirationTime("5m")
+        .sign(privateKey);
     const app = createApp(store, {
+      verifyStaff: staffVerifier({ issuer: staffIssuer, keys: staffKeys }),
+      consoleOrigin,
       adminKey: "vendor-test-key-that-is-not-a-real-secret",
       upstreamUrl: "http://mock.invalid",
       ragEngineUrl: "http://rag.invalid",
@@ -362,6 +382,81 @@ test(
             ["http://rag.invalid/admin/usage", "GET", "Bearer rag-admin-test-key"],
             ["http://rag.invalid/admin/tenants/b", "DELETE", "Bearer rag-admin-test-key"],
           ],
+        );
+      },
+    );
+    await t.test(
+      "vendor staff reach the admin API from the console's origin only, with the console role",
+      async () => {
+        const asStaff = async (path, { roles, iss, origin, method = "GET", body } = {}) =>
+          fetch(`${base}${path}`, {
+            method,
+            headers: {
+              Authorization: `Bearer ${await staffToken(roles, iss)}`,
+              "Content-Type": "application/json",
+              ...(origin ? { origin } : {}),
+            },
+            body: body ? JSON.stringify(body) : undefined,
+          });
+        const listed = await asStaff("/admin/tenants", { origin: consoleOrigin });
+        assert.equal(listed.status, 200);
+        assert.equal(listed.headers.get("access-control-allow-origin"), consoleOrigin);
+        assert.equal(
+          (await asStaff("/admin/tenants", { roles: ["offline_access"] })).status,
+          403,
+        );
+        assert.equal(
+          (await asStaff("/admin/tenants", { iss: "http://idp.test/realms/tenant-b" })).status,
+          401,
+        );
+        // A tenant's key or a staff token never opens the tenant routes as the vendor.
+        assert.equal(
+          (await call("/customer/billing", undefined, await staffToken())).status,
+          401,
+        );
+        // Preflight: allowed for the console's origin on /admin only.
+        const preflight = (path, origin) =>
+          fetch(`${base}${path}`, {
+            method: "OPTIONS",
+            headers: {
+              origin,
+              "access-control-request-method": "PATCH",
+              "access-control-request-headers": "authorization,content-type",
+            },
+          });
+        const ok = await preflight("/admin/tenants/b", consoleOrigin);
+        assert.equal(ok.status, 204);
+        assert.equal(ok.headers.get("access-control-allow-origin"), consoleOrigin);
+        assert.match(ok.headers.get("access-control-allow-methods"), /PATCH/);
+        for (const [path, origin] of [
+          ["/admin/tenants/b", "https://attacker.invalid"],
+          ["/customer/topups", consoleOrigin],
+        ])
+          assert.equal(
+            (await preflight(path, origin)).headers.get("access-control-allow-origin"),
+            null,
+          );
+        // Mutations: from the console's origin, not from any other.
+        const resume = { method: "PATCH", body: { enabled: true } };
+        assert.equal(
+          (await asStaff("/admin/tenants/b", { ...resume, origin: consoleOrigin })).status,
+          200,
+        );
+        assert.equal(
+          (await asStaff("/admin/tenants/b", { ...resume, origin: "https://attacker.invalid" }))
+            .status,
+          403,
+        );
+        assert.equal(
+          (
+            await call(
+              "/customer/topups",
+              { amount: "2", reference: "from-console-origin" },
+              keyB,
+              { origin: consoleOrigin },
+            )
+          ).status,
+          403,
         );
       },
     );

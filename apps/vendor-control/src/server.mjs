@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { Fault, Store, defaultConfig, validId } from "./store.mjs";
 import { validateRequest } from "./money.mjs";
 import { effectiveImages, imagesAllowed } from "./images.mjs";
+import { staffVerifierFromEnv } from "./staff.mjs";
 
 const CHAT_PATH = "/v1/chat/completions";
 
@@ -38,6 +39,8 @@ export function createApp(
     ragEngineUrl,
     ragAdminKey,
     fetchRag = fetch,
+    verifyStaff,
+    consoleOrigin,
   },
 ) {
   if (!adminKey || adminKey.length < 32)
@@ -52,11 +55,31 @@ export function createApp(
       "Content-Security-Policy":
         "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
     });
-    // No CORS. Prevent cookie/basic-authenticated cross-origin mutations (localhost POC).
+    // The vendor console (apps/vendor-console) runs on its own origin and calls the admin API with
+    // a staff access token, never cookies. Only that origin gets CORS, and only on /admin.
+    const origin = req.get("origin");
+    const fromConsole =
+      Boolean(consoleOrigin) &&
+      origin === consoleOrigin &&
+      req.path.startsWith("/admin/");
+    if (fromConsole) {
+      res.set({ "Access-Control-Allow-Origin": origin, Vary: "Origin" });
+      if (req.method === "OPTIONS")
+        return res
+          .set({
+            "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE",
+            "Access-Control-Allow-Headers": "Authorization, Content-Type",
+            "Access-Control-Max-Age": "600",
+          })
+          .status(204)
+          .end();
+    }
+    // No other CORS. Prevent cookie/basic-authenticated cross-origin mutations (localhost POC).
     if (
+      !fromConsole &&
       !["GET", "HEAD", "OPTIONS"].includes(req.method) &&
-      req.get("origin") &&
-      req.get("origin") !== `${req.protocol}://${req.get("host")}`
+      origin &&
+      origin !== `${req.protocol}://${req.get("host")}`
     )
       return res
         .status(403)
@@ -74,14 +97,28 @@ export function createApp(
     res.json({ status: "ok", simulation: true });
   });
 
-  // Dedicated localhost-only vendor credential; never supplied to tenant containers.
-  const admin = (req, res, next) => {
+  // Platform scripts use the dedicated localhost-only vendor key (never supplied to tenant containers);
+  // vendor staff use the console, signed in to the `vendor` realm with the vendor-admin role.
+  const admin = async (req, res, next) => {
     const auth = req.get("authorization") ?? "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
     const decoded = auth.startsWith("Basic ")
       ? Buffer.from(auth.slice(6), "base64").toString()
       : "";
-    if (same(bearer(req), adminKey) || same(decoded, `vendor:${adminKey}`))
+    if (same(token, adminKey) || same(decoded, `vendor:${adminKey}`))
       return next();
+    const staff = token && verifyStaff ? await verifyStaff(token) : undefined;
+    if (staff?.allowed) {
+      req.staff = staff;
+      return next();
+    }
+    if (staff)
+      return res.status(403).json({
+        error: {
+          type: "forbidden",
+          message: "This account may not use the vendor console",
+        },
+      });
     res
       .set("WWW-Authenticate", 'Basic realm="Vendor POC console"')
       .status(401)
@@ -485,6 +522,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     upstreamUrl: process.env.UPSTREAM_URL || "http://litellm:4000",
     ragEngineUrl: process.env.RAG_ENGINE_URL,
     ragAdminKey: process.env.RAG_ADMIN_KEY,
+    verifyStaff: staffVerifierFromEnv(),
+    consoleOrigin: process.env.VENDOR_CONSOLE_ORIGIN,
   });
   const server = app.listen(Number(process.env.PORT || 4050), "0.0.0.0");
   for (const signal of ["SIGTERM", "SIGINT"])

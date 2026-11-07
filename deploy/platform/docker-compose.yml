@@ -216,6 +216,13 @@ services:
       # Console usage totals and tenant purge on the RAG engine.
       RAG_ENGINE_URL: http://rag-engine:4060
       RAG_ADMIN_KEY: ${RAG_ADMIN_KEY:?Run npm run platform:up to initialize RAG secrets}
+      # Vendor staff sign in to the vendor console (apps/vendor-console) in the `vendor` realm; the
+      # browser calls /admin with that access token from the console's origin (CORS for it alone).
+      # The issuer is the address the browser signs in at; the signing keys come over the shared network.
+      KEYCLOAK_URL: http://localhost:${KEYCLOAK_PORT:-8180}
+      KEYCLOAK_INTERNAL_URL: http://keycloak:8080
+      VENDOR_REALM: vendor
+      VENDOR_CONSOLE_ORIGIN: http://localhost:${VENDOR_CONSOLE_PORT:-4070}
     ports:
       - "127.0.0.1:4050:4050"
     depends_on:
