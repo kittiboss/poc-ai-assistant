@@ -18,7 +18,7 @@ npm run tenant:create -- c
 
 | Interface | URL | Sign-in |
 | --- | --- | --- |
-| Vendor console | http://localhost:4050/console/ | Browser Basic Auth: `vendor` / `VENDOR_ADMIN_KEY` from `deploy/platform/.env` |
+| Vendor console | http://localhost:4070 | `vendor-admin` / `VENDOR_CONSOLE_PASSWORD` from `deploy/platform/.env` (Keycloak realm `vendor`) |
 | Customer A | http://localhost:3100 | `tenant-admin` / `TENANT_ADMIN_PASSWORD` from `deploy/tenants/a.env`; users `user-1` / `USER_1_PASSWORD`, `user-2` / `USER_2_PASSWORD` |
 | Customer B | http://localhost:3200 | Same usernames, unique passwords in `b.env` |
 | Customer C | http://localhost:3300 | Same usernames, unique passwords in `c.env` |
@@ -30,7 +30,9 @@ The customer application's **Test credits & billing** menu (`/billing`, ADMIN on
 
 ## Vendor operations
 
-The localhost vendor console supports tenant balances/status, simulated costs and margins, test credit grants, suspension/resumption, current prices, immutable version history, request history, stale-reservation reconciliation, and per-customer knowledge and image limits.
+The vendor console (`apps/vendor-console`, http://localhost:4070) supports tenant balances/status, simulated costs and margins, test credit grants, suspension/resumption, today's model usage, current prices, immutable version history, request history, stale-reservation reconciliation, and per-customer knowledge and image limits.
+
+Vendor staff sign in through the platform Keycloak's `vendor` realm, and only accounts with its `vendor-admin` realm role get in. `platform:up` creates the realm and one `vendor-admin` account with the password `VENDOR_CONSOLE_PASSWORD`; add more staff in Keycloak admin (realm `vendor` → Users) with that role. The console's own server holds no secret: the browser calls vendor-control's `/admin` API with the staff access token, and vendor-control accepts the console's origin only. Platform scripts keep using `VENDOR_ADMIN_KEY` as a Bearer token. To run the console with `next dev` (`npm run dev -w @enterprise/vendor-console`), stop the `platform-vendor-console-1` container first: both use port 4070, the address the realm and vendor-control expect.
 
 Registering a tenant in the console creates a record and $2 opening test credit. Run the displayed `npm run tenant:create -- <id>` on the vendor host to generate the deployment config, provision its LiteLLM team/key and Keycloak realm, and start its own API/web/Postgres stack. This explicit host activation avoids exposing the Docker socket to a web service. Choose unique adjacent web/API ports. For custom model allowlists/rate shares, edit `deploy/tenants/<id>.json` and re-run the same command.
 
@@ -154,7 +156,7 @@ npm run lint -w @enterprise/web
 - Tenant smoke tests log in through PKCE, create one mock conversation and a $0.01 **test-only** top-up, verify request-ID correlation and synchronous debit, and inspect JSON/CSV redaction and credential isolation. They do not reset real tenant credit or change provider quotas.
 - The earlier `platform:smoke` remains a low-level LiteLLM diagnostic. Its asynchronous LiteLLM spend checks are not the new ledger's acceptance criteria.
 - RAG engine integration tests also use their own temporary database, on `rag-db`, connected as `rag_app`. They verify isolation (listing, search, edits by ID, forged rows, no-context reads), every vendor limit, version switching, stale vectors, pause/resume, a small tenant beside a large one in the same HNSW index, and purge.
-- `tenant:smoke -- a --rag` uploads TXT, MD, PDF and CSV documents with conflicting facts to customers a and b (`--with <id>` picks the second). It checks that each customer's chat cites only its own documents, including a PDF page. It also checks the embedding ledger entries, that a vendor-lowered top-K is clamped, and that a chunking change switches the index version. It refuses any embedding model other than `mock-embedding` and deletes its uploads afterwards. The browser smoke verifies vendor/customer pages, mock top-up, mobile layout and browser errors using an installed Chrome (`CHROME_PATH` override supported).
+- `tenant:smoke -- a --rag` uploads TXT, MD, PDF and CSV documents with conflicting facts to customers a and b (`--with <id>` picks the second). It checks that each customer's chat cites only its own documents, including a PDF page. It also checks the embedding ledger entries, that a vendor-lowered top-K is clamped, and that a chunking change switches the index version. It refuses any embedding model other than `mock-embedding` and deletes its uploads afterwards. The browser smoke signs in to the vendor console as `vendor-admin` and checks customer A's credit history, limits and prices without changing them, then verifies the customer pages, mock top-up, mobile layout and browser errors using an installed Chrome (`CHROME_PATH` override supported).
 - `tenant:smoke -- a --images` uploads a sample image to the customer and sends it to `local-mock` only. It checks:
   - the image is in the customer's own SeaweedFS, whose network holds only that customer's backend and SeaweedFS, and comes back unchanged;
   - the reply names the image it received;
@@ -185,4 +187,4 @@ Chat images verification, on 2026-11-04, used mock models only:
   - That cost $0.000633 and $0.000480 of test credit, at the default sale price; the free tier charged nothing.
   - The demo chat was deleted afterwards.
 
-No real payment processing, invoices/tax, refunds, provider invoice reconciliation, cloud deployment, MFA/federated vendor administration, guaranteed uptime/SLA, cross-host HA or automated backups are provided. Basic Auth and localhost HTTP are for this local POC only. Use TLS, a vendor identity role, production database roles, secret management, backups/restore tests, distributed provider quota controls and security review before deployment. See [production gaps](PRODUCTION_GAPS.md).
+No real payment processing, invoices/tax, refunds, provider invoice reconciliation, cloud deployment, MFA/federated vendor administration, guaranteed uptime/SLA, cross-host HA or automated backups are provided. The vendor realm's password sign-in with a single staff role, and localhost HTTP, are for this local POC only. Use TLS, MFA and finer vendor roles, production database roles, secret management, backups/restore tests, distributed provider quota controls and security review before deployment. See [production gaps](PRODUCTION_GAPS.md).

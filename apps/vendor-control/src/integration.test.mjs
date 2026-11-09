@@ -318,10 +318,9 @@ test(
       max_tokens: 32,
     };
     await t.test(
-      "tenant cannot access console/admin, other ledger, or routing bypass",
+      "tenant cannot access admin, other ledger, or routing bypass",
       async () => {
         assert.equal((await call("/admin/tenants")).status, 401);
-        assert.equal((await call("/console/")).status, 401);
         assert.equal((await call("/key/generate", {})).status, 404);
         assert.equal(
           (
@@ -409,6 +408,14 @@ test(
           (await asStaff("/admin/tenants", { iss: "http://idp.test/realms/tenant-b" })).status,
           401,
         );
+        // The admin key works as a Bearer token only: no browser Basic Auth since the old console left.
+        const basic = await fetch(`${base}/admin/tenants`, {
+          headers: {
+            Authorization: `Basic ${Buffer.from("vendor:vendor-test-key-that-is-not-a-real-secret").toString("base64")}`,
+          },
+        });
+        assert.equal(basic.status, 401);
+        assert.equal(basic.headers.get("www-authenticate"), 'Bearer realm="vendor-control"');
         // A tenant's key or a staff token never opens the tenant routes as the vendor.
         assert.equal(
           (await call("/customer/billing", undefined, await staffToken())).status,

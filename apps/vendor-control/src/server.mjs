@@ -74,7 +74,7 @@ export function createApp(
           .status(204)
           .end();
     }
-    // No other CORS. Prevent cookie/basic-authenticated cross-origin mutations (localhost POC).
+    // No other CORS, and no mutations from any other page's origin (localhost POC).
     if (
       !fromConsole &&
       !["GET", "HEAD", "OPTIONS"].includes(req.method) &&
@@ -102,11 +102,7 @@ export function createApp(
   const admin = async (req, res, next) => {
     const auth = req.get("authorization") ?? "";
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-    const decoded = auth.startsWith("Basic ")
-      ? Buffer.from(auth.slice(6), "base64").toString()
-      : "";
-    if (same(token, adminKey) || same(decoded, `vendor:${adminKey}`))
-      return next();
+    if (same(token, adminKey)) return next();
     const staff = token && verifyStaff ? await verifyStaff(token) : undefined;
     if (staff?.allowed) {
       req.staff = staff;
@@ -120,7 +116,7 @@ export function createApp(
         },
       });
     res
-      .set("WWW-Authenticate", 'Basic realm="Vendor POC console"')
+      .set("WWW-Authenticate", 'Bearer realm="vendor-control"')
       .status(401)
       .json({ error: { message: "Vendor authentication required" } });
   };
@@ -261,13 +257,6 @@ export function createApp(
     });
     res.json(result);
   });
-  app.use(
-    "/console",
-    admin,
-    express.static(fileURLToPath(new URL("../public", import.meta.url))),
-  );
-  app.get("/", (_req, res) => res.redirect("/console/"));
-
   app.use(async (req, _res, next) => {
     req.tenant = await store.authenticate(bearer(req));
     next();

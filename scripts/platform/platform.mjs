@@ -76,15 +76,12 @@ if (command === 'build') {
 } else if (command === 'up') {
   const env = ensurePlatformEnv();
   platformCompose(['up', '-d'], env);
-  await waitHealthy(['platform-keycloak-1', 'platform-litellm-1', 'platform-vendor-control-1', 'platform-rag-engine-1']);
+  await waitHealthy(['platform-keycloak-1', 'platform-litellm-1', 'platform-vendor-control-1', 'platform-rag-engine-1', 'platform-vendor-console-1']);
   const staff = await syncVendorRealm(env);
   const profiles = platformProfiles(env);
   console.log(`Platform is up. Keycloak: ${keycloakUrl(env)} · gateway admin API: http://127.0.0.1:4000`);
   console.log(`Provider proxies: ${profiles.length ? profiles.join(', ') : 'none (add a provider key to deploy/platform/.env)'}`);
-  console.log('Vendor console: http://localhost:4050/console/ · username vendor · password VENDOR_ADMIN_KEY in deploy/platform/.env');
-  console.log(
-    `New vendor console (apps/vendor-console): ${staff.consoleUrl} · Keycloak realm ${staff.realm} · username ${staff.username} · password VENDOR_CONSOLE_PASSWORD in deploy/platform/.env`,
-  );
+  console.log(`Vendor console: ${staff.consoleUrl} · username ${staff.username} · password VENDOR_CONSOLE_PASSWORD in deploy/platform/.env`);
 } else if (command === 'down') {
   platformCompose(['down'], readEnvFile(platformEnvFile) ?? {});
 } else {

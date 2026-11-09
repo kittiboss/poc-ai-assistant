@@ -1,11 +1,13 @@
 // Browser verification with local mock chat only; leaves one small test-credit grant/history entry.
 // The knowledge base check uploads one small text file with mock embeddings and deletes it again.
+// The vendor console part only reads.
 import assert from "node:assert/strict";
 import { chromium } from "playwright-core";
 import { join } from "node:path";
-import { readPlatformEnv, readEnvFile, tenantsDir } from "./lib.mjs";
+import { consoleUrl, readPlatformEnv, readEnvFile, tenantsDir } from "./lib.mjs";
 
 const env = readEnvFile(join(tenantsDir, "a.env"));
+const platform = readPlatformEnv();
 const browser = await chromium.launch({
   executablePath:
     process.env.CHROME_PATH ||
@@ -13,40 +15,35 @@ const browser = await chromium.launch({
   headless: true,
 });
 try {
+  // Vendor console (apps/vendor-console), signed in to the `vendor` realm as vendor-admin.
   const vendor = await browser.newContext({
-    httpCredentials: {
-      username: "vendor",
-      password: readPlatformEnv().VENDOR_ADMIN_KEY,
-    },
     viewport: { width: 1440, height: 1000 },
   });
   const consolePage = await vendor.newPage();
   const errors = [];
   consolePage.on("pageerror", (e) => errors.push(e.message));
-  await consolePage.goto("http://localhost:4050/console/");
-  await consolePage
-    .getByRole("heading", { name: "Credits, tenants & model pricing" })
-    .waitFor();
-  await consolePage.locator("#tenants").getByRole("cell", { name: /Customer A \(a\)/ }).waitFor();
-  assert.ok((await consolePage.locator("#prices tr").count()) >= 2);
-  await consolePage
-    .locator("#tenants tr")
-    .filter({ hasText: "Customer A (a)" })
-    .getByRole("button", { name: "History", exact: true })
-    .click();
-  await consolePage.locator("#ledger tr").first().waitFor();
-  // Knowledge limits per customer, with usage from the RAG engine.
-  await consolePage.locator("#rag tr").filter({ hasText: "Customer A (a)" }).waitFor();
-  await consolePage.locator("#rag-tenant").selectOption("a");
-  assert.ok(Number(await consolePage.locator('#rag-limits input[name="maxTopK"]').inputValue()) >= 1);
-  // Image limits per customer.
-  await consolePage.locator("#images tr").filter({ hasText: "Customer A (a)" }).waitFor();
-  await consolePage.locator("#images-tenant").selectOption("a");
-  assert.ok(Number(await consolePage.locator('#image-limits input[name="maxImages"]').inputValue()) >= 1);
-  await consolePage.screenshot({
-    path: "/tmp/vendor-console-poc.png",
-    fullPage: true,
-  });
+  await consolePage.goto(`${consoleUrl(platform)}/tenants`);
+  await consolePage.getByRole("button", { name: "Sign in", exact: true }).click();
+  await consolePage.locator("#username").fill("vendor-admin");
+  await consolePage.locator("#password").fill(platform.VENDOR_CONSOLE_PASSWORD);
+  await consolePage.locator("#kc-login").click();
+  await consolePage.getByRole("link", { name: /Customer A/ }).click();
+  await consolePage.waitForFunction(() => location.pathname === "/tenants/a");
+  await consolePage.getByText("Available for new requests").waitFor();
+  // Credit history: at least the opening grant.
+  await consolePage.getByRole("cell", { name: /^SIM-/ }).first().waitFor();
+  // Knowledge and image limits of the customer.
+  const fact = (label) => consolePage.locator(`dt:text-is("${label}") + dd`).innerText();
+  assert.ok(Number(await fact("Top-K max")) >= 1);
+  assert.ok(Number(await fact("Images per chat")) >= 1);
+  await consolePage.screenshot({ path: "/tmp/vendor-console-poc.png" });
+  await consolePage.getByRole("link", { name: "Pricing", exact: true }).click();
+  const currentPrices = consolePage
+    .locator(".ant-card")
+    .filter({ hasText: "Current prices" })
+    .locator("tbody tr.ant-table-row");
+  await currentPrices.first().waitFor();
+  assert.ok((await currentPrices.count()) >= 2);
 
   const context = await browser.newContext({
     viewport: { width: 1440, height: 1000 },

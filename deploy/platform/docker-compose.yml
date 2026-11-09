@@ -201,7 +201,7 @@ services:
     networks: [gateway, admin]
     restart: unless-stopped
 
-  # Authoritative simulated credit ledger and vendor console. Tenant keys cannot bypass it:
+  # Authoritative simulated credit ledger and the vendor console's admin API. Tenant keys cannot bypass it:
   # LiteLLM and credential proxies are on the private gateway network, not platform-shared.
   vendor-control:
     image: enterprise-ai/vendor-control:local
@@ -236,6 +236,30 @@ services:
       timeout: 3s
       retries: 30
     networks: [gateway, shared, admin]
+    restart: unless-stopped
+
+  # Vendor console for vendor staff. They sign in to the `vendor` realm, and the browser calls
+  # vendor-control's /admin API with that token; the console's own server holds no secret and calls nothing.
+  vendor-console:
+    image: enterprise-ai/vendor-console:local
+    build:
+      context: ../..
+      dockerfile: apps/vendor-console/Dockerfile
+    # The browser receives these at runtime (apps/vendor-console/lib/runtime-config.ts).
+    environment:
+      CONSOLE_VENDOR_CONTROL_URL: http://localhost:4050
+      CONSOLE_KEYCLOAK_URL: http://localhost:${KEYCLOAK_PORT:-8180}
+      CONSOLE_KEYCLOAK_REALM: vendor
+      CONSOLE_OIDC_CLIENT_ID: vendor-console
+    # The vendor realm's redirect URIs and vendor-control's CORS expect this address.
+    ports:
+      - "127.0.0.1:${VENDOR_CONSOLE_PORT:-4070}:4070"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:4070"]
+      interval: 10s
+      timeout: 4s
+      retries: 20
+    networks: [console]
     restart: unless-stopped
 
   # Knowledge of every customer, isolated by tenant with row-level security (pgvector).
@@ -294,6 +318,8 @@ networks:
   edge:
   # Publishes the LiteLLM admin port on 127.0.0.1 (a port cannot be published from internal networks only).
   admin:
+  # Publishes the vendor console on 127.0.0.1; nothing else joins it.
+  console:
   # Provider egress for the credential proxies only.
   egress:
   # Gateway, its database, the mock and the credential proxies. Customer deployments never join it.
