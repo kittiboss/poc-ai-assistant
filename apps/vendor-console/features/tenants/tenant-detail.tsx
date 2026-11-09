@@ -8,6 +8,7 @@ import { useRagUsage, useTenants } from '@/components/api/queries';
 import { Page } from '@/components/ui/page';
 import { QueryError } from '@/components/ui/query-error';
 import { TenantStatus } from './status';
+import { TenantActions } from './tenant-actions';
 import { CreditCard, ImagesCard, KnowledgeCard, PlanCard } from './tenant-cards';
 import { TenantLedger } from './tenant-ledger';
 
@@ -42,13 +43,18 @@ export function TenantDetail({ id }: { id: string }) {
           <ArrowLeft size={16} aria-hidden />
           All tenants
         </Link>
-        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
-          <h2 className="text-2xl font-semibold">{tenant?.name ?? id}</h2>
-          {tenant && <TenantStatus tenant={tenant} />}
+        <div className="mt-3 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <h2 className="text-2xl font-semibold">{tenant?.name ?? id}</h2>
+              {tenant && <TenantStatus tenant={tenant} />}
+            </div>
+            <p className="mt-1 text-sm text-fg-tertiary">
+              Tenant ID <code className="text-fg-secondary">{id}</code>
+            </p>
+          </div>
+          {tenant && <TenantActions tenant={tenant} />}
         </div>
-        <p className="mt-1 text-sm text-fg-tertiary">
-          Tenant ID <code className="text-fg-secondary">{id}</code>
-        </p>
       </div>
 
       {tenants.error && <QueryError error={tenants.error} onRetry={() => void tenants.refetch()} />}

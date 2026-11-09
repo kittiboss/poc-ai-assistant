@@ -7,6 +7,7 @@ import { Meter } from '@/components/ui/meter';
 import type { RagUsage, Tenant } from '@/lib/api/types';
 import { formatMb, formatNumber, formatUsd, nanoUsd } from '@/lib/format';
 import { LOCAL_MODELS } from '@/lib/models';
+import { EditImageLimits, EditKnowledgeLimits } from './limits-forms';
 import { CreditFlag } from './status';
 
 export function CreditCard({ tenant }: { tenant: Tenant }) {
@@ -131,7 +132,15 @@ export function KnowledgeCard({
       <Meter used={value} limit={limit} format={format} label={label} />
     );
   return (
-    <Card title="Knowledge (RAG) limits" extra={<OnOff on={rag.enabled} />}>
+    <Card
+      title="Knowledge (RAG) limits"
+      extra={
+        <span className="flex items-center gap-2">
+          <OnOff on={rag.enabled} />
+          <EditKnowledgeLimits tenant={tenant} />
+        </span>
+      }
+    >
       <Facts
         items={[
           { label: 'Embedding models', value: <ModelTags models={rag.embeddingModels} plan={tenant.config.models} /> },
@@ -161,7 +170,15 @@ export function KnowledgeCard({
 export function ImagesCard({ tenant }: { tenant: Tenant }) {
   const { images } = tenant;
   return (
-    <Card title="Image limits" extra={<OnOff on={images.enabled} />}>
+    <Card
+      title="Image limits"
+      extra={
+        <span className="flex items-center gap-2">
+          <OnOff on={images.enabled} />
+          <EditImageLimits tenant={tenant} />
+        </span>
+      }
+    >
       <Facts
         items={[
           { label: 'Models', value: <ModelTags models={images.models} plan={tenant.config.models} /> },

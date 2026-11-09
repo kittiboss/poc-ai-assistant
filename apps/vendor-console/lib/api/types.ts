@@ -127,6 +127,13 @@ export interface Transaction {
   createdAt: string;
 }
 
+/** POST /admin/tenants/:id/credits: the transaction it recorded (or recorded before, for a repeat). */
+export interface Receipt extends Transaction {
+  simulation: true;
+  currency: 'USD';
+  note: string;
+}
+
 export type RequestState = 'PENDING' | 'COMPLETED' | 'ESTIMATED' | 'REJECTED';
 
 export interface LedgerRequest {

@@ -7,6 +7,7 @@ import { Page } from '@/components/ui/page';
 import { QueryError } from '@/components/ui/query-error';
 import type { Tenant } from '@/lib/api/types';
 import { formatNumber, formatUsd, nanoUsd } from '@/lib/format';
+import { RegisterTenant } from './register-tenant';
 import { CreditFlag, TenantStatus } from './status';
 
 const columns: TableColumnsType<Tenant> = [
@@ -78,7 +79,10 @@ const columns: TableColumnsType<Tenant> = [
 export function TenantsPage() {
   const tenants = useTenants();
   return (
-    <Page intro="Customer deployments on the vendor platform, with their test credit and requests. Credit is simulated: no payment is collected, and USD values are not money owed.">
+    <Page
+      intro="Customer deployments on the vendor platform, with their test credit and requests. Credit is simulated: no payment is collected, and USD values are not money owed."
+      actions={<RegisterTenant tenants={tenants.data} />}
+    >
       {tenants.error && <QueryError error={tenants.error} onRetry={() => void tenants.refetch()} />}
       <Table<Tenant>
         rowKey="id"
