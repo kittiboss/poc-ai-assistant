@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
-import { PagePlaceholder } from '@/components/ui/page-placeholder';
+import { TenantsPage } from '@/features/tenants/tenants-page';
 
 export const metadata: Metadata = { title: 'Tenants' };
 
-export default function TenantsPage() {
-  return <PagePlaceholder description="Customer deployments, their credit and controls" />;
+export default function Page() {
+  return <TenantsPage />;
 }

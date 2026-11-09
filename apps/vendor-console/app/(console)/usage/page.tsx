@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
-import { PagePlaceholder } from '@/components/ui/page-placeholder';
+import { UsagePage } from '@/features/usage/usage-page';
 
 export const metadata: Metadata = { title: 'Usage' };
 
-export default function UsagePage() {
-  return <PagePlaceholder description="Today's requests and tokens per customer and model" />;
+export default function Page() {
+  return <UsagePage />;
 }

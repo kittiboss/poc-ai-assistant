@@ -1,3 +1,4 @@
+import { ApiProvider } from '@/components/api/api-provider';
 import { AuthGate } from '@/components/auth/auth-gate';
 import { Shell } from '@/components/layout/shell';
 
@@ -5,7 +6,9 @@ import { Shell } from '@/components/layout/shell';
 export default function ConsoleLayout({ children }: { children: React.ReactNode }) {
   return (
     <AuthGate>
-      <Shell>{children}</Shell>
+      <ApiProvider>
+        <Shell>{children}</Shell>
+      </ApiProvider>
     </AuthGate>
   );
 }
