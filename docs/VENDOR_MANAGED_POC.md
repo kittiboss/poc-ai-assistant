@@ -147,6 +147,7 @@ npm run tenant:smoke -- c
 npm run tenant:smoke -- a --rag
 npm run tenant:smoke -- a --images
 node scripts/platform/vendor-browser-smoke.mjs
+npm run test:e2e:vendor-console
 npm run typecheck -w @enterprise/web
 npm run lint -w @enterprise/web
 ```
@@ -157,6 +158,7 @@ npm run lint -w @enterprise/web
 - The earlier `platform:smoke` remains a low-level LiteLLM diagnostic. Its asynchronous LiteLLM spend checks are not the new ledger's acceptance criteria.
 - RAG engine integration tests also use their own temporary database, on `rag-db`, connected as `rag_app`. They verify isolation (listing, search, edits by ID, forged rows, no-context reads), every vendor limit, version switching, stale vectors, pause/resume, a small tenant beside a large one in the same HNSW index, and purge.
 - `tenant:smoke -- a --rag` uploads TXT, MD, PDF and CSV documents with conflicting facts to customers a and b (`--with <id>` picks the second). It checks that each customer's chat cites only its own documents, including a PDF page. It also checks the embedding ledger entries, that a vendor-lowered top-K is clamped, and that a chunking change switches the index version. It refuses any embedding model other than `mock-embedding` and deletes its uploads afterwards. The browser smoke signs in to the vendor console as `vendor-admin` and checks customer A's credit history, limits and prices without changing them, then verifies the customer pages, mock top-up, mobile layout and browser errors using an installed Chrome (`CHROME_PATH` override supported).
+- `test:e2e:vendor-console` runs the vendor console's Playwright tests (`apps/vendor-console/e2e`) on desktop and phone sizes. They sign in through the platform Keycloak as `vendor-admin` and with a temporary account that lacks the console role. Every console action (registration, credit grants, suspension, stale reservations, knowledge and image limits, price versions) runs against their own vendor-control on port 4051 with its own Postgres container and a stub RAG engine, never the platform's ledger. The run removes all of it, the temporary account included, and refuses to start if the console under test would call any other vendor-control. They need Docker, the running platform and Playwright's Chromium (`npx playwright install chromium`, or `E2E_BROWSER_CHANNEL=msedge` for an installed Edge). Stop the platform's console first (`docker stop platform-vendor-console-1`; `docker start` it afterwards): the vendor realm only signs in back to port 4070, where the tests serve their own build. `E2E_SKIP_BUILD=1` reuses the last build.
 - `tenant:smoke -- a --images` uploads a sample image to the customer and sends it to `local-mock` only. It checks:
   - the image is in the customer's own SeaweedFS, whose network holds only that customer's backend and SeaweedFS, and comes back unchanged;
   - the reply names the image it received;
