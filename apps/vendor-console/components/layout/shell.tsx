@@ -1,10 +1,12 @@
 'use client';
 
-import { Drawer, Grid, Menu, Tag } from 'antd';
+import { Drawer, Grid, Menu } from 'antd';
 import { Menu as MenuIcon } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState } from 'react';
+import { AccountMenu } from './account-menu';
+import { Brand } from './brand';
 import { activeNavItem, navItems } from './nav-items';
 
 const SIDEBAR_WIDTH = 240;
@@ -62,15 +64,8 @@ function Navigation({ activeHref, onNavigate }: { activeHref?: string; onNavigat
   return (
     <nav aria-label="Console" className="flex h-full flex-col">
       {/* Same height as the page header, so their borders line up. */}
-      <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-line-secondary px-4 md:h-16">
-        {/* eslint-disable-next-line @next/next/no-img-element -- a 28px SVG needs no optimization */}
-        <img src="/icon.svg" alt="" width={28} height={28} />
-        <div className="min-w-0 leading-tight">
-          <div className="truncate font-semibold">Vendor Console</div>
-          <Tag variant="filled" color="warning" className="me-0 mt-0.5 text-[10px] leading-4">
-            Simulation
-          </Tag>
-        </div>
+      <div className="flex h-14 shrink-0 items-center border-b border-line-secondary px-4 md:h-16">
+        <Brand />
       </div>
       <Menu
         mode="inline"
@@ -86,6 +81,9 @@ function Navigation({ activeHref, onNavigate }: { activeHref?: string; onNavigat
           ),
         }))}
       />
+      <div className="shrink-0 border-t border-line-secondary p-2">
+        <AccountMenu />
+      </div>
     </nav>
   );
 }

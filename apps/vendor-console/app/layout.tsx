@@ -1,5 +1,8 @@
 import { AntdRegistry } from '@ant-design/nextjs-registry';
 import type { Metadata, Viewport } from 'next';
+import { connection } from 'next/server';
+import { AuthProvider } from '@/components/auth/auth-provider';
+import { consoleConfigScript } from '@/lib/runtime-config';
 import { AntdProvider } from '@/theme/antd-provider';
 import './globals.css';
 
@@ -18,13 +21,21 @@ export const viewport: Viewport = {
   themeColor: '#020617',
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  // Render per request, so the settings below come from the running server, not from the build.
+  await connection();
   return (
     <html lang="en">
+      <head>
+        {/* Where vendor-control and the sign-in service are (lib/runtime-config.ts). */}
+        <script dangerouslySetInnerHTML={{ __html: consoleConfigScript() }} />
+      </head>
       <body>
         {/* `layer` puts AntD styles in @layer antd, ordered in globals.css */}
         <AntdRegistry layer>
-          <AntdProvider>{children}</AntdProvider>
+          <AntdProvider>
+            <AuthProvider>{children}</AuthProvider>
+          </AntdProvider>
         </AntdRegistry>
       </body>
     </html>
