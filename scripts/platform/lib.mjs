@@ -112,6 +112,9 @@ export async function gateway(path, { method = 'GET', body, key = readPlatformEn
 
 export const keycloakUrl = (env = readPlatformEnv()) => `http://localhost:${env.KEYCLOAK_PORT || 8180}`;
 
+/** The vendor console (apps/vendor-console); `next dev` uses the same port. */
+export const consoleUrl = (env = readPlatformEnv()) => `http://localhost:${env.VENDOR_CONSOLE_PORT || 4070}`;
+
 /** Keycloak's admin REST API, signed in to the master realm as the platform admin. */
 export async function keycloakAdmin(env = readPlatformEnv()) {
   const base = keycloakUrl(env);

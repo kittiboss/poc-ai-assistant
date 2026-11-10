@@ -34,12 +34,12 @@ A script for showing the vendor platform and customer A's chat with documents, i
 
 ### Warm up (2 minutes, before the audience arrives)
 
-| Check            | Where                                                                                                | Expected                                                                         |
-| ---------------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| Vendor console   | http://localhost:4050/console/, user `vendor`, password `VENDOR_ADMIN_KEY` in `deploy/platform/.env` | _Customer A (a)_ is Active with credit left                                      |
-| Customer sign-in | http://localhost:3100, `tenant-admin`, password `TENANT_ADMIN_PASSWORD` in `deploy/tenants/a.env`    | Chat page opens                                                                  |
-| Model list       | Model field above the composer                                                                       | _Local Mock_ and _Gemini 3.5 Flash-Lite_ are Available and tagged _Reads images_ |
-| Knowledge base   | _Knowledge base_ page                                                                                | `company-policy.md` is Ready                                                     |
+| Check            | Where                                                                                               | Expected                                                                         |
+| ---------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| Vendor console   | http://localhost:4070, `vendor-admin`, password `VENDOR_CONSOLE_PASSWORD` in `deploy/platform/.env` | _Customer A_ is Active with credit left                                          |
+| Customer sign-in | http://localhost:3100, `tenant-admin`, password `TENANT_ADMIN_PASSWORD` in `deploy/tenants/a.env`   | Chat page opens                                                                  |
+| Model list       | Model field above the composer                                                                      | _Local Mock_ and _Gemini 3.5 Flash-Lite_ are Available and tagged _Reads images_ |
+| Knowledge base   | _Knowledge base_ page                                                                               | `company-policy.md` is Ready                                                     |
 
 Never open the `.env` files on the shared screen; copy the passwords beforehand.
 
@@ -49,9 +49,11 @@ Use _Gemini 3.5 Flash-Lite_ for steps 2–4. Gemini's wording varies between run
 
 ### 1. Vendor console: one platform, many customers
 
-- _Customer deployments_: each customer's prepaid test credit, spent and reserved amounts. No real payment is collected.
-- _Image limits_: which vision models customer A may use (`local-mock`, `google-gemini`) and how many images a chat may hold (6).
-- _Knowledge (RAG) limits_: embedding models, file types and sizes the vendor allows customer A.
+- _Tenants_: each customer's prepaid test credit, consumed amount and requests. No real payment is collected.
+- Open _Customer A_:
+  - _Image limits_: which vision models customer A may use (`local-mock`, `google-gemini`) and how many images a chat may hold (6).
+  - _Knowledge (RAG) limits_: embedding models, file types and sizes the vendor allows customer A, with what it uses now.
+- _Pricing_: the sale price per model; every change is a new version, and running requests keep the price they started with.
 
 ### 2. An image in the chat
 
@@ -90,7 +92,7 @@ Use _Gemini 3.5 Flash-Lite_ for steps 2–4. Gemini's wording varies between run
 ### 5. Credit and the vendor's ledger
 
 - Customer A: _Test credits & billing_ (`/billing`) shows the credit used and the latest ledger entries and requests. An image is billed as input tokens, about 1,120 per image a turn; there is no separate image price.
-- Vendor console: _History_ on customer A's row lists the same requests.
+- Vendor console: customer A's page, _Ledger_ → _Requests_, lists the same requests.
 
 ## If something goes wrong
 
@@ -100,7 +102,7 @@ Use _Gemini 3.5 Flash-Lite_ for steps 2–4. Gemini's wording varies between run
 | Gemini refuses or is slow (free-tier limits)                                     | Customer A may send Gemini 5 requests a minute and 33 requests or 33,333 tokens a day, rehearsals included. Switch to _Local Mock_, which shows the same flow with a mock reply. |
 | Local Mock refuses: "This chat and its files are longer than this model accepts" | Untick _Knowledge base_. Local Mock holds 8,192 tokens; with the settings above a knowledge question fits, but a file plus retrieved passages can fill them.                     |
 | A review prompt about sensitive information                                      | A message or passage contains something like an email address or phone number, which is checked before anything goes to an external model. The demo files contain none.          |
-| Credit runs out                                                                  | Vendor console → _Grant test credit_, or `node scripts/platform/tenant.mjs credits a 5`.                                                                                         |
+| Credit runs out                                                                  | Vendor console → _Customer A_ → _Grant credit_, or `node scripts/platform/tenant.mjs credits a 5`.                                                                               |
 | A Thai PDF answer looks garbled                                                  | Known: Thai text extracts badly from PDFs. Use Markdown, TXT or an image instead.                                                                                                |
 
 ## After the demo

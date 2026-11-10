@@ -158,7 +158,8 @@ apps/
   gemini-proxy/           opt-in credential proxy and cost allowlist for Gemini
   groq-proxy/             opt-in credential proxy and cost allowlist for Groq
   openrouter-proxy/       zero-price router enforcement and credential proxy
-  vendor-control/         lightweight simulated credit gateway, Postgres ledger, vendor console
+  vendor-control/         lightweight simulated credit gateway, Postgres ledger, vendor admin API
+  vendor-console/         vendor console (Next.js, AntD dark) for vendor staff, signed in to the `vendor` realm
 packages/shared/          pricing and token logic shared by API and web
 infra/postgres/           postgres:17-alpine with pgvector compiled in
 infra/keycloak/           importable development realm

@@ -14,6 +14,7 @@ import {
   waitHealthy,
   writeEnvFile,
 } from './lib.mjs';
+import { syncVendorRealm } from './vendor-realm.mjs';
 
 const [command, ...flags] = process.argv.slice(2);
 
@@ -25,6 +26,8 @@ const laterSecrets = () => ({
   RAG_DB_PASSWORD: secret(16),
   RAG_APP_DB_PASSWORD: secret(16),
   RAG_ADMIN_KEY: secret(32),
+  // vendor-admin's first password in the vendor realm; change it in Keycloak afterwards if you like.
+  VENDOR_CONSOLE_PASSWORD: secret(12),
 });
 
 function ensurePlatformEnv() {
@@ -73,11 +76,12 @@ if (command === 'build') {
 } else if (command === 'up') {
   const env = ensurePlatformEnv();
   platformCompose(['up', '-d'], env);
-  await waitHealthy(['platform-keycloak-1', 'platform-litellm-1', 'platform-vendor-control-1', 'platform-rag-engine-1']);
+  await waitHealthy(['platform-keycloak-1', 'platform-litellm-1', 'platform-vendor-control-1', 'platform-rag-engine-1', 'platform-vendor-console-1']);
+  const staff = await syncVendorRealm(env);
   const profiles = platformProfiles(env);
   console.log(`Platform is up. Keycloak: ${keycloakUrl(env)} · gateway admin API: http://127.0.0.1:4000`);
   console.log(`Provider proxies: ${profiles.length ? profiles.join(', ') : 'none (add a provider key to deploy/platform/.env)'}`);
-  console.log('Vendor console: http://localhost:4050/console/ · username vendor · password VENDOR_ADMIN_KEY in deploy/platform/.env');
+  console.log(`Vendor console: ${staff.consoleUrl} · username ${staff.username} · password VENDOR_CONSOLE_PASSWORD in deploy/platform/.env`);
 } else if (command === 'down') {
   platformCompose(['down'], readEnvFile(platformEnvFile) ?? {});
 } else {
