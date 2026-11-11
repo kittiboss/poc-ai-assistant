@@ -12,8 +12,8 @@ export const VISION_MODELS: ReadonlyMap<string, VisionFigures> = new Map([
   ["local-mock", { maxImages: 6, imageTokens: 1_120 }],
   // Gemini 3's default media resolution.
   ["google-gemini", { maxImages: 6, imageTokens: 1_120 }],
-  // Groq counts a fixed 2,048 per image and takes at most 3 in a request; 2 leave room within
-  // the free tier's 8,000 tokens a minute.
+  // Groq's documentation counts 2,048 per image, an upper bound (a 900 x 1,200 receipt took 2,027 with
+  // the whole prompt); it takes at most 3 in a request, and 2 leave room within 8,000 tokens a minute.
   ["groq-vision", { maxImages: 2, imageTokens: 2_048 }],
   // The router picks a different free model for each request, and each counts images its own way,
   // so this is an estimate; usage records what OpenRouter reports.

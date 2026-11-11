@@ -217,7 +217,7 @@ The API keeps each vision model's figures in code (`apps/api/src/models/vision-m
 |---|---|---|---|---|
 | `local-mock` | mock-provider | 6 | 1,120 | mock-provider reports 1,120 per image |
 | `google-gemini` | `GEMINI_MODEL` (Gemini 3.5 Flash-Lite) | 6 | 1,120 | Gemini 3's default media resolution |
-| `groq-vision` | `GROQ_VISION_MODEL` (`qwen/qwen3.8-27b`, Preview) | 2 | 2,048 | Groq counts a fixed 2,048 per image and takes at most 3 in a request; 2 leave room within 8,000 tokens a minute |
+| `groq-vision` | `GROQ_VISION_MODEL` (`qwen/qwen3.8-27b`, Preview) | 2 | 2,048 | Groq's documentation counts 2,048 per image, which measured as an upper bound (see [Cost](#cost-1)); it takes at most 3 in a request, and 2 leave room within 8,000 tokens a minute |
 | `openrouter-free` | `openrouter/free` | 4 | 2,048, an estimate | The router picks a different free model for each request, and each counts images its own way |
 
 - A model with `vision` in the registry but no row here receives no images: `GET /api/models` leaves out its `vision`, and a chat with images is refused with `ATTACHMENT_NEEDS_VISION`. A new vision model therefore needs its figures first.
@@ -254,7 +254,14 @@ The API keeps each vision model's figures in code (`apps/api/src/models/vision-m
 
 An image costs about 1,120 input tokens on every turn while it is in the chat, whatever its file size. A chat with 6 images uses about 6,700 tokens a turn before any text: about $0.002 at Gemini 3.5 Flash-Lite's paid list price ($0.30 per 1M input tokens), and $0 on the free tier. The default external limit of 100,000 tokens a day covers about 14 such turns across all users; raise `EXTERNAL_DAILY_TOKEN_LIMIT` for a demo day if needed. Every turn sends the chat's images again, so a chat with many images answers more slowly. In a demo on 2026-11-04, Gemini 3.5 Flash-Lite counted 1,367 input tokens for a message that only sent one 1,600 × 900 image, system message included, and 1,410 for the follow-up question, which sent the image again; the image accounts for about 1,100 of them.
 
-Groq and OpenRouter count about 2,048 tokens per image. A chat with 2 images on `groq-vision` uses about 4,100 tokens a turn before any text, and one with 4 images on `openrouter-free` about 8,200 (an estimate, as each free model counts its own way). Both cost $0 on the free tiers, dashboards show $0 because their pricing is pass-through at $0, and both count against `EXTERNAL_DAILY_TOKEN_LIMIT` like Gemini. What runs out first is Groq's tokens a minute and OpenRouter's requests a day (see [Groq and OpenRouter](#groq-and-openrouter)).
+The API counts 2,048 tokens per image for Groq and OpenRouter. A chat with 2 images on `groq-vision` uses about 4,100 tokens a turn before any text, and one with 4 images on `openrouter-free` about 8,200 (an estimate, as each free model counts its own way). Both cost $0 on the free tiers, dashboards show $0 because their pricing is pass-through at $0, and both count against `EXTERNAL_DAILY_TOKEN_LIMIT` like Gemini. What runs out first is Groq's tokens a minute and OpenRouter's requests a day (see [Groq and OpenRouter](#groq-and-openrouter)).
+
+On 2026-11-11 the smoke tests (`--image`) sent the sample receipt [`docs/demo/receipt.png`](demo/receipt.png) (900 × 1,200 px) once to each, asking for its total; both answered 670.00, which is right, at $0:
+
+| Model | Input tokens | Output tokens | Note |
+|---|---|---|---|
+| `groq-vision` (Qwen3.8 27B) | 2,027 | 7 | With the whole prompt, so the image counted less than 2,048 and the reservation errs high |
+| `openrouter-free` | 1,494 | 436 | The router's pick is not recorded; most of the output was reasoning, as the reply was 6 characters |
 
 ### Vendor-managed deployments
 
@@ -299,6 +306,7 @@ They are stored as `{"enabled": true, "models": ["local-mock"], "maxImages": 6}`
 - Deleting an image does not erase its bytes at once. SeaweedFS keeps them in its volume file until a vacuum compacts it, which happens only once enough of the volume is deleted; a versioned S3 bucket keeps the old version until a lifecycle rule expires it.
 - Groq and OpenRouter images are standalone only. Offering them to vendor-managed customers needs vendor-control's `VISION_MODELS` to hold the same figures (images per chat and tokens per image), `GET /v1/models` to send the lower of the customer's limit and the model's as `max_images`, plus the tokens per image, and the customer API to use both.
 - `openrouter-free` sends each request to whichever free model the router picks, so one chat can be read by different models, with different quality and data terms, and 2,048 tokens per image is an estimate. The provider that serves a request may keep its images or train on them; this is recorded in [PRODUCTION_GAPS.md](PRODUCTION_GAPS.md).
+- Some free models behind `openrouter/free` reason before they answer, and the proxy refuses the `reasoning` field that could turn it off. Reasoning counts against the reply's 1,024 output tokens, so a long answer can be cut short; the smoke test's 6-character reply used 436.
 - `groq-vision` runs on a Preview model, which Groq may retire at short notice. Its free tier allows 8,000 tokens a minute, so a quick follow-up in a chat with images can be refused with `429`.
 - An administrator cannot lower the images per chat of a model in a standalone deployment; the figures change only in code.
 
