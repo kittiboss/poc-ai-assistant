@@ -26,9 +26,25 @@ export const RAG_RANGES = {
   maxTopK: [1, 10],
 } as const;
 
-/** Models that can receive chat images. */
-export const VISION_MODELS = ['local-mock', 'google-gemini'];
+/**
+ * Models that can receive chat images: the images a chat may hold whatever the tenant's limit, and the
+ * input tokens reserved per image. Mirrors VISION_MODELS in images.mjs; a test in apps/api checks.
+ */
+export const VISION_MODELS: ReadonlyMap<string, { maxImages: number; imageTokens: number }> = new Map([
+  ['local-mock', { maxImages: 6, imageTokens: 1120 }],
+  ['google-gemini', { maxImages: 6, imageTokens: 1120 }],
+  ['groq-vision', { maxImages: 2, imageTokens: 2048 }],
+  ['openrouter-free', { maxImages: 4, imageTokens: 2048 }],
+]);
+/** The most images a tenant's limit may allow a chat. */
 export const MAX_IMAGES = 6;
+
+/** The vision models that take fewer images than `max` a chat, with what each takes. */
+export const imageCaps = (models: Iterable<string>, max: number) =>
+  [...models].flatMap((model) => {
+    const own = VISION_MODELS.get(model)?.maxImages;
+    return own !== undefined && own < max ? [{ model, maxImages: own }] : [];
+  });
 
 /** Embedding models may have no output price; every other model needs both. */
 export const isEmbeddingModel = (model: string) => EMBEDDING_MODELS.includes(model);

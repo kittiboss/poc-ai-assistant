@@ -6,7 +6,7 @@ import { Fragment, type ReactNode } from 'react';
 import { useSaveImageLimits, useSaveRagLimits } from '@/components/api/mutations';
 import { useDialog } from '@/components/ui/use-dialog';
 import type { ImageLimits, RagLimits, Tenant } from '@/lib/api/types';
-import { EMBEDDING_MODELS, FILE_TYPES, MAX_IMAGES, RAG_RANGES, VISION_MODELS } from '@/lib/limits';
+import { EMBEDDING_MODELS, FILE_TYPES, MAX_IMAGES, RAG_RANGES, VISION_MODELS, imageCaps } from '@/lib/limits';
 
 /** The Edit button of a limits card and the dialog it opens. */
 function EditButton({ label, dialog }: { label: string; dialog: (open: boolean, close: () => void) => ReactNode }) {
@@ -22,16 +22,20 @@ function EditButton({ label, dialog }: { label: string; dialog: (open: boolean, 
 }
 
 /** Each model, marked when the tenant's plan does not include it: then it has no effect. */
-const modelOptions = (models: string[], plan: string[]) =>
+const modelOptions = (models: string[], plan: string[], note?: (model: string) => ReactNode) =>
   models.map((model) => ({
     value: model,
     label: (
       <span>
         <code>{model}</code>
+        {note?.(model)}
         {!plan.includes(model) && <span className="ms-1.5 text-xs text-warning">not in plan</span>}
       </span>
     ),
   }));
+
+const visionModels = [...VISION_MODELS.keys()];
+const capped = imageCaps(visionModels, MAX_IMAGES);
 
 /** A list that must not be empty while the feature is on. */
 const neededWhenOn =
@@ -169,7 +173,7 @@ function ImagesDialog({ tenant, open, onClose }: { tenant: Tenant; open: boolean
   const finish = async (values: ImageLimits) => {
     const limits: ImageLimits = {
       enabled: values.enabled,
-      models: VISION_MODELS.filter((m) => values.models.includes(m)),
+      models: visionModels.filter((m) => values.models.includes(m)),
       maxImages: values.maxImages,
     };
     if (!(await save.mutateAsync(limits).catch(() => undefined))) return;
@@ -207,9 +211,21 @@ function ImagesDialog({ tenant, open, onClose }: { tenant: Tenant; open: boolean
           dependencies={['enabled']}
           rules={[neededWhenOn('Choose at least one model')]}
         >
-          <Checkbox.Group options={modelOptions(VISION_MODELS, tenant.config.models)} />
+          <Checkbox.Group
+            options={modelOptions(visionModels, tenant.config.models, (model) => {
+              const own = capped.find((cap) => cap.model === model);
+              return own && <span className="ms-1.5 text-xs text-fg-tertiary">at most {own.maxImages} a chat</span>;
+            })}
+          />
         </Form.Item>
-        <Form.Item name="maxImages" label="Images per chat" rules={wholeNumber([1, MAX_IMAGES])}>
+        <Form.Item
+          name="maxImages"
+          label="Images per chat"
+          rules={wholeNumber([1, MAX_IMAGES])}
+          extra={`A model never takes more than its own, whatever this says: ${capped
+            .map(({ model, maxImages }) => `${model} ${maxImages}`)
+            .join(', ')}.`}
+        >
           <InputNumber min={1} max={MAX_IMAGES} precision={0} className="w-32" />
         </Form.Item>
         <button type="submit" hidden />

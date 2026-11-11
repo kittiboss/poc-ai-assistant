@@ -22,15 +22,17 @@ describe("vision model figures", () => {
     expect(seeded.sort()).toEqual([...VISION_MODELS.keys()].sort());
   });
 
-  it("match vendor-control's, which limits and meters the same models for vendor-managed customers", async () => {
-    const vendor = pathToFileURL(
-      resolve(process.cwd(), "../vendor-control/src/images.mjs"),
-    ).href;
-    const { VISION_MODELS: platform } = (await import(vendor)) as {
-      VISION_MODELS: ReadonlyMap<string, VisionFigures>;
-    };
-    expect(Object.fromEntries(platform)).toEqual(
-      Object.fromEntries(VISION_MODELS),
-    );
+  it("match vendor-control's, which limits and meters the same models for vendor-managed customers, and the vendor console's", async () => {
+    for (const file of [
+      "../vendor-control/src/images.mjs",
+      "../vendor-console/lib/limits.ts",
+    ]) {
+      const { VISION_MODELS: copy } = (await import(
+        pathToFileURL(resolve(process.cwd(), file)).href
+      )) as { VISION_MODELS: ReadonlyMap<string, VisionFigures> };
+      expect(Object.fromEntries(copy), file).toEqual(
+        Object.fromEntries(VISION_MODELS),
+      );
+    }
   });
 });
