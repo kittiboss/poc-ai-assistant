@@ -225,18 +225,18 @@ describe('vendor-managed gateway', () => {
     expect(new URL(String(fetchMock.mock.calls[2][0])).pathname).toBe('/key/info');
   });
 
-  it('reads which routes may receive images, and how many a chat may hold, from the platform gateway', async () => {
+  it('reads which routes may receive images, how many a chat may hold and what each counts, from the platform gateway', async () => {
     vendorMode();
     const data = [
-      { id: 'local-mock', object: 'model', capabilities: ['vision'], max_images: 3 },
+      { id: 'local-mock', object: 'model', capabilities: ['vision'], max_images: 3, image_tokens: 1120 },
       { id: 'groq-llama', object: 'model' },
-      { id: 'google-gemini', object: 'model', capabilities: ['vision'], max_images: 'many' },
+      { id: 'google-gemini', object: 'model', capabilities: ['vision'], max_images: 'many', image_tokens: -1 },
     ];
     vi.stubGlobal('fetch', vi.fn()
       .mockResolvedValueOnce(new Response('{}', { status: 200 }))
       .mockResolvedValueOnce(new Response(JSON.stringify({ data }), { status: 200 })));
     expect(Object.fromEntries(await new GatewayService().routes())).toEqual({
-      'local-mock': { vision: true, maxImages: 3 },
+      'local-mock': { vision: true, maxImages: 3, imageTokens: 1120 },
       'groq-llama': { vision: false },
       'google-gemini': { vision: true },
     });

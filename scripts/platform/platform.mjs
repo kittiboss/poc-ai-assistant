@@ -19,7 +19,7 @@ import { syncVendorRealm } from './vendor-realm.mjs';
 const [command, ...flags] = process.argv.slice(2);
 
 /** Provider settings the single-installation stack keeps in the root .env; the platform takes them over once. */
-const importedSettings = [...Object.keys(providerModels), 'GROQ_FREE_TIER_CONFIRMED', 'GEMINI_MODEL', 'GEMINI_EMBEDDING_MODEL', 'GROQ_MODEL'];
+const importedSettings = [...Object.keys(providerModels), 'GROQ_FREE_TIER_CONFIRMED', 'GEMINI_MODEL', 'GEMINI_EMBEDDING_MODEL', 'GROQ_MODEL', 'GROQ_VISION_MODEL'];
 
 const laterSecrets = () => ({
   VENDOR_ADMIN_KEY: secret(32),

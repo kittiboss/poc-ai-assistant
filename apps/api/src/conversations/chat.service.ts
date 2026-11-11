@@ -18,7 +18,6 @@ import {
 } from "../gateway/gateway.service";
 import { ModelsService } from "../models/models.service";
 import { vendorGateway } from "../models/model-policies";
-import { imageTokensFor } from "../models/vision-models";
 import { UsageService } from "../usage/usage.service";
 import { UsersService } from "../users/users.service";
 import {
@@ -198,22 +197,24 @@ export class ChatService implements OnModuleInit, OnModuleDestroy {
     const imageCount = attachments.files.filter(
       (file) => file.kind === "IMAGE",
     ).length;
+    const imageFigures = imageCount
+      ? await this.models.imageFigures(model)
+      : null;
     if (imageCount) {
-      const limit = await this.models.imageLimit(model);
-      if (limit === null)
+      if (imageFigures === null)
         throw attachmentError(
           400,
           "ATTACHMENT_NEEDS_VISION",
           "This chat has images, and the chosen model cannot see them",
         );
       // forMessage holds a chat to the API's ceiling; the model, or a platform's image limits, can be lower.
-      if (imageCount > limit)
+      if (imageCount > imageFigures.maxImages)
         throw attachmentError(
           400,
           "ATTACHMENT_LIMIT",
           vendorGateway()
-            ? `This chat would have ${imageCount} images; your organization's plan allows ${limit} a chat.`
-            : `This chat would have ${imageCount} images; the chosen model takes at most ${limit} a chat.`,
+            ? `This chat would have ${imageCount} images; the chosen model takes at most ${imageFigures.maxImages} a chat on your organization's plan.`
+            : `This chat would have ${imageCount} images; the chosen model takes at most ${imageFigures.maxImages} a chat.`,
         );
     }
     // A message with only files has nothing to search for.
@@ -281,8 +282,9 @@ export class ChatService implements OnModuleInit, OnModuleDestroy {
     ];
     // The text only: an image counts as a fixed number of tokens, never as its base64.
     const input = history.map((m) => messageText(m.content)).join("\n");
-    // Each provider counts an image as a fixed number of tokens of its own (VISION_MODELS).
-    const imageTokens = imageTokensFor(model.id, images.size);
+    // Each provider counts an image as a fixed number of tokens of its own (VISION_MODELS, or what the
+    // platform gateway reserves in a vendor-managed deployment).
+    const imageTokens = images.size * (imageFigures?.imageTokens ?? 0);
     const maxOutputTokens = Math.min(
       context.maxOutputTokens ?? this.gateway.maxOutputTokens(),
       this.gateway.maxOutputTokens(),

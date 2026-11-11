@@ -20,7 +20,3 @@ export const VISION_MODELS: ReadonlyMap<string, VisionFigures> = new Map([
   // so this is an estimate; usage records what OpenRouter reports.
   ["openrouter-free", { maxImages: 4, imageTokens: 2_048 }],
 ]);
-
-/** The input tokens counted for `images` images sent to this model; 0 when it takes none. */
-export const imageTokensFor = (modelId: string, images: number) =>
-  images * (VISION_MODELS.get(modelId)?.imageTokens ?? 0);

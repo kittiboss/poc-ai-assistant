@@ -195,10 +195,12 @@ describe('chat streaming lifecycle', () => {
         await refused({ vision: false }, 'ATTACHMENT_NEEDS_VISION');
         await refused(undefined, 'ATTACHMENT_NEEDS_VISION');
         await refused({ vision: true, maxImages: 1 }, 'ATTACHMENT_LIMIT');
-        gateway.routes.mockResolvedValueOnce(new Map([['local-mock', { vision: true, maxImages: 2 }]]));
-        const { chat, response, sent } = setup(two, { model: seeing, images: dataOf('i1', 'i2') });
+        // Each image counts what the platform reserves for it, so both check the same figure.
+        gateway.routes.mockResolvedValueOnce(new Map([['local-mock', { vision: true, maxImages: 2, imageTokens: 1500 }]]));
+        const { chat, governance, response, sent } = setup(two, { model: seeing, images: dataOf('i1', 'i2') });
         await send(chat, response);
         expect(sent().user).toEqual(expect.arrayContaining([{ type: 'image_url', image_url: { url: 'data:image/webp;base64,i2' } }]));
+        expect(governance.reserve.mock.calls[0][0]).toMatchObject({ imageTokens: 3000 });
       });
 
       it('sends images as parts of their turn, and counts each as 1,120 tokens rather than its base64', async () => {

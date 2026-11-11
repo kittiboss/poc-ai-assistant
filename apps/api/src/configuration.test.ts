@@ -327,11 +327,23 @@ describe("vendor-managed platform deployment", () => {
       "google-gemini",
       "gemini-embedding",
       "groq-llama",
+      "groq-vision",
       "openrouter-free",
     ]);
     for (const route of routes) expect(route).toMatch(/input_cost_per_token: 0\.\d+[1-9]/);
     expect(config).not.toMatch(/api_key: os\.environ/);
     expect(config).toContain("master_key: os.environ/LITELLM_MASTER_KEY");
+  });
+
+  it("routes Groq's vision model through the platform's Groq proxy, as in a standalone deployment", () => {
+    const model = "${GROQ_VISION_MODEL:-qwen/qwen3.8-27b}";
+    expect(read("deploy/platform/litellm.yaml")).toMatch(
+      /model_name: groq-vision\s+litellm_params:\s+model: os\.environ\/GROQ_VISION_LITELLM_MODEL\s+api_base: os\.environ\/GROQ_PROXY_URL\s+api_key: local-groq-proxy/,
+    );
+    expect(block(platform, "services", "groq-proxy")).toContain(`GROQ_VISION_MODEL: ${model}`);
+    expect(block(platform, "services", "litellm")).toContain(`GROQ_VISION_LITELLM_MODEL: openai/${model}`);
+    // Customer keys list it only where the platform runs Groq's proxy, like groq-llama.
+    expect(read("scripts/platform/lib.mjs")).toContain("GROQ_API_KEY: { profile: 'groq', models: ['groq-llama', 'groq-vision'] }");
   });
 
   it("keeps platform and customer secrets out of Git", () => {

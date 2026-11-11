@@ -12,9 +12,10 @@ export const messageText = (content: GatewayMessage['content']) =>
 
 /**
  * A route the gateway serves to this key. The platform gateway marks the models this organization
- * may send images to with `vision` and the images a chat may hold; LiteLLM itself marks none.
+ * may send images to with `vision`, the images a chat may hold and the tokens it reserves per image;
+ * LiteLLM itself marks none.
  */
-export type GatewayRoute = { vision: boolean; maxImages?: number };
+export type GatewayRoute = { vision: boolean; maxImages?: number; imageTokens?: number };
 /** How long the gateway's last answer about its routes stands in when it gives none (a timeout, a restart). */
 export const ROUTES_GRACE_MS = 60_000;
 export type GatewayBilling ={ requestId: string; charge: string; priceVersion: string; estimated: boolean; simulation: boolean };
@@ -142,11 +143,11 @@ export class GatewayService {
         // A refusal (a revoked key, say) is an answer: no routes.
         return response.status >= 500 ? null : new Map();
       }
-      const json = (await response.json()) as { data?: Array<{ id: string; capabilities?: unknown; max_images?: unknown }> };
+      const json = (await response.json()) as { data?: Array<{ id: string; capabilities?: unknown; max_images?: unknown; image_tokens?: unknown }> };
+      const positive = (value: unknown) => (Number.isInteger(value) && (value as number) > 0 ? (value as number) : undefined);
       return new Map((json.data || []).map((item) => {
         const vision = Array.isArray(item.capabilities) && item.capabilities.includes('vision');
-        const maxImages = Number.isInteger(item.max_images) && (item.max_images as number) > 0 ? (item.max_images as number) : undefined;
-        return [item.id, vision ? { vision, maxImages } : { vision }];
+        return [item.id, vision ? { vision, maxImages: positive(item.max_images), imageTokens: positive(item.image_tokens) } : { vision }];
       }));
     } catch { return null; }
   }

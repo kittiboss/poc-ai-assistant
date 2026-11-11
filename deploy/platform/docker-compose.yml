@@ -111,6 +111,8 @@ services:
       PORT: 4030
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-20b}
+      # The only model that may receive chat images; see docs/CHAT_ATTACHMENTS.md (Vision models).
+      GROQ_VISION_MODEL: ${GROQ_VISION_MODEL:-qwen/qwen3.8-27b}
       # Keep false until Groq Console → Settings → Billing shows the organization is on Free tier.
       GROQ_FREE_TIER_CONFIRMED: ${GROQ_FREE_TIER_CONFIRMED:-false}
       GROQ_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-1024}
@@ -172,6 +174,7 @@ services:
       GEMINI_EMBEDDING_LITELLM_MODEL: gemini/${GEMINI_EMBEDDING_MODEL:-gemini-embedding-2}
       GROQ_PROXY_URL: http://groq-proxy:4030/openai/v1
       GROQ_LITELLM_MODEL: openai/${GROQ_MODEL:-openai/gpt-oss-20b}
+      GROQ_VISION_LITELLM_MODEL: openai/${GROQ_VISION_MODEL:-qwen/qwen3.8-27b}
       OPENROUTER_PROXY_URL: http://openrouter-proxy:4040/api/v1
       OPENROUTER_LITELLM_MODEL: openai/${OPENROUTER_MODEL:-openrouter/free}
       # Use the bundled price map instead of fetching it from GitHub at startup.

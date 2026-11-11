@@ -3,11 +3,7 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { MAX_CHAT_IMAGES } from "../attachments/attachments.service";
-import {
-  VISION_MODELS,
-  imageTokensFor,
-  type VisionFigures,
-} from "./vision-models";
+import { VISION_MODELS, type VisionFigures } from "./vision-models";
 
 describe("vision model figures", () => {
   it("stay within the API's ceiling of images per chat", () => {
@@ -36,12 +32,5 @@ describe("vision model figures", () => {
     expect(Object.fromEntries(platform)).toEqual(
       Object.fromEntries(VISION_MODELS),
     );
-  });
-
-  it("count images by the model's own figure, and as nothing for a model without one", () => {
-    expect(imageTokensFor("google-gemini", 2)).toBe(2_240);
-    expect(imageTokensFor("groq-vision", 2)).toBe(4_096);
-    expect(imageTokensFor("openrouter-free", 0)).toBe(0);
-    expect(imageTokensFor("qwen-local", 3)).toBe(0);
   });
 });

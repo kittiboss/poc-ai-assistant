@@ -25,7 +25,7 @@ export async function vendor(path, { method = 'GET', body, key = readPlatformEnv
 /** Platform models served through each credential proxy; a customer key only lists models whose proxy can run. */
 export const providerModels = {
   GEMINI_API_KEY: { profile: 'gemini', models: ['google-gemini', 'gemini-embedding'] },
-  GROQ_API_KEY: { profile: 'groq', models: ['groq-llama'] },
+  GROQ_API_KEY: { profile: 'groq', models: ['groq-llama', 'groq-vision'] },
   OPENROUTER_API_KEY: { profile: 'openrouter', models: ['openrouter-free'] },
 };
 
