@@ -264,6 +264,12 @@ Groq token counts are stored as `ACTUAL`. The seeded pricing is `$0` pass-throug
 GROQ_KEEP_ENABLED=true npm run test:groq
 ```
 
+`--image` instead sends the sample receipt [`docs/demo/receipt.png`](docs/demo/receipt.png) to **Qwen3.8 27B (Groq)**, checks that Groq counted at least one image (2,048 tokens), and deletes the test chat. It uses about 2,500 of the free tier's 8,000 tokens a minute:
+
+```bash
+node --env-file=.env scripts/groq-smoke.mjs --image
+```
+
 ## Using OpenRouter free models
 
 OpenRouter is integrated only through [`openrouter/free`](https://openrouter.ai/openrouter/free), a zero-price router that selects from the free variants currently available. The underlying model can change between requests, so use this route for POC workloads rather than model-specific evaluation. It also reads chat images, at most 4 per chat: for a request with images the router picks one of the free models that take them, so quality and data terms vary by request. See [Images](docs/CHAT_ATTACHMENTS.md#images).
@@ -292,6 +298,12 @@ The proxy accepts only `model=openrouter/free`; paid model IDs, alternate model 
 
 ```bash
 OPENROUTER_KEEP_ENABLED=true npm run test:openrouter
+```
+
+`--image` also checks that the router still takes images at no price, then sends the sample receipt [`docs/demo/receipt.png`](docs/demo/receipt.png) and deletes the test chat. It is one of the 50 free requests a day:
+
+```bash
+node --env-file=.env scripts/openrouter-smoke.mjs --image
 ```
 
 Return to the default mock-only stack at any time:
