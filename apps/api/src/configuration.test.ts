@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { AdminController } from "./admin/admin.controller";
@@ -276,6 +276,17 @@ describe("vendor-managed platform deployment", () => {
     expect(backend).toContain("RAG_ENGINE_URL: http://rag-engine:4060");
     expect(backend).not.toMatch(/RAG_ADMIN_KEY|RAG_DB_PASSWORD|RAG_APP_DB_PASSWORD/);
     expect(block(tenant, "networks", "platform-shared")).toMatch(/external: true\n\s+name: platform-shared/);
+  });
+
+  it("gives each customer the web image of its brand, the default one unless its config names another", () => {
+    expect(block(tenant, "services", "frontend")).toContain("image: ${WEB_IMAGE:-enterprise-ai/web:local}");
+    const brands = readdirSync(resolve(root, "apps/web/config/brands"))
+      .filter((file) => file !== "index.ts")
+      .map((file) => file.replace(/\.ts$/, ""));
+    for (const file of readdirSync(resolve(root, "deploy/tenants")).filter((name) => name.endsWith(".json"))) {
+      const { brand = "default" } = JSON.parse(read(`deploy/tenants/${file}`)) as { brand?: string };
+      expect(brands, file).toContain(brand);
+    }
   });
 
   it("keeps each customer's chat images in its own storage, which only that customer's backend reaches", () => {

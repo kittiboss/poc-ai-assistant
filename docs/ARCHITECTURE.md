@@ -44,7 +44,7 @@ customer web ─► customer API ──┬─► Keycloak (realm tenant-<id>)  �
 - **Chat images.** Each customer deployment keeps its images in its own SeaweedFS, on a network that only its API joins. vendor-control accepts image parts only for the models in that customer's image limits (`vendor.tenants.images`, edited in the console). It reserves each model's input tokens per image at admission (1,120 for Gemini, 2,048 for Groq and OpenRouter), settles on the provider's count and stores no content. See [chat images](VENDOR_MANAGED_POC.md#chat-images).
 - **Daily share.** LiteLLM has no per-day request limit, so each customer's API keeps enforcing its own `EXTERNAL_DAILY_*` limits, set to its share of the account.
 - **Networks.** Customer APIs reach the platform through `platform-shared`, which contains Keycloak, vendor-control and the RAG engine. `rag-db` sits on a private `rag` network that only the engine joins. LiteLLM, its database, mock and credential proxies sit on the private gateway network. Only proxies have provider egress. Vendor/LiteLLM admin interfaces are published on 127.0.0.1 for the vendor host.
-- **Web at runtime.** The root layout hands the browser this deployment's API URL and Keycloak realm (`apps/web/lib/runtime-config.ts`, from `APP_*` variables), so every customer runs the same web image; the brand is still chosen at build time.
+- **Web at runtime.** The root layout hands the browser this deployment's API URL and Keycloak realm (`apps/web/lib/runtime-config.ts`, from `APP_*` variables), so every customer of a brand runs the same web image. The brand is still compiled in, so `platform:build` builds one web image per brand the customer configs name (`"brand"` in `deploy/tenants/<id>.json`).
 
 ## Authentication and authorization
 

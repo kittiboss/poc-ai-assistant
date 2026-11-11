@@ -14,7 +14,7 @@ npm run tenant:create -- b
 npm run tenant:create -- c
 ```
 
-`platform:build` builds API/web once for reuse by every customer. `platform:up` generates `deploy/platform/.env` if missing, imports existing provider settings from the root `.env` once, and starts the corresponding optional proxies. With no provider keys, only mock models are entitled. A new tenant registered in the vendor console always starts **mock-only**.
+`platform:build` builds the API once for every customer, and the web once per brand, because the brand is compiled into the web app: the default brand, plus each `"brand"` a customer config in `deploy/tenants` names (customer B's is `acme`, so a demo can show two customers that look different). `tenant:create` refuses a brand whose image has not been built. `platform:up` generates `deploy/platform/.env` if missing, imports existing provider settings from the root `.env` once, and starts the corresponding optional proxies. With no provider keys, only mock models are entitled. A new tenant registered in the vendor console always starts **mock-only**.
 
 | Interface | URL | Sign-in |
 | --- | --- | --- |

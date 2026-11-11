@@ -113,8 +113,9 @@ services:
     restart: unless-stopped
 
   frontend:
-    image: enterprise-ai/web:local
-    # The same image serves every customer; the browser receives these at runtime (apps/web/lib/runtime-config.ts).
+    # One image per brand (the customer's "brand", set by tenant:create); every customer of a brand shares it,
+    # and the browser receives these at runtime (apps/web/lib/runtime-config.ts).
+    image: ${WEB_IMAGE:-enterprise-ai/web:local}
     environment:
       APP_API_URL: ${API_PUBLIC_URL}/api
       APP_KEYCLOAK_URL: ${KEYCLOAK_PUBLIC_URL}
