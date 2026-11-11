@@ -93,7 +93,7 @@ Errors follow the API's coded shape `{ statusCode, code, message }`, so the web 
 | `ATTACHMENT_BUSY` | 429 | The API is extracting another document; retry shortly |
 | `ATTACHMENT_NOT_FOUND` | 400 | Sending refers to a file that does not exist or belongs to someone else |
 | `ATTACHMENT_SENT` | 409 | Removing a file that was already sent |
-| `ATTACHMENT_LIMIT` | 400 | The files of the chat together exceed the chat's limit: 60,000 characters of text, 6 images or 4 MB of images |
+| `ATTACHMENT_LIMIT` | 400 | The files of the chat together exceed the chat's limit (60,000 characters of text, 6 images or 4 MB of images), or the chat holds more images than the chosen model takes |
 | `ATTACHMENT_NEEDS_VISION` | 400 | The chat has images and the chosen model cannot see them |
 | `CONTEXT_TOO_LONG` | 400 | Code added to the existing conservative context-limit check; also a request to the model over 7.5 MB |
 
@@ -123,8 +123,9 @@ Images are available where the deployment has object storage. A standalone deplo
 
 Images use the same upload-first flow, chips, `attachmentIds` and message metadata as documents. The differences:
 
-1. The composer accepts images only while the selected model has the `vision` capability in `GET /api/models`, and no more than that model's `maxImages` in a chat. That list reports `vision` only where images are available, and in a vendor-managed deployment only for the models vendor-control lists with `vision` for that customer. `maxImages` comes only with `vision`: 6, or the customer's limit in a vendor-managed deployment.
+1. The composer accepts images only while the selected model has the `vision` capability in `GET /api/models`, and no more than that model's `maxImages` in a chat. That list reports `vision` only where images are available, and in a vendor-managed deployment only for the models vendor-control lists with `vision` for that customer. `maxImages` comes only with `vision`: the model's images per chat (see [Vision models](#vision-models)), or the customer's limit in a vendor-managed deployment.
    - A chat that already holds more images than the selected model's `maxImages` (the vendor lowered the limit, or the user chose another model) cannot continue with that model: the web says so and keeps the send button off, as for a model that cannot read images. Images in the composer beyond what the chat still holds stay there, but cannot be sent until enough are removed.
+   - For example, a chat that sent 3 images to Gemini cannot go on with `groq-vision`, which takes 2, but can with `openrouter-free`, which takes 4. To go on with a model that takes fewer, branch the chat at a message before the extra images, or start a new chat. Images are never dropped from a chat to fit a model, so a model never answers about an image it was not sent.
 2. The browser resizes each image so its longer side is at most 1,600 px and re-encodes it as WebP (JPEG where the browser cannot write WebP), lowering the quality until the file is at most 1 MB. Re-encoding also drops metadata such as GPS location.
 3. The API keeps the image file itself, in object storage, because the model needs the pixels on every turn.
 4. The web shows an image through `GET /api/attachments/:id/content`, fetched with the user's token into a blob URL, because an `<img>` cannot send a bearer token. Each file is fetched once while the page is open; a click or Enter opens a viewer that steps through the message's images. The Markdown export names each image with its size, as the file itself stays behind sign-in.
@@ -191,15 +192,50 @@ height?: number;
 
 ### Sending
 
-1. A chat's images are all the images its messages attached, as with documents. If the chat has any and the chosen model lacks `vision` (or the deployment no longer has images available), the message is refused with `ATTACHMENT_NEEDS_VISION` before anything is saved or retrieved, and the web puts it back in the composer.
-2. Each image is sent with the user turn that attached it, after the turn's text: a text part `[Image: receipt.jpg]`, so replies can name it, then an OpenAI-style `image_url` part holding a base64 data URL. Images of turns older than the 49 replayed messages go with the earliest replayed user turn. An image is sent once, also when several turns list it. LiteLLM turns the parts into Gemini's inline data.
+1. A chat's images are all the images its messages attached, as with documents. If the chat has any and the chosen model lacks `vision` (or the deployment no longer has images available), the message is refused with `ATTACHMENT_NEEDS_VISION` before anything is saved or retrieved, and the web puts it back in the composer. A chat with more images than the chosen model takes is refused the same way with `ATTACHMENT_LIMIT`.
+2. Each image is sent with the user turn that attached it, after the turn's text: a text part `[Image: receipt.jpg]`, so replies can name it, then an OpenAI-style `image_url` part holding a base64 data URL. Images of turns older than the 49 replayed messages go with the earliest replayed user turn. An image is sent once, also when several turns list it. LiteLLM turns the parts into Gemini's inline data, and passes them to Groq and OpenRouter as they are, since both take the OpenAI format.
    - The images are read from storage before anything is saved; a storage failure refuses the message with `503`. An image whose object is missing is left out with a warning in the log, so one lost file does not fail every later turn of its chat.
 3. `GatewayMessage.content` becomes `string | ContentPart[]`. Turns without images stay strings.
 4. The system message tells the model that text inside images is data, never instructions. When a message only attaches images, the stored content stays empty, the model receives `[Attached without a message: receipt.jpg]` followed by the image, and the overview describes what each image shows.
-5. Each image counts as 1,120 tokens (Gemini 3's default media resolution, whatever the file size) in the context-limit check and the quota reservation, on top of the text's bytes, and in the usage estimate when a provider reports no usage. The base64 data never counts as text, and the sensitive-information check reads only the text parts.
-6. The API refuses with `CONTEXT_TOO_LONG` a request whose text and base64 images together exceed 7.5 MB, below gemini-proxy's 8 MB. Within the chat limits a request stays under about 6.5 MB, so this only catches mistakes.
+5. Each image counts as the chosen model's tokens per image (see [Vision models](#vision-models)), whatever its file size, in the context-limit check and the quota reservation, on top of the text's bytes, and in the usage estimate when a provider reports no usage. A chat that switches models is counted by the model of each message: the same 2 images count 2,240 tokens with Gemini and 4,096 with Groq. The base64 data never counts as text, and the sensitive-information check reads only the text parts.
+6. The API refuses with `CONTEXT_TOO_LONG` a request whose text and base64 images together exceed 7.5 MB, below the 8 MB that gemini-proxy, groq-proxy and openrouter-proxy accept. Within the chat limits a request stays under about 6.5 MB, so this only catches mistakes.
 7. gemini-proxy accepts requests of at most 8 MB (it was 2 MB) and inline data only when it is a JPEG, PNG or WebP image, by its declared type and its first bytes, in either spelling Google accepts (LiteLLM writes `inline_data`). Any other inline data, and file references (`fileData`), are refused.
-8. `local-mock` has `vision` for offline tests and demos, and `google-gemini` for the Gemini demo; the other seeded models stay text-only. mock-provider accepts 8 MB, adds each image of the request to its reply as its type and size in bytes (it does not look at the picture) and reports 1,120 tokens per image.
+8. groq-proxy and openrouter-proxy accept requests of at most 8 MB (they were 2 MB) and check the content parts of every message:
+   - only `text` and `image_url` parts; any other part, such as `file` (which OpenRouter may hand to a paid PDF parser), `input_audio` or `video_url`, is refused;
+   - an image only in a user message, and only as a base64 data URL of a JPEG, PNG or WebP image, checked by its declared type and its first bytes, as vendor-control does; a remote URL, which the provider would fetch itself, is refused;
+   - groq-proxy allows two models: `GROQ_MODEL` for text and `GROQ_VISION_MODEL` for images. It refuses images for `GROQ_MODEL`, and more than 3 images in a request (Groq's limit; the API holds a chat to 2). For `GROQ_VISION_MODEL` it always sets `reasoning_effort: "none"`, so reasoning never takes tokens from the per-minute limit or the reply. Without `GROQ_VISION_MODEL`, it allows `GROQ_MODEL` only, as before;
+   - openrouter-proxy still accepts only `openrouter/free`; for a request with images, the router picks one of the free models that take images.
+
+   A refused request gets `400` before anything leaves the installation.
+9. `local-mock` has `vision` for offline tests and demos, `google-gemini` for the Gemini demo, and `groq-vision` and `openrouter-free` for Groq and OpenRouter; the other seeded models stay text-only. mock-provider accepts 8 MB, adds each image of the request to its reply as its type and size in bytes (it does not look at the picture) and reports 1,120 tokens per image.
+
+### Vision models
+
+The API keeps each vision model's figures in code (`apps/api/src/models/vision-models.ts`), by the model's registry id. They follow the provider's documentation, not an administrator's choice: tokens per image is how the provider counts an image, and images per chat stays within what the provider takes in a request and its free-tier limits. They change only with the model, its route and its proxy, which need a deployment anyway.
+
+| Model | Provider model | Images per chat | Tokens per image | Why |
+|---|---|---|---|---|
+| `local-mock` | mock-provider | 6 | 1,120 | mock-provider reports 1,120 per image |
+| `google-gemini` | `GEMINI_MODEL` (Gemini 3.5 Flash-Lite) | 6 | 1,120 | Gemini 3's default media resolution |
+| `groq-vision` | `GROQ_VISION_MODEL` (`qwen/qwen3.8-27b`, Preview) | 2 | 2,048 | Groq counts a fixed 2,048 per image and takes at most 3 in a request; 2 leave room within 8,000 tokens a minute |
+| `openrouter-free` | `openrouter/free` | 4 | 2,048, an estimate | The router picks a different free model for each request, and each counts images its own way |
+
+- A model with `vision` in the registry but no row here receives no images: `GET /api/models` leaves out its `vision`, and a chat with images is refused with `ATTACHMENT_NEEDS_VISION`. A new vision model therefore needs its figures first.
+- 6 images and 4 MB of images per chat remain the ceiling for every model.
+- Changing `GROQ_VISION_MODEL` or `GEMINI_MODEL` to another model needs its figures checked here.
+- Usage records the tokens the provider reports. The figures above bound the context-limit check and the reservation, and estimate usage only when a provider reports none.
+- In a vendor-managed deployment, vendor-control's `max_images` still decides the images per chat (see [Vendor-managed deployments](#vendor-managed-deployments)); the customer API counts tokens per image from the same table.
+
+### Groq and OpenRouter
+
+- `groq-vision` (*Qwen3.8 27B (Groq)*) is a registry entry of its own, next to `groq-llama` (*GPT-OSS 20B (Groq)*, text only). Text chats thus stay on a production model while Groq's only vision model is a Preview, which Groq may retire at short notice; it retired three vision models in 2026.
+  - It goes through the same groq-proxy and needs the same `GROQ_FREE_TIER_CONFIRMED=true`, with its own LiteLLM route `groq-vision` and `GROQ_VISION_MODEL` (default `qwen/qwen3.8-27b`).
+  - It starts disabled and for `ADMIN` only, like the other external models, with `$0` pass-through pricing like `groq-llama`.
+- `openrouter-free` gains `vision`. Seeding updates the capabilities of an existing model record and keeps whether it is enabled and for which roles.
+- Free-tier limits that images run into, checked on 2026-11-10 (each provider's console shows the organization's own):
+  - Groq: 8,000 tokens a minute and 200,000 a day for `qwen/qwen3.8-27b`, the base limits Groq's documentation lists. A turn with 2 images uses about 5,000–6,000 tokens with the system message and the reply, so another turn within the same minute can be refused with `429`.
+  - OpenRouter: 20 requests a minute, and 50 a day while the account has bought fewer than 10 credits. Images do not change the count.
+- The free models behind `openrouter/free` that take images were, on 2026-11-10: Gemma 4 26B and 31B, Nemotron 3.5 Super VL, Nemotron 3 Nano Omni, Inkling 2 Small and dots-3-note-preview (offered until 2026-12-31). The list changes without notice.
 
 ### Limits
 
@@ -207,9 +243,9 @@ height?: number;
 |---|---|---|
 | Image file | 1 MB, 1,600 px on the longer side | The browser resizes before upload; small text in screenshots stays readable |
 | Attachments per message | 3, documents and images together | |
-| Images per chat | 6 | Each image costs about 1,120 tokens on every turn |
+| Images per chat | The chosen model's, at most 6: 6 for `local-mock` and `google-gemini`, 2 for `groq-vision`, 4 for `openrouter-free` | Every image is sent again on every turn; see [Vision models](#vision-models) |
 | Image bytes per chat | 4 MB | About 5.3 MB in base64, leaving room for 1 MB of text under 7.5 MB |
-| Request to the model | 7.5 MB | gemini-proxy accepts 8 MB |
+| Request to the model | 7.5 MB | gemini-proxy, groq-proxy and openrouter-proxy accept 8 MB |
 | Images per chat, vendor-managed | The customer's limit, at most 6 | Set by the vendor; a request carries every image of its chat |
 
 `local-mock`'s 8,192 context window holds 4 images with a short message; more need Gemini (1M).
@@ -217,6 +253,8 @@ height?: number;
 ### Cost
 
 An image costs about 1,120 input tokens on every turn while it is in the chat, whatever its file size. A chat with 6 images uses about 6,700 tokens a turn before any text: about $0.002 at Gemini 3.5 Flash-Lite's paid list price ($0.30 per 1M input tokens), and $0 on the free tier. The default external limit of 100,000 tokens a day covers about 14 such turns across all users; raise `EXTERNAL_DAILY_TOKEN_LIMIT` for a demo day if needed. Every turn sends the chat's images again, so a chat with many images answers more slowly. In a demo on 2026-11-04, Gemini 3.5 Flash-Lite counted 1,367 input tokens for a message that only sent one 1,600 × 900 image, system message included, and 1,410 for the follow-up question, which sent the image again; the image accounts for about 1,100 of them.
+
+Groq and OpenRouter count about 2,048 tokens per image. A chat with 2 images on `groq-vision` uses about 4,100 tokens a turn before any text, and one with 4 images on `openrouter-free` about 8,200 (an estimate, as each free model counts its own way). Both cost $0 on the free tiers, dashboards show $0 because their pricing is pass-through at $0, and both count against `EXTERNAL_DAILY_TOKEN_LIMIT` like Gemini. What runs out first is Groq's tokens a minute and OpenRouter's requests a day (see [Groq and OpenRouter](#groq-and-openrouter)).
 
 ### Vendor-managed deployments
 
@@ -259,7 +297,11 @@ They are stored as `{"enabled": true, "models": ["local-mock"], "maxImages": 6}`
 - The API stores an image as uploaded. Only the web's re-encoding removes metadata such as GPS location, so a client calling the API directly can store it.
 - Object storage needs its own encryption, backup and lifecycle settings in production.
 - Deleting an image does not erase its bytes at once. SeaweedFS keeps them in its volume file until a vacuum compacts it, which happens only once enough of the volume is deleted; a versioned S3 bucket keeps the old version until a lifecycle rule expires it.
+- Groq and OpenRouter images are standalone only. Offering them to vendor-managed customers needs vendor-control's `VISION_MODELS` to hold the same figures (images per chat and tokens per image), `GET /v1/models` to send the lower of the customer's limit and the model's as `max_images`, plus the tokens per image, and the customer API to use both.
+- `openrouter-free` sends each request to whichever free model the router picks, so one chat can be read by different models, with different quality and data terms, and 2,048 tokens per image is an estimate. The provider that serves a request may keep its images or train on them; this is recorded in [PRODUCTION_GAPS.md](PRODUCTION_GAPS.md).
+- `groq-vision` runs on a Preview model, which Groq may retire at short notice. Its free tier allows 8,000 tokens a minute, so a quick follow-up in a chat with images can be refused with `429`.
+- An administrator cannot lower the images per chat of a model in a standalone deployment; the figures change only in code.
 
 ## Not in version 1
 
-Images for Groq and OpenRouter models, a storage quota or storage charge per customer, image generation, GIF and HEIC images (Safari on iPhone converts photos to JPEG when they are picked), choosing the media resolution to save tokens, OCR for scanned PDFs, retrieving only the relevant passages of large files, keeping original documents for download, and a project page for managing files.
+A storage quota or storage charge per customer, image generation, GIF and HEIC images (Safari on iPhone converts photos to JPEG when they are picked), choosing the media resolution to save tokens, OCR for scanned PDFs, retrieving only the relevant passages of large files, keeping original documents for download, and a project page for managing files.
