@@ -98,6 +98,8 @@ interface Options {
   account: 'staff' | null;
   /** Console errors a test causes on purpose */
   expectedErrors: RegExp[];
+  /** The model plan of the `tenant` fixture */
+  tenantModels: string[];
 }
 
 interface Fixtures {
@@ -109,6 +111,7 @@ interface Fixtures {
 export const test = base.extend<Options & Fixtures>({
   account: ['staff', { option: true }],
   expectedErrors: [[], { option: true }],
+  tenantModels: [['local-mock', 'mock-embedding', 'google-gemini'], { option: true }],
 
   storageState: async ({ account }, use) => use(account ? sessionFile : { cookies: [], origins: [] }),
   page: async ({ page, account }, use) => {
@@ -116,7 +119,7 @@ export const test = base.extend<Options & Fixtures>({
     await use(page);
   },
 
-  tenant: async ({}, use) => {
+  tenant: async ({ tenantModels }, use) => {
     const id = `t-${randomBytes(4).toString('hex')}`;
     // Below 3300, so the registration dialog's suggested port (after the highest) stays 3400.
     const webPort = 1100 + 2 * Math.floor(Math.random() * 900);
@@ -130,7 +133,7 @@ export const test = base.extend<Options & Fixtures>({
           webPort,
           apiPort: webPort + 1,
           initialCreditUsd: 2,
-          models: ['local-mock', 'mock-embedding', 'google-gemini'],
+          models: tenantModels,
           dailyExternalLimits: { requests: 33, tokens: 33333 },
           embeddingBatch: { size: 8, intervalMs: 15500 },
         },

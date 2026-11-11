@@ -18,6 +18,12 @@ model_list:
       model: os.environ/GROQ_LITELLM_MODEL
       api_base: os.environ/GROQ_PROXY_URL
       api_key: local-groq-proxy
+  # Groq's vision model, through the same proxy; it takes images only for GROQ_VISION_MODEL.
+  - model_name: groq-vision
+    litellm_params:
+      model: os.environ/GROQ_VISION_LITELLM_MODEL
+      api_base: os.environ/GROQ_PROXY_URL
+      api_key: local-groq-proxy
   - model_name: openrouter-free
     litellm_params:
       model: os.environ/OPENROUTER_LITELLM_MODEL

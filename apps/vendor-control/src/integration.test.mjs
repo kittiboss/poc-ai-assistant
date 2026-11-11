@@ -595,7 +595,7 @@ test(
             ),
           );
         assert.deepEqual(await offered(), {
-          "local-mock": { object: "model", capabilities: ["vision"], max_images: 3 },
+          "local-mock": { object: "model", capabilities: ["vision"], max_images: 3, image_tokens: 1120 },
           "groq-llama": { object: "model" },
         });
         const vendor = {
@@ -639,6 +639,69 @@ test(
         const text = await call("/v1/chat/completions", { ...chat, model: "groq-llama" }, key);
         assert.equal(text.status, 200);
         await text.text();
+      },
+    );
+    await t.test(
+      "a model takes no more images than its own, whatever the tenant's limit, and reserves its own tokens per image",
+      async () => {
+        const key = `sk-${randomUUID()}`;
+        const vision = ["local-mock", "groq-vision", "openrouter-free"];
+        await store.register(
+          {
+            ...defaultConfig("vis", "Vision"),
+            models: vision,
+            images: { models: vision, maxImages: 3 },
+          },
+          key,
+          "2",
+        );
+        const offered = Object.fromEntries(
+          (await (await call("/v1/models", undefined, key)).json()).data.map(
+            ({ id, ...rest }) => [id, rest],
+          ),
+        );
+        const route = (max_images, image_tokens) => ({
+          object: "model",
+          capabilities: ["vision"],
+          max_images,
+          image_tokens,
+        });
+        assert.deepEqual(offered, {
+          "local-mock": route(3, 1120),
+          "groq-vision": route(2, 2048),
+          "openrouter-free": route(3, 2048),
+        });
+        // Groq takes 2 a chat although the tenant allows 3.
+        const before = upstreamCalls;
+        const refused = randomUUID();
+        const three = await call(
+          "/v1/chat/completions",
+          withImages("groq-vision", png(64), png(64), png(64)),
+          key,
+          { "x-request-id": refused },
+        );
+        assert.equal(three.status, 403);
+        assert.equal((await three.json()).error.type, "image_access_denied");
+        assert.equal(await reservedFor(refused), undefined);
+        assert.equal(upstreamCalls, before);
+        // Two go through and reserve 2,048 tokens each.
+        const id = randomUUID();
+        const body = withImages("groq-vision", png(64), png(64));
+        const two = await call("/v1/chat/completions", body, key, { "x-request-id": id });
+        assert.equal(two.status, 200);
+        await two.text();
+        const bounds = validateRequest(body, false);
+        assert.equal(
+          bounds.input - validateRequest({ ...body, model: "local-mock" }, false).input,
+          2 * (2048 - 1120),
+        );
+        const {
+          rows: [price],
+        } = await pool.query(
+          "SELECT * FROM vendor.prices WHERE model='groq-vision' ORDER BY id DESC LIMIT 1",
+        );
+        assert.ok(price, "groq-vision has a first-boot price");
+        assert.equal(BigInt(await reservedFor(id)), charge(bounds.input, bounds.output, price));
       },
     );
     await t.test("only chat completions take a body over 512 KB, after authentication", async () => {

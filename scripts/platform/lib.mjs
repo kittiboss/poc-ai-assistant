@@ -1,7 +1,7 @@
 // Shared helpers for the vendor platform scripts (Node built-ins only).
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -25,9 +25,30 @@ export async function vendor(path, { method = 'GET', body, key = readPlatformEnv
 /** Platform models served through each credential proxy; a customer key only lists models whose proxy can run. */
 export const providerModels = {
   GEMINI_API_KEY: { profile: 'gemini', models: ['google-gemini', 'gemini-embedding'] },
-  GROQ_API_KEY: { profile: 'groq', models: ['groq-llama'] },
+  GROQ_API_KEY: { profile: 'groq', models: ['groq-llama', 'groq-vision'] },
   OPENROUTER_API_KEY: { profile: 'openrouter', models: ['openrouter-free'] },
 };
+
+/**
+ * A customer's web image. The brand is compiled into the web app (NEXT_PUBLIC_BRAND), so each brand a
+ * customer config names (`"brand"`, an id in apps/web/config/brands) has its own image.
+ */
+export function webImage(brand = 'default') {
+  if (!/^[a-z0-9][a-z0-9-]{0,29}$/.test(brand)) throw new Error(`Invalid brand "${brand}"`);
+  return brand === 'default' ? 'enterprise-ai/web:local' : `enterprise-ai/web:brand-${brand}`;
+}
+
+/** The brands other than the default that the customer configs in deploy/tenants name. */
+export const tenantBrands = () => [
+  ...new Set(
+    readdirSync(tenantsDir)
+      .filter((file) => file.endsWith('.json'))
+      .map((file) => JSON.parse(readFileSync(join(tenantsDir, file), 'utf8')).brand ?? 'default')
+      .filter((brand) => brand !== 'default'),
+  ),
+];
+
+export const imageExists = (image) => spawnSync('docker', ['image', 'inspect', image], { stdio: 'ignore' }).status === 0;
 
 /** KEY=value lines; blank lines and # comments are ignored. */
 export function parseEnv(text) {

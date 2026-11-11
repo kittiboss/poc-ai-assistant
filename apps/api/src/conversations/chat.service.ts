@@ -17,12 +17,12 @@ import {
   refusedByGateway,
 } from "../gateway/gateway.service";
 import { ModelsService } from "../models/models.service";
+import { vendorGateway } from "../models/model-policies";
 import { UsageService } from "../usage/usage.service";
 import { UsersService } from "../users/users.service";
 import {
   AttachmentsService,
   FILES_ONLY_MAX_OUTPUT_TOKENS,
-  IMAGE_TOKENS,
   attachmentError,
   attachmentInstructions,
 } from "../attachments/attachments.service";
@@ -37,7 +37,7 @@ import { KnowledgeService } from "../knowledge/knowledge.service";
 
 /** Longer than any gateway timeout; a stream this old cannot still be attached to a client. */
 export const STALE_STREAM_MS = 10 * 60_000;
-/** gemini-proxy accepts requests of at most 8 MB; within the chat limits a request stays under about 6.5 MB. */
+/** The credential proxies accept requests of at most 8 MB; within the chat limits a request stays under about 6.5 MB. */
 export const MAX_MODEL_REQUEST_BYTES = 7.5 * 1024 * 1024;
 
 const contextTooLong = (message: string) =>
@@ -197,20 +197,24 @@ export class ChatService implements OnModuleInit, OnModuleDestroy {
     const imageCount = attachments.files.filter(
       (file) => file.kind === "IMAGE",
     ).length;
+    const imageFigures = imageCount
+      ? await this.models.imageFigures(model)
+      : null;
     if (imageCount) {
-      const limit = await this.models.imageLimit(model);
-      if (limit === null)
+      if (imageFigures === null)
         throw attachmentError(
           400,
           "ATTACHMENT_NEEDS_VISION",
           "This chat has images, and the chosen model cannot see them",
         );
-      // forMessage holds a chat to the API's own limit; only a platform's image limits can be lower.
-      if (imageCount > limit)
+      // forMessage holds a chat to the API's ceiling; the model, or a platform's image limits, can be lower.
+      if (imageCount > imageFigures.maxImages)
         throw attachmentError(
           400,
           "ATTACHMENT_LIMIT",
-          `This chat would have ${imageCount} images; your organization's plan allows ${limit} a chat.`,
+          vendorGateway()
+            ? `This chat would have ${imageCount} images; the chosen model takes at most ${imageFigures.maxImages} a chat on your organization's plan.`
+            : `This chat would have ${imageCount} images; the chosen model takes at most ${imageFigures.maxImages} a chat.`,
         );
     }
     // A message with only files has nothing to search for.
@@ -278,7 +282,9 @@ export class ChatService implements OnModuleInit, OnModuleDestroy {
     ];
     // The text only: an image counts as a fixed number of tokens, never as its base64.
     const input = history.map((m) => messageText(m.content)).join("\n");
-    const imageTokens = images.size * IMAGE_TOKENS;
+    // Each provider counts an image as a fixed number of tokens of its own (VISION_MODELS, or what the
+    // platform gateway reserves in a vendor-managed deployment).
+    const imageTokens = images.size * (imageFigures?.imageTokens ?? 0);
     const maxOutputTokens = Math.min(
       context.maxOutputTokens ?? this.gateway.maxOutputTokens(),
       this.gateway.maxOutputTokens(),

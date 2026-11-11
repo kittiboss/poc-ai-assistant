@@ -232,7 +232,7 @@ npm run test:gemini
 
 ## Using Groq on the free tier
 
-The Groq route uses the production model `openai/gpt-oss-20b`, starts disabled, and is limited to `ADMIN` until an administrator changes its role policy.
+The Groq route uses the production model `openai/gpt-oss-20b`, starts disabled, and is limited to `ADMIN` until an administrator changes its role policy. A second entry, **Qwen3.8 27B (Groq)** (`groq-vision`, `GROQ_VISION_MODEL`, default `qwen/qwen3.8-27b`), reads chat images through the same proxy: at most 2 per chat, each counted as 2,048 tokens. It is a Groq Preview model, which Groq may retire at short notice, and starts disabled and `ADMIN`-only as well. See [Images](docs/CHAT_ATTACHMENTS.md#images).
 
 1. Verify that the Groq organization associated with the key is on the intended free plan and review its current limits. The app cannot inspect billing-plan state.
 2. Keep the credential only in the ignored `.env` file:
@@ -256,7 +256,7 @@ The Groq route uses the production model `openai/gpt-oss-20b`, starts disabled, 
    docker compose -f docker-compose.yml -f docker-compose.external.yml up --build -d
    ```
 
-4. In **Admin console** → **Model registry**, enable **GPT-OSS 20B (Groq)**. Leave the `USER` role unchecked unless employee access is intentional.
+4. In **Admin console** → **Model registry**, enable **GPT-OSS 20B (Groq)**, and **Qwen3.8 27B (Groq)** for images. Leave the `USER` role unchecked unless employee access is intentional.
 
 Groq token counts are stored as `ACTUAL`. The seeded pricing is `$0` pass-through for a free-plan POC; if the organization becomes billable, set `GROQ_FREE_TIER_CONFIRMED=false` immediately and create an accurate pricing version before any future use. Both the API and credential proxy reject Groq generation while the confirmation is false. The optional smoke test validates the key/model, performs one short generation, verifies persisted usage, and normally restores the previous enabled state. Set `GROQ_KEEP_ENABLED=true` to leave it enabled after a successful test:
 
@@ -264,9 +264,15 @@ Groq token counts are stored as `ACTUAL`. The seeded pricing is `$0` pass-throug
 GROQ_KEEP_ENABLED=true npm run test:groq
 ```
 
+`--image` instead sends the sample receipt [`docs/demo/receipt.png`](docs/demo/receipt.png) to **Qwen3.8 27B (Groq)**, checks that the reply has the receipt's total (670.00), and deletes the test chat. It used about 2,000 of the free tier's 8,000 tokens a minute on 2026-11-11:
+
+```bash
+node --env-file=.env scripts/groq-smoke.mjs --image
+```
+
 ## Using OpenRouter free models
 
-OpenRouter is integrated only through [`openrouter/free`](https://openrouter.ai/openrouter/free), a zero-price router that selects from the free variants currently available. The underlying model can change between requests, so use this route for POC workloads rather than model-specific evaluation.
+OpenRouter is integrated only through [`openrouter/free`](https://openrouter.ai/openrouter/free), a zero-price router that selects from the free variants currently available. The underlying model can change between requests, so use this route for POC workloads rather than model-specific evaluation. It also reads chat images, at most 4 per chat: for a request with images the router picks one of the free models that take them, so quality and data terms vary by request. See [Images](docs/CHAT_ATTACHMENTS.md#images).
 
 1. Put the key in the ignored `.env` and keep the model fixed:
 
@@ -293,6 +299,14 @@ The proxy accepts only `model=openrouter/free`; paid model IDs, alternate model 
 ```bash
 OPENROUTER_KEEP_ENABLED=true npm run test:openrouter
 ```
+
+`--image` also checks that the router still takes images at no price, then sends the sample receipt [`docs/demo/receipt.png`](docs/demo/receipt.png), checks that the reply has its total (670.00; a miss may also mean the router picked a weaker model), and deletes the test chat. It is one of the 50 free requests a day:
+
+```bash
+node --env-file=.env scripts/openrouter-smoke.mjs --image
+```
+
+Both smoke tests sign in as `admin`; `ADMIN_USERNAME` and `ADMIN_DEMO_PASSWORD` choose another administrator, such as a vendor-managed customer's `tenant-admin` (see [Verify](docs/VENDOR_MANAGED_POC.md#verify)).
 
 Return to the default mock-only stack at any time:
 

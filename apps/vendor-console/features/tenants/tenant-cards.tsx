@@ -6,6 +6,7 @@ import { Facts } from '@/components/ui/facts';
 import { Meter } from '@/components/ui/meter';
 import type { RagUsage, Tenant } from '@/lib/api/types';
 import { formatMb, formatNumber, formatUsd, nanoUsd } from '@/lib/format';
+import { VISION_MODELS, imageCaps } from '@/lib/limits';
 import { LOCAL_MODELS } from '@/lib/models';
 import { EditImageLimits, EditKnowledgeLimits } from './limits-forms';
 import { CreditFlag } from './status';
@@ -167,6 +168,39 @@ export function KnowledgeCard({
   );
 }
 
+/** The tenant's images per chat, with the chosen models of its plan that take fewer. */
+function ImagesPerChat({ images, plan }: { images: Tenant['images']; plan: string[] }) {
+  const fewer = imageCaps(
+    images.models.filter((model) => plan.includes(model)),
+    images.maxImages,
+  );
+  if (!fewer.length) return images.maxImages;
+  // On a line of its own, so a narrow card never breaks one model from its number.
+  return (
+    <span className="flex flex-col gap-0.5">
+      <span>{images.maxImages}</span>
+      <span className="text-xs text-fg-tertiary">
+        {fewer.map(({ model, maxImages }) => (
+          <span key={model} className="me-2 inline-block whitespace-nowrap">
+            {model}: {maxImages}
+          </span>
+        ))}
+      </span>
+    </span>
+  );
+}
+
+/** "1,120 for local-mock and google-gemini, 2,048 for …": what vendor-control reserves per image. */
+const reservedPerImage = [...new Set([...VISION_MODELS.values()].map(({ imageTokens }) => imageTokens))]
+  .map(
+    (tokens) =>
+      `${formatNumber(tokens)} for ${[...VISION_MODELS]
+        .filter(([, figures]) => figures.imageTokens === tokens)
+        .map(([model]) => model)
+        .join(' and ')}`,
+  )
+  .join(', ');
+
 export function ImagesCard({ tenant }: { tenant: Tenant }) {
   const { images } = tenant;
   return (
@@ -182,12 +216,13 @@ export function ImagesCard({ tenant }: { tenant: Tenant }) {
       <Facts
         items={[
           { label: 'Models', value: <ModelTags models={images.models} plan={tenant.config.models} /> },
-          { label: 'Images per chat', value: images.maxImages },
+          { label: 'Images per chat', value: <ImagesPerChat images={images} plan={tenant.config.models} /> },
         ]}
       />
       <p className="mt-4 text-xs leading-5 text-fg-tertiary">
-        Images stay in the customer&apos;s own storage and reach the model inside the request. Each image is reserved as
-        1,120 input tokens and settled on the provider&apos;s count.
+        Images stay in the customer&apos;s own storage and reach the model inside the request. Each image is reserved at
+        its model&apos;s input tokens per image ({reservedPerImage}) and settled on the provider&apos;s count. A model
+        never takes more images a chat than its own.
       </p>
     </Card>
   );

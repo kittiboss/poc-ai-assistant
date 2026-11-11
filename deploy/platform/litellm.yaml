@@ -50,6 +50,16 @@ model_list:
       # $0.10 / $0.50 per 1M tokens: placeholder until a price is agreed
       input_cost_per_token: 0.0000001
       output_cost_per_token: 0.0000005
+  # Groq's vision model (a Preview) through the same proxy, which allows images for it only.
+  - model_name: groq-vision
+    litellm_params:
+      model: os.environ/GROQ_VISION_LITELLM_MODEL
+      api_base: os.environ/GROQ_PROXY_URL
+      api_key: local-groq-proxy
+    model_info:
+      # $0.10 / $0.50 per 1M tokens: placeholder until a price is agreed
+      input_cost_per_token: 0.0000001
+      output_cost_per_token: 0.0000005
   - model_name: openrouter-free
     litellm_params:
       model: os.environ/OPENROUTER_LITELLM_MODEL

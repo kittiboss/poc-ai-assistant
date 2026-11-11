@@ -1,5 +1,5 @@
 import "reflect-metadata";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { AdminController } from "./admin/admin.controller";
@@ -100,8 +100,34 @@ describe("security and provider configuration", () => {
     );
     expect(config).toContain("model_name: local-mock");
     expect(config).not.toMatch(
-      /model_name:\s*(openai-gpt|anthropic-claude|google-gemini|groq-llama|openrouter-free)/,
+      /model_name:\s*(openai-gpt|anthropic-claude|google-gemini|groq-llama|groq-vision|openrouter-free)/,
     );
+  });
+
+  it("routes Groq's vision model through the same credential proxy in both Groq overlays", () => {
+    const read = (file: string) => readFileSync(resolve(root, file), "utf8");
+    const model = "${GROQ_VISION_MODEL:-qwen/qwen3.8-27b}";
+    for (const [config, overlayFile] of [
+      ["infra/litellm/config.groq.yaml", "docker-compose.groq.yml"],
+      ["infra/litellm/config.external.yaml", "docker-compose.external.yml"],
+    ]) {
+      expect(read(config)).toMatch(
+        /model_name: groq-vision\s+litellm_params:\s+model: os\.environ\/GROQ_VISION_LITELLM_MODEL\s+api_base: os\.environ\/GROQ_PROXY_URL\s+api_key: local-groq-proxy/,
+      );
+      const overlay = read(overlayFile);
+      const proxy = overlay.slice(
+        overlay.indexOf("\n  groq-proxy:"),
+        overlay.indexOf("\n  litellm:"),
+      );
+      const litellm = overlay.slice(
+        overlay.indexOf("\n  litellm:"),
+        overlay.indexOf("\n  backend:"),
+      );
+      const backend = overlay.slice(overlay.indexOf("\n  backend:"));
+      expect(proxy).toContain(`GROQ_VISION_MODEL: ${model}`);
+      expect(litellm).toContain(`GROQ_VISION_LITELLM_MODEL: openai/${model}`);
+      expect(backend).toContain(`GROQ_VISION_MODEL: ${model}`);
+    }
   });
 
   it("uses an isolated free-only credential proxy for OpenRouter", () => {
@@ -252,6 +278,17 @@ describe("vendor-managed platform deployment", () => {
     expect(block(tenant, "networks", "platform-shared")).toMatch(/external: true\n\s+name: platform-shared/);
   });
 
+  it("gives each customer the web image of its brand, the default one unless its config names another", () => {
+    expect(block(tenant, "services", "frontend")).toContain("image: ${WEB_IMAGE:-enterprise-ai/web:local}");
+    const brands = readdirSync(resolve(root, "apps/web/config/brands"))
+      .filter((file) => file !== "index.ts")
+      .map((file) => file.replace(/\.ts$/, ""));
+    for (const file of readdirSync(resolve(root, "deploy/tenants")).filter((name) => name.endsWith(".json"))) {
+      const { brand = "default" } = JSON.parse(read(`deploy/tenants/${file}`)) as { brand?: string };
+      expect(brands, file).toContain(brand);
+    }
+  });
+
   it("keeps each customer's chat images in its own storage, which only that customer's backend reaches", () => {
     const storage = block(tenant, "services", "seaweedfs")!;
     // Its filer and volume ports have no authentication, so it publishes no port and joins no other network.
@@ -301,11 +338,23 @@ describe("vendor-managed platform deployment", () => {
       "google-gemini",
       "gemini-embedding",
       "groq-llama",
+      "groq-vision",
       "openrouter-free",
     ]);
     for (const route of routes) expect(route).toMatch(/input_cost_per_token: 0\.\d+[1-9]/);
     expect(config).not.toMatch(/api_key: os\.environ/);
     expect(config).toContain("master_key: os.environ/LITELLM_MASTER_KEY");
+  });
+
+  it("routes Groq's vision model through the platform's Groq proxy, as in a standalone deployment", () => {
+    const model = "${GROQ_VISION_MODEL:-qwen/qwen3.8-27b}";
+    expect(read("deploy/platform/litellm.yaml")).toMatch(
+      /model_name: groq-vision\s+litellm_params:\s+model: os\.environ\/GROQ_VISION_LITELLM_MODEL\s+api_base: os\.environ\/GROQ_PROXY_URL\s+api_key: local-groq-proxy/,
+    );
+    expect(block(platform, "services", "groq-proxy")).toContain(`GROQ_VISION_MODEL: ${model}`);
+    expect(block(platform, "services", "litellm")).toContain(`GROQ_VISION_LITELLM_MODEL: openai/${model}`);
+    // Customer keys list it only where the platform runs Groq's proxy, like groq-llama.
+    expect(read("scripts/platform/lib.mjs")).toContain("GROQ_API_KEY: { profile: 'groq', models: ['groq-llama', 'groq-vision'] }");
   });
 
   it("keeps platform and customer secrets out of Git", () => {

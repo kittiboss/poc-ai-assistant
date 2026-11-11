@@ -8,6 +8,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import {
   gateway,
+  imageExists,
   keycloakAdmin,
   keycloakUrl,
   providerModels,
@@ -18,6 +19,7 @@ import {
   tenantCompose,
   tenantsDir,
   waitHealthy,
+  webImage,
   writeEnvFile,
   vendor,
 } from "./lib.mjs";
@@ -216,6 +218,12 @@ async function create(tenant) {
     writeFileSync(settingsFile(tenant), `${JSON.stringify(config, null, 2)}\n`);
   }
   const config = settings(tenant);
+  // Checked before anything is provisioned: the brand's web image comes from platform:build.
+  const image = webImage(config.brand);
+  if (!imageExists(image))
+    throw new Error(
+      `${image} is missing: stop the platform and run npm run platform:build, which builds every brand in deploy/tenants`,
+    );
   const platformEnv = readPlatformEnv();
   const existing = readEnvFile(envFile(tenant));
   const accounts = realmAccounts(config);
@@ -292,8 +300,8 @@ async function create(tenant) {
     },
     "Tenant provisioning secrets. Never commit.",
   );
-  // The customer's staff list stays out of vendor-control.
-  const { users: _staff, ...vendorConfig } = config;
+  // The customer's staff list and brand stay out of vendor-control.
+  const { users: _staff, brand: _brand, ...vendorConfig } = config;
   await vendor("/admin/register", {
     method: "POST",
     body: { config: { ...vendorConfig, models }, key, openingCredit },
@@ -338,6 +346,7 @@ async function create(tenant) {
       KEYCLOAK_REALM: realmName(tenant),
       WEB_PUBLIC_URL: web,
       API_PUBLIC_URL: api,
+      WEB_IMAGE: image,
       WEB_PORT: config.webPort,
       API_PORT: config.apiPort,
       EXTERNAL_DAILY_REQUEST_LIMIT: config.dailyExternalLimits.requests,

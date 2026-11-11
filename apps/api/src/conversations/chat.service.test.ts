@@ -195,10 +195,12 @@ describe('chat streaming lifecycle', () => {
         await refused({ vision: false }, 'ATTACHMENT_NEEDS_VISION');
         await refused(undefined, 'ATTACHMENT_NEEDS_VISION');
         await refused({ vision: true, maxImages: 1 }, 'ATTACHMENT_LIMIT');
-        gateway.routes.mockResolvedValueOnce(new Map([['local-mock', { vision: true, maxImages: 2 }]]));
-        const { chat, response, sent } = setup(two, { model: seeing, images: dataOf('i1', 'i2') });
+        // Each image counts what the platform reserves for it, so both check the same figure.
+        gateway.routes.mockResolvedValueOnce(new Map([['local-mock', { vision: true, maxImages: 2, imageTokens: 1500 }]]));
+        const { chat, governance, response, sent } = setup(two, { model: seeing, images: dataOf('i1', 'i2') });
         await send(chat, response);
         expect(sent().user).toEqual(expect.arrayContaining([{ type: 'image_url', image_url: { url: 'data:image/webp;base64,i2' } }]));
+        expect(governance.reserve.mock.calls[0][0]).toMatchObject({ imageTokens: 3000 });
       });
 
       it('sends images as parts of their turn, and counts each as 1,120 tokens rather than its base64', async () => {
@@ -232,6 +234,34 @@ describe('chat streaming lifecycle', () => {
         expect(reserved.input).not.toContain('base64');
         expect(usage.record).toHaveBeenCalledWith(expect.objectContaining({ imageTokens: 2240 }));
         expect(prisma.message.create.mock.calls[0][0].data).toMatchObject({ content: 'Compare them', metadata: { attachments: [photo('i2')] } });
+      });
+
+      it("counts each image by the chosen model's figures, and holds a chat to that model's images", async () => {
+        // Provider checks are covered elsewhere; here only the model's id decides its figures.
+        const groq = { ...seeing, id: 'groq-vision' };
+        const two = { files: [{ ...photo('i1'), content: '' }, { ...photo('i2'), content: '' }], added: [photo('i2')] };
+        const { chat, governance, usage, response } = setup(two, { model: groq, images: dataOf('i1', 'i2') });
+        await chat.stream(admin, 'conversation-1', { content: 'Compare them', modelId: 'groq-vision', attachmentIds: ['i2'] }, response as never);
+        expect(governance.reserve.mock.calls[0][0]).toMatchObject({ imageTokens: 4096 });
+        expect(usage.record).toHaveBeenCalledWith(expect.objectContaining({ imageTokens: 4096 }));
+        // A third image is more than Groq's model takes, before anything is saved.
+        const three = { files: ['i1', 'i2', 'i3'].map((id) => ({ ...photo(id), content: '' })), added: [photo('i3')] };
+        const over = setup(three, { model: groq, images: dataOf('i1', 'i2', 'i3') });
+        const error = await over.chat.stream(admin, 'conversation-1', { content: 'And this?', modelId: 'groq-vision', attachmentIds: ['i3'] }, over.response as never).catch((cause) => cause);
+        expect(error.getResponse()).toMatchObject({ statusCode: 400, code: 'ATTACHMENT_LIMIT', message: expect.stringContaining('the chosen model takes at most 2') });
+        expect(over.prisma.message.create).not.toHaveBeenCalled();
+        expect(over.governance.reserve).not.toHaveBeenCalled();
+        // The same chat goes on with a model that takes more, counted by that model's figure.
+        const openRouter = setup(three, { model: { ...seeing, id: 'openrouter-free' }, images: dataOf('i1', 'i2', 'i3') });
+        await openRouter.chat.stream(admin, 'conversation-1', { content: 'And this?', modelId: 'openrouter-free', attachmentIds: ['i3'] }, openRouter.response as never);
+        expect(openRouter.governance.reserve.mock.calls[0][0]).toMatchObject({ imageTokens: 6144 });
+      });
+
+      it('sends no images to a vision model that has no figures', async () => {
+        const { prisma, chat, response } = setup({ files: [{ ...photo('i1'), content: '' }], added: [] }, { model: { ...seeing, id: 'some-new-model' } });
+        const error = await chat.stream(admin, 'conversation-1', { content: 'What is this?', modelId: 'some-new-model' }, response as never).catch((cause) => cause);
+        expect(error.getResponse()).toMatchObject({ statusCode: 400, code: 'ATTACHMENT_NEEDS_VISION' });
+        expect(prisma.message.create).not.toHaveBeenCalled();
       });
 
       it("counts the images' tokens against the model's context window", async () => {

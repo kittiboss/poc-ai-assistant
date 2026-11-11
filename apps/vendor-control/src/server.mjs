@@ -4,7 +4,12 @@ import { timingSafeEqual } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { Fault, Store, defaultConfig, validId } from "./store.mjs";
 import { validateRequest } from "./money.mjs";
-import { effectiveImages, imagesAllowed } from "./images.mjs";
+import {
+  VISION_MODELS,
+  effectiveImages,
+  imageLimit,
+  imagesAllowed,
+} from "./images.mjs";
 import { staffVerifierFromEnv } from "./staff.mjs";
 
 const CHAT_PATH = "/v1/chat/completions";
@@ -86,7 +91,7 @@ export function createApp(
         .json({ error: { message: "Cross-origin mutation denied" } });
     next();
   });
-  // Chat completions carry their chat's images in base64, up to gemini-proxy's 8 MB; that body is
+  // Chat completions carry their chat's images in base64, up to the credential proxies' 8 MB; that body is
   // parsed only after the tenant is authenticated. Every other route keeps the small limit.
   const smallJson = express.json({ limit: "512kb" });
   app.use((req, res, next) =>
@@ -261,7 +266,8 @@ export function createApp(
     req.tenant = await store.authenticate(bearer(req));
     next();
   });
-  // A model this tenant may send images to carries `vision` and the images a request may hold.
+  // A model this tenant may send images to carries `vision`, the images a request may hold (the lower
+  // of the tenant's limit and the model's) and the tokens reserved per image.
   app.get("/v1/models", (req, res) => {
     const images = effectiveImages(req.tenant.images, req.tenant.config);
     res.json({
@@ -269,7 +275,11 @@ export function createApp(
         id,
         object: "model",
         ...(images.models.includes(id)
-          ? { capabilities: ["vision"], max_images: images.maxImages }
+          ? {
+              capabilities: ["vision"],
+              max_images: imageLimit(images, id),
+              image_tokens: VISION_MODELS.get(id).imageTokens,
+            }
           : {}),
       })),
     });

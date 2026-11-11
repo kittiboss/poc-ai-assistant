@@ -2,6 +2,7 @@
   "$comment": "One test customer on the vendor platform. Limits are this customer's third of the shared free-tier account: replace them with a third of your account's real limits (provider console).",
   "id": "b",
   "name": "Customer B",
+  "brand": "acme",
   "webPort": 3200,
   "apiPort": 3201,
   "initialCreditUsd": 2,

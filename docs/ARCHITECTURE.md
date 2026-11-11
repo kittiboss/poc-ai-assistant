@@ -41,10 +41,10 @@ customer web ─► customer API ──┬─► Keycloak (realm tenant-<id>)  �
 - **No provider credential in a customer deployment.** Its API runs with `MODEL_ACCESS=vendor-gateway`, `LITELLM_URL=http://vendor-control:4050`, and its own virtual key. One LiteLLM team per customer carries model entitlements; the key enforces its model RPM/TPM share. Raw keys are hashed in the vendor registry. Tenant networks cannot bypass the ledger to call LiteLLM/proxies.
 - **Simulated credit.** `apps/vendor-control` owns an append-only PostgreSQL ledger and immutable sale-price versions. Transactional per-tenant reservations prevent concurrent overspend; chat and embeddings settle token usage under the admitted price version. `X-Request-Id` correlates both ledgers. Budget checks are synchronous here, so upstream LiteLLM `max_budget` is unset and its delayed spend is diagnostic only. The customer `/billing` page shows sale prices, balance, test top-ups and SIM receipts; vendor cost and margin stay in the authenticated localhost vendor console. No money is collected. Unknown/interrupted usage is explicitly estimated; stale reservations require operator reconciliation. See [the complete phase 1–2 guide](VENDOR_MANAGED_POC.md).
 - **Central knowledge base.** `apps/rag-engine` stores, chunks and searches every customer's documents in one pgvector database, `rag-db`. Isolation is enforced twice: every query filters by tenant, and PostgreSQL row-level security binds the engine's role (`rag_app`, never a superuser) to the tenant set for each transaction. The tenant comes only from the credential, which the engine resolves through vendor-control's `GET /customer/rag`. That response also carries the vendor's per-customer limits (`vendor.tenants.rag`, edited in the console): embedding models, file types, documents, text, passages and top-K. Customer admins tune their settings within those limits on the `/knowledge` page (embedding model, top-K, minimum score, chunking). A chunking or model change builds a new index version, and search switches to it when it is complete. Files are parsed in the customer's own deployment, so the engine never opens untrusted files. Embedding also happens there, through the same metered path as chat. The engine therefore holds no customer credential, and credit, quotas, the kill switch and usage history all apply to indexing. The customer API's indexer pauses documents with a reason (credit, policy, daily limit, rate limit) and resumes them when the cause clears. See [the central knowledge base guide](VENDOR_MANAGED_POC.md#central-knowledge-base-rag-engine).
-- **Chat images.** Each customer deployment keeps its images in its own SeaweedFS, on a network that only its API joins. vendor-control accepts image parts only for the models in that customer's image limits (`vendor.tenants.images`, edited in the console). It reserves 1,120 input tokens per image at admission, settles on the provider's count and stores no content. See [chat images](VENDOR_MANAGED_POC.md#chat-images).
+- **Chat images.** Each customer deployment keeps its images in its own SeaweedFS, on a network that only its API joins. vendor-control accepts image parts only for the models in that customer's image limits (`vendor.tenants.images`, edited in the console). It reserves each model's input tokens per image at admission (1,120 for Gemini, 2,048 for Groq and OpenRouter), settles on the provider's count and stores no content. See [chat images](VENDOR_MANAGED_POC.md#chat-images).
 - **Daily share.** LiteLLM has no per-day request limit, so each customer's API keeps enforcing its own `EXTERNAL_DAILY_*` limits, set to its share of the account.
 - **Networks.** Customer APIs reach the platform through `platform-shared`, which contains Keycloak, vendor-control and the RAG engine. `rag-db` sits on a private `rag` network that only the engine joins. LiteLLM, its database, mock and credential proxies sit on the private gateway network. Only proxies have provider egress. Vendor/LiteLLM admin interfaces are published on 127.0.0.1 for the vendor host.
-- **Web at runtime.** The root layout hands the browser this deployment's API URL and Keycloak realm (`apps/web/lib/runtime-config.ts`, from `APP_*` variables), so every customer runs the same web image; the brand is still chosen at build time.
+- **Web at runtime.** The root layout hands the browser this deployment's API URL and Keycloak realm (`apps/web/lib/runtime-config.ts`, from `APP_*` variables), so every customer of a brand runs the same web image. The brand is still compiled in, so `platform:build` builds one web image per brand the customer configs name (`"brand"` in `deploy/tenants/<id>.json`).
 
 ## Authentication and authorization
 
@@ -105,15 +105,20 @@ NestJS ──► LiteLLM (internal network only) ──► gemini-proxy ──�
                                          └──► groq-proxy ──► api.groq.com
                                                holds the key, replaces the dummy authorization header
                                                fails closed until Free tier is explicitly confirmed
-                                               allows only chat completions for GROQ_MODEL
+                                               allows only chat completions for GROQ_MODEL and
+                                               GROQ_VISION_MODEL, at most 8 MB a request
+                                               images only for GROQ_VISION_MODEL, at most 3, reasoning off
                                                rejects tools / functions / other endpoint families
                                                clamps output tokens, forces one response
 
                                          └──► openrouter-proxy ──► openrouter.ai
-                                               holds the key, allows only openrouter/free
+                                               holds the key, allows only openrouter/free, at most 8 MB
                                                rejects paid model/fallback/provider overrides
                                                rejects tools / plugins / web search / other endpoints
                                                clamps output tokens, forces one response
+
+groq-proxy and openrouter-proxy accept message parts only as text and as images
+that are base64 data URLs of JPEG / PNG / WebP in user messages (no remote URLs or files)
 ```
 
 The API also enforces an installation-wide daily request and token ceiling across all external providers, computed from usage records, before a request is persisted or streamed. Model availability checks read LiteLLM's configured routes and Ollama's local tag list; they never call a provider. When the gateway gives no answer (unreachable, slower than 1.5 seconds, not ready, a server error), its last answer stands in for up to 60 seconds after it came, so one slow moment does not mark every model unavailable or refuse a chat's images; an answer, a refusal included, is used at once. While no model can be used and one of them is only unavailable, the web checks the list again after 5, 10, 20 and 40 seconds and then every minute, in a visible tab only.

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 
 const keycloak = process.env.KEYCLOAK_URL || "http://localhost:8080";
 const realm = process.env.KEYCLOAK_REALM || "enterprise-ai";
@@ -9,6 +10,13 @@ const redirectUri = process.env.OIDC_REDIRECT_URI || "http://localhost:3000";
 const openRouterKey = process.env.OPENROUTER_API_KEY;
 const openRouterModel = process.env.OPENROUTER_MODEL || "openrouter/free";
 const keepEnabled = process.env.OPENROUTER_KEEP_ENABLED === "true";
+// An administrator of the deployment under test: a vendor-managed customer's is tenant-admin.
+const adminUsername = process.env.ADMIN_USERNAME || "admin";
+// --image sends the sample receipt (docs/demo/receipt.png) instead of text; the router then picks a
+// free model that takes images.
+const imageMode = process.argv.includes("--image");
+// The sample receipt's total ("670.00 บาท"): reading it shows the image reached the model.
+const receiptTotal = /\b670(\.00)?\b/;
 
 assert(
   openRouterKey,
@@ -128,6 +136,33 @@ function request(path, token, init = {}) {
   });
 }
 
+/** Uploads the sample receipt as the browser would, and returns the attachment's id. */
+async function uploadReceipt(token) {
+  const form = new FormData();
+  const receipt = readFileSync(
+    new URL("../docs/demo/receipt.png", import.meta.url),
+  );
+  form.append(
+    "file",
+    new Blob([receipt], { type: "image/png" }),
+    "receipt.png",
+  );
+  const response = await fetch(`${api}/attachments`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+    signal: AbortSignal.timeout(30_000),
+  });
+  // Read the body once: the assertion message is built whether or not it fails.
+  const text = await response.text();
+  assert.equal(
+    response.status,
+    201,
+    `Could not upload the sample receipt (${response.status}): ${text}`,
+  );
+  return JSON.parse(text).id;
+}
+
 async function providerError(response) {
   try {
     const payload = await response.json();
@@ -171,9 +206,20 @@ assert.equal(
   0,
   "Per-request price is not zero",
 );
+if (imageMode) {
+  assert(
+    providerModel.architecture?.input_modalities?.includes("image"),
+    `${openRouterModel} no longer lists image input`,
+  );
+  assert.equal(
+    Number(providerModel.pricing?.image || 0),
+    0,
+    "Image price is not zero",
+  );
+}
 
 const adminToken = await login(
-  "admin",
+  adminUsername,
   process.env.ADMIN_DEMO_PASSWORD || "Admin123!",
 );
 const adminModelsResponse = await request("/admin/models", adminToken);
@@ -188,6 +234,7 @@ const original = (await adminModelsResponse.json()).find(
 assert(original, "openrouter-free is missing from the model registry");
 
 let registryChanged = false;
+let conversation;
 try {
   if (!original.enabled) {
     const enableResponse = await request(
@@ -220,25 +267,39 @@ try {
 
   const createResponse = await request("/conversations", adminToken, {
     method: "POST",
-    body: JSON.stringify({ title: "OpenRouter connectivity smoke test" }),
+    body: JSON.stringify({
+      title: imageMode
+        ? "OpenRouter image smoke test"
+        : "OpenRouter connectivity smoke test",
+    }),
   });
   assert.equal(
     createResponse.status,
     201,
     "Could not create the smoke-test conversation",
   );
-  const conversation = await createResponse.json();
+  conversation = await createResponse.json();
   const requestId = randomUUID();
   const streamResponse = await request(
     `/conversations/${conversation.id}/messages`,
     adminToken,
     {
       method: "POST",
-      body: JSON.stringify({
-        content: "Reply with exactly: OPENROUTER_OK",
-        modelId: "openrouter-free",
-        requestId,
-      }),
+      body: JSON.stringify(
+        imageMode
+          ? {
+              content:
+                "What is the total amount on this receipt? Reply with the amount only.",
+              modelId: "openrouter-free",
+              requestId,
+              attachmentIds: [await uploadReceipt(adminToken)],
+            }
+          : {
+              content: "Reply with exactly: OPENROUTER_OK",
+              modelId: "openrouter-free",
+              requestId,
+            },
+      ),
       signal: AbortSignal.timeout(120_000),
     },
   );
@@ -276,13 +337,25 @@ try {
   assert(record, "OpenRouter usage record was not persisted");
   assert.equal(record.provider, "OPENROUTER");
   assert.equal(record.usageKind, "ACTUAL");
+  // The router picks a different free model each time, so a misread may also mean a weaker pick.
+  if (imageMode)
+    assert(
+      receiptTotal.test(output.replaceAll(",", "")),
+      `The model OpenRouter picked did not read the sample receipt's total (670.00): ${output}`,
+    );
 
   console.log(
     JSON.stringify(
       {
         credential: "accepted",
         model: openRouterModel,
-        verifiedPricing: { prompt: 0, completion: 0, request: 0 },
+        verifiedPricing: {
+          prompt: 0,
+          completion: 0,
+          request: 0,
+          ...(imageMode && { image: 0 }),
+        },
+        ...(imageMode && { input: "docs/demo/receipt.png" }),
         gatewayRoute: "openrouter-free",
         response: output,
         usage: {
@@ -298,6 +371,11 @@ try {
     ),
   );
 } finally {
+  // A soft delete, as in the web, also when a check failed; the receipt is sample data.
+  if (imageMode && conversation)
+    await request(`/conversations/${conversation.id}`, adminToken, {
+      method: "DELETE",
+    });
   if (registryChanged && !keepEnabled) {
     const restoreResponse = await request(
       "/admin/models/openrouter-free",

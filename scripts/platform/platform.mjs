@@ -11,7 +11,9 @@ import {
   root,
   run,
   secret,
+  tenantBrands,
   waitHealthy,
+  webImage,
   writeEnvFile,
 } from './lib.mjs';
 import { syncVendorRealm } from './vendor-realm.mjs';
@@ -19,7 +21,7 @@ import { syncVendorRealm } from './vendor-realm.mjs';
 const [command, ...flags] = process.argv.slice(2);
 
 /** Provider settings the single-installation stack keeps in the root .env; the platform takes them over once. */
-const importedSettings = [...Object.keys(providerModels), 'GROQ_FREE_TIER_CONFIRMED', 'GEMINI_MODEL', 'GEMINI_EMBEDDING_MODEL', 'GROQ_MODEL'];
+const importedSettings = [...Object.keys(providerModels), 'GROQ_FREE_TIER_CONFIRMED', 'GEMINI_MODEL', 'GEMINI_EMBEDDING_MODEL', 'GROQ_MODEL', 'GROQ_VISION_MODEL'];
 
 const laterSecrets = () => ({
   VENDOR_ADMIN_KEY: secret(32),
@@ -70,8 +72,10 @@ if (command === 'build') {
   }
   run('docker', ['build', '-t', 'enterprise-ai/postgres:local', 'infra/postgres']);
   run('docker', ['build', '-t', 'enterprise-ai/api:local', '-f', 'apps/api/Dockerfile', '.']);
-  // One web image for every customer: API and sign-in settings arrive at runtime.
-  run('docker', ['build', '-t', 'enterprise-ai/web:local', '-f', 'apps/web/Dockerfile', '.']);
+  // One web image per brand: API and sign-in settings arrive at runtime, the brand is compiled in.
+  run('docker', ['build', '-t', webImage(), '-f', 'apps/web/Dockerfile', '.']);
+  for (const brand of tenantBrands())
+    run('docker', ['build', '-t', webImage(brand), '--build-arg', `NEXT_PUBLIC_BRAND=${brand}`, '-f', 'apps/web/Dockerfile', '.']);
   platformCompose(['--profile', 'gemini', '--profile', 'groq', '--profile', 'openrouter', 'build'], ensurePlatformEnv());
 } else if (command === 'up') {
   const env = ensurePlatformEnv();

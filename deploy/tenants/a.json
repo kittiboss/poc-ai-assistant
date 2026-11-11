@@ -11,6 +11,7 @@
     "google-gemini",
     "gemini-embedding",
     "groq-llama",
+    "groq-vision",
     "openrouter-free"
   ],
   "modelRateLimits": {
@@ -22,6 +23,10 @@
     "groq-llama": {
       "rpm": 10,
       "tpm": 2000
+    },
+    "groq-vision": {
+      "rpm": 10,
+      "tpm": 2666
     },
     "openrouter-free": {
       "rpm": 6
@@ -48,7 +53,7 @@
   },
   "images": {
     "enabled": true,
-    "models": ["local-mock", "google-gemini"],
+    "models": ["local-mock", "google-gemini", "groq-vision", "openrouter-free"],
     "maxImages": 6
   },
   "users": [

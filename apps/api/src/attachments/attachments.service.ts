@@ -27,12 +27,13 @@ export const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 /** The browser resizes and re-encodes images to fit; small text in a screenshot stays readable. */
 export const MAX_IMAGE_BYTES = 1024 * 1024;
 export const MAX_IMAGE_SIDE = 1_600;
-/** Every turn sends all of a chat's images again, and each costs about 1,120 tokens. */
+/**
+ * Every turn sends all of a chat's images again. The ceiling for every model; each model may take
+ * fewer (VISION_MODELS in models/vision-models.ts).
+ */
 export const MAX_CHAT_IMAGES = 6;
 /** About 5.3 MB in base64, leaving room for text in a request of at most 7.5 MB. */
 export const MAX_CHAT_IMAGE_BYTES = 4 * 1024 * 1024;
-/** Gemini 3's default media resolution counts an image as this many tokens, whatever its file size. */
-export const IMAGE_TOKENS = 1_120;
 const IMAGE_LIMIT =
   "An image may be at most 1 MB and 1,600 px on its longer side";
 /** Image files are kept under this prefix as `attachments/<id>`. */

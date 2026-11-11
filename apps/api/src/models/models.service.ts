@@ -8,18 +8,29 @@ import { GatewayService, gatewayError, type GatewayRoute } from '../gateway/gate
 import { UsageService } from '../usage/usage.service';
 import { UsersService } from '../users/users.service';
 import { credentialFor, externalProviderAllowed, imagesAvailable, isExternalProvider, modelAllowedForUser, vendorGateway } from './model-policies';
+import { VISION_MODELS, type VisionFigures } from './vision-models';
 
 const externalSwitch = () => process.env.ENABLE_EXTERNAL_PROVIDERS === 'true';
 
+/** Whether this deployment may send images to `model` at all: object storage, `vision`, and its figures. */
+const mayReceiveImages = (model: { id: string; capabilities: string[] }) =>
+  imagesAvailable() && model.capabilities.includes('vision') && VISION_MODELS.has(model.id);
+
 /**
- * The images a chat may hold for `model`, or null when it cannot receive them: this deployment needs
- * object storage and the model `vision`; a vendor-managed one also needs `vision` on the gateway's route.
+ * The images a chat may hold for `model` and the tokens counted per image, or null when it cannot
+ * receive them: the model's own figures (VISION_MODELS). A vendor-managed deployment also needs
+ * `vision` on the gateway's route, whose limit may be lower and whose tokens per image are what the
+ * platform reserves.
  */
-function imageLimitOf(model: { id: string; capabilities: string[] }, routes: Map<string, GatewayRoute>) {
-  if (!imagesAvailable() || !model.capabilities.includes('vision')) return null;
-  if (!vendorGateway()) return MAX_CHAT_IMAGES;
+function imageFiguresOf(model: { id: string; capabilities: string[] }, routes: Map<string, GatewayRoute>): VisionFigures | null {
+  if (!mayReceiveImages(model)) return null;
+  const own = VISION_MODELS.get(model.id)!;
+  const maxImages = Math.min(own.maxImages, MAX_CHAT_IMAGES);
+  if (!vendorGateway()) return { maxImages, imageTokens: own.imageTokens };
   const route = routes.get(model.id);
-  return route?.vision ? Math.min(route.maxImages ?? MAX_CHAT_IMAGES, MAX_CHAT_IMAGES) : null;
+  return route?.vision
+    ? { maxImages: Math.min(route.maxImages ?? maxImages, maxImages), imageTokens: route.imageTokens ?? own.imageTokens }
+    : null;
 }
 
 @Injectable()
@@ -50,7 +61,7 @@ export class ModelsService {
       const limited = isExternalProvider(model.provider) && budgetExhausted;
       const available = model.enabled && permitted && configured && !limited && !creditExhausted && reachable(model);
       // The composer offers images only for models that report vision, and no more than maxImages a chat.
-      const maxImages = imageLimitOf(model, routes);
+      const maxImages = imageFiguresOf(model, routes)?.maxImages ?? null;
       return {
         id: model.id, displayName: model.displayName, provider: model.provider, providerModelId: model.providerModelId,
         enabled: model.enabled, permitted, available, local: model.local, contextWindow: model.contextWindow,
@@ -80,13 +91,19 @@ export class ModelsService {
   }
 
   /**
-   * How many images a chat may hold for this model, or null when it cannot receive them here. In a
-   * vendor-managed deployment the platform gateway's image limits for this organization decide.
+   * How many images a chat may hold for this model and how many tokens each counts, or null when it
+   * cannot receive them here. In a vendor-managed deployment the platform gateway's image limits for
+   * this organization decide, and it counts what the platform reserves per image.
    */
-  async imageLimit(model: { id: string; capabilities: string[] }) {
+  async imageFigures(model: { id: string; capabilities: string[] }) {
     // The gateway is asked only when its answer decides.
-    const asks = vendorGateway() && imagesAvailable() && model.capabilities.includes('vision');
-    return imageLimitOf(model, asks ? await this.gateway.routes() : new Map());
+    const asks = vendorGateway() && mayReceiveImages(model);
+    return imageFiguresOf(model, asks ? await this.gateway.routes() : new Map());
+  }
+
+  /** How many images a chat may hold for this model, or null when it cannot receive them here. */
+  async imageLimit(model: { id: string; capabilities: string[] }) {
+    return (await this.imageFigures(model))?.maxImages ?? null;
   }
 
   async adminList() {

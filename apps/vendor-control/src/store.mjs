@@ -20,6 +20,7 @@ export const models = [
   "google-gemini",
   "gemini-embedding",
   "groq-llama",
+  "groq-vision",
   "openrouter-free",
 ];
 /** Run by the platform's own mock provider; every other model calls an external provider. */
@@ -35,6 +36,8 @@ export const defaultConfig = (id, name, webPort = 3100) => ({
     "google-gemini": { rpm: 5, tpm: 80000 },
     "gemini-embedding": { rpm: 5, tpm: 80000 },
     "groq-llama": { rpm: 10, tpm: 2000 },
+    // A third of the 8,000 tokens a minute every tenant shares: about one message with an image.
+    "groq-vision": { rpm: 10, tpm: 2666 },
     "openrouter-free": { rpm: 6 },
   },
   dailyExternalLimits: { requests: 33, tokens: 33333 },
@@ -58,6 +61,7 @@ export class Store {
         ["google-gemini", ".3", "2.5"],
         ["gemini-embedding", ".2", "0"],
         ["groq-llama", ".1", ".5"],
+        ["groq-vision", ".1", ".5"],
         ["openrouter-free", ".1", ".5"],
       ]) {
         if (

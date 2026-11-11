@@ -2,16 +2,29 @@
 // See docs/CHAT_ATTACHMENTS.md (Vendor-managed deployments).
 
 /**
- * The platform's vision models and the input tokens reserved per image: Gemini 3's default media
- * resolution, whatever the file size. mock-provider reports the same. Settlement uses the
- * provider's own count, so this only bounds the reservation.
+ * The platform's vision models: the images a chat may hold, whatever the tenant's limit, and the
+ * input tokens reserved per image, whatever the file size. They follow the providers'
+ * documentation and match the customer API's table (apps/api/src/models/vision-models.ts), which a
+ * test there checks. Settlement uses the provider's own count, so tokens per image only bound the
+ * reservation.
  */
 export const VISION_MODELS = new Map([
-  ["local-mock", 1120],
-  ["google-gemini", 1120],
+  // mock-provider reports 1,120 per image.
+  ["local-mock", { maxImages: 6, imageTokens: 1120 }],
+  // Gemini 3's default media resolution.
+  ["google-gemini", { maxImages: 6, imageTokens: 1120 }],
+  // Groq counts at most 2,048 per image and takes 3 a request; 2 leave room within 8,000 tokens a
+  // minute, which every tenant shares.
+  ["groq-vision", { maxImages: 2, imageTokens: 2048 }],
+  // The free router picks a model per request, and each counts images its own way: an estimate.
+  ["openrouter-free", { maxImages: 4, imageTokens: 2048 }],
 ]);
 /** A request carries every image of its chat, and the customer API allows at most 6 a chat. */
 export const MAX_IMAGES = 6;
+
+/** The input tokens reserved for `images` images sent to `model`; 0 for a model that takes none. */
+export const imageTokensFor = (model, images) =>
+  images * (VISION_MODELS.get(model)?.imageTokens ?? 0);
 
 const SIGNATURES = {
   "image/jpeg": (head) =>
@@ -99,8 +112,12 @@ export const effectiveImages = (images, config) => {
   };
 };
 
+/** The images a chat may hold for `model`: the lower of the tenant's limit and the model's own. */
+export const imageLimit = (limits, model) =>
+  Math.min(limits.maxImages, VISION_MODELS.get(model)?.maxImages ?? 0);
+
 /** Whether `tenant` may send `images` images to `model` in one request. */
 export const imagesAllowed = (tenant, model, images) => {
   const limits = effectiveImages(tenant.images, tenant.config);
-  return limits.models.includes(model) && images <= limits.maxImages;
+  return limits.models.includes(model) && images <= imageLimit(limits, model);
 };

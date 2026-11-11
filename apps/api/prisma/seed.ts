@@ -73,6 +73,19 @@ const modelSeeds = [
     capabilities: ["chat", "streaming"],
     local: false,
   },
+  // Groq's only vision model is a Preview, so it has an entry of its own and text chats stay on groq-llama.
+  // Its images per chat and tokens per image are in src/models/vision-models.ts.
+  {
+    id: "groq-vision",
+    displayName: "Qwen3.8 27B (Groq)",
+    provider: Provider.GROQ,
+    providerModelId: process.env.GROQ_VISION_MODEL || "qwen/qwen3.8-27b",
+    enabled: false,
+    allowedRoles: ["ADMIN"],
+    contextWindow: 131072,
+    capabilities: ["chat", "streaming", "vision"],
+    local: false,
+  },
   {
     id: "openrouter-free",
     displayName: "OpenRouter Free Models",
@@ -81,7 +94,8 @@ const modelSeeds = [
     enabled: false,
     allowedRoles: ["ADMIN"],
     contextWindow: 200000,
-    capabilities: ["chat", "streaming"],
+    // For a request with images, the router picks one of the free models that take them.
+    capabilities: ["chat", "streaming", "vision"],
     local: false,
   },
   // Embedding-only models power product-catalog retrieval and never appear as chat choices.

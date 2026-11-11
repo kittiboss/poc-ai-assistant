@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 
 const keycloak = process.env.KEYCLOAK_URL || "http://localhost:8080";
 const realm = process.env.KEYCLOAK_REALM || "enterprise-ai";
@@ -9,6 +10,16 @@ const redirectUri = process.env.OIDC_REDIRECT_URI || "http://localhost:3000";
 const groqKey = process.env.GROQ_API_KEY;
 const groqModel = process.env.GROQ_MODEL || "openai/gpt-oss-20b";
 const keepEnabled = process.env.GROQ_KEEP_ENABLED === "true";
+// An administrator of the deployment under test: a vendor-managed customer's is tenant-admin.
+const adminUsername = process.env.ADMIN_USERNAME || "admin";
+// --image sends the sample receipt (docs/demo/receipt.png) to groq-vision instead of text to groq-llama.
+const imageMode = process.argv.includes("--image");
+const routeId = imageMode ? "groq-vision" : "groq-llama";
+const providerModelId = imageMode
+  ? process.env.GROQ_VISION_MODEL || "qwen/qwen3.8-27b"
+  : groqModel;
+// The sample receipt's total ("670.00 บาท"): reading it shows the image reached the model.
+const receiptTotal = /\b670(\.00)?\b/;
 
 assert(groqKey, "GROQ_API_KEY is missing from the ignored .env file");
 assert.equal(
@@ -125,6 +136,33 @@ function request(path, token, init = {}) {
   });
 }
 
+/** Uploads the sample receipt as the browser would, and returns the attachment's id. */
+async function uploadReceipt(token) {
+  const form = new FormData();
+  const receipt = readFileSync(
+    new URL("../docs/demo/receipt.png", import.meta.url),
+  );
+  form.append(
+    "file",
+    new Blob([receipt], { type: "image/png" }),
+    "receipt.png",
+  );
+  const response = await fetch(`${api}/attachments`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+    signal: AbortSignal.timeout(30_000),
+  });
+  // Read the body once: the assertion message is built whether or not it fails.
+  const text = await response.text();
+  assert.equal(
+    response.status,
+    201,
+    `Could not upload the sample receipt (${response.status}): ${text}`,
+  );
+  return JSON.parse(text).id;
+}
+
 async function providerError(response) {
   try {
     const payload = await response.json();
@@ -150,13 +188,13 @@ if (!providerModelsResponse.ok) {
 const providerModels = await providerModelsResponse.json();
 assert(
   providerModels.data?.some(
-    (item) => item.id === groqModel && item.active !== false,
+    (item) => item.id === providerModelId && item.active !== false,
   ),
-  `Groq did not list active model ${groqModel}`,
+  `Groq did not list active model ${providerModelId}`,
 );
 
 const adminToken = await login(
-  "admin",
+  adminUsername,
   process.env.ADMIN_DEMO_PASSWORD || "Admin123!",
 );
 const adminModelsResponse = await request("/admin/models", adminToken);
@@ -166,15 +204,16 @@ assert.equal(
   "Could not read the model registry",
 );
 const original = (await adminModelsResponse.json()).find(
-  (model) => model.id === "groq-llama",
+  (model) => model.id === routeId,
 );
-assert(original, "groq-llama is missing from the model registry");
+assert(original, `${routeId} is missing from the model registry`);
 
 let registryChanged = false;
+let conversation;
 try {
   if (!original.enabled) {
     const enableResponse = await request(
-      "/admin/models/groq-llama",
+      `/admin/models/${routeId}`,
       adminToken,
       {
         method: "PATCH",
@@ -193,9 +232,7 @@ try {
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const response = await request("/models", adminToken);
     assert.equal(response.status, 200, "Could not read available models");
-    selected = (await response.json()).find(
-      (model) => model.id === "groq-llama",
-    );
+    selected = (await response.json()).find((model) => model.id === routeId);
     if (selected?.available) break;
     await new Promise((resolve) => setTimeout(resolve, 1_000));
   }
@@ -206,25 +243,39 @@ try {
 
   const createResponse = await request("/conversations", adminToken, {
     method: "POST",
-    body: JSON.stringify({ title: "Groq connectivity smoke test" }),
+    body: JSON.stringify({
+      title: imageMode
+        ? "Groq image smoke test"
+        : "Groq connectivity smoke test",
+    }),
   });
   assert.equal(
     createResponse.status,
     201,
     "Could not create the smoke-test conversation",
   );
-  const conversation = await createResponse.json();
+  conversation = await createResponse.json();
   const requestId = randomUUID();
   const streamResponse = await request(
     `/conversations/${conversation.id}/messages`,
     adminToken,
     {
       method: "POST",
-      body: JSON.stringify({
-        content: "Reply with exactly: GROQ_OK",
-        modelId: "groq-llama",
-        requestId,
-      }),
+      body: JSON.stringify(
+        imageMode
+          ? {
+              content:
+                "What is the total amount on this receipt? Reply with the amount only.",
+              modelId: routeId,
+              requestId,
+              attachmentIds: [await uploadReceipt(adminToken)],
+            }
+          : {
+              content: "Reply with exactly: GROQ_OK",
+              modelId: routeId,
+              requestId,
+            },
+      ),
       signal: AbortSignal.timeout(120_000),
     },
   );
@@ -262,13 +313,18 @@ try {
   assert(record, "Groq usage record was not persisted");
   assert.equal(record.provider, "GROQ");
   assert.equal(record.usageKind, "ACTUAL");
+  if (imageMode)
+    assert(
+      receiptTotal.test(output.replaceAll(",", "")),
+      `Groq did not read the sample receipt's total (670.00): ${output}`,
+    );
 
   console.log(
     JSON.stringify(
       {
         credential: "accepted",
-        model: groqModel,
-        gatewayRoute: "groq-llama",
+        model: providerModelId,
+        gatewayRoute: routeId,
         response: output,
         usage: {
           kind: record.usageKind,
@@ -283,9 +339,14 @@ try {
     ),
   );
 } finally {
+  // A soft delete, as in the web, also when a check failed; the receipt is sample data.
+  if (imageMode && conversation)
+    await request(`/conversations/${conversation.id}`, adminToken, {
+      method: "DELETE",
+    });
   if (registryChanged && !keepEnabled) {
     const restoreResponse = await request(
-      "/admin/models/groq-llama",
+      `/admin/models/${routeId}`,
       adminToken,
       {
         method: "PATCH",
@@ -294,7 +355,7 @@ try {
     );
     if (!restoreResponse.ok)
       process.stderr.write(
-        "Warning: could not restore Groq to disabled; disable it in Admin.\n",
+        `Warning: could not restore ${routeId} to disabled; disable it in Admin.\n`,
       );
   }
 }
