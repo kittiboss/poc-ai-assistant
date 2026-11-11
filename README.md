@@ -306,6 +306,8 @@ OPENROUTER_KEEP_ENABLED=true npm run test:openrouter
 node --env-file=.env scripts/openrouter-smoke.mjs --image
 ```
 
+Both smoke tests sign in as `admin`; `ADMIN_USERNAME` and `ADMIN_DEMO_PASSWORD` choose another administrator, such as a vendor-managed customer's `tenant-admin` (see [Verify](docs/VENDOR_MANAGED_POC.md#verify)).
+
 Return to the default mock-only stack at any time:
 
 ```bash

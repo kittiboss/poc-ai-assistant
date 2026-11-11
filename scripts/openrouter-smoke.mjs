@@ -10,6 +10,8 @@ const redirectUri = process.env.OIDC_REDIRECT_URI || "http://localhost:3000";
 const openRouterKey = process.env.OPENROUTER_API_KEY;
 const openRouterModel = process.env.OPENROUTER_MODEL || "openrouter/free";
 const keepEnabled = process.env.OPENROUTER_KEEP_ENABLED === "true";
+// An administrator of the deployment under test: a vendor-managed customer's is tenant-admin.
+const adminUsername = process.env.ADMIN_USERNAME || "admin";
 // --image sends the sample receipt (docs/demo/receipt.png) instead of text; the router then picks a
 // free model that takes images.
 const imageMode = process.argv.includes("--image");
@@ -217,7 +219,7 @@ if (imageMode) {
 }
 
 const adminToken = await login(
-  "admin",
+  adminUsername,
   process.env.ADMIN_DEMO_PASSWORD || "Admin123!",
 );
 const adminModelsResponse = await request("/admin/models", adminToken);

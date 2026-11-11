@@ -10,6 +10,8 @@ const redirectUri = process.env.OIDC_REDIRECT_URI || "http://localhost:3000";
 const groqKey = process.env.GROQ_API_KEY;
 const groqModel = process.env.GROQ_MODEL || "openai/gpt-oss-20b";
 const keepEnabled = process.env.GROQ_KEEP_ENABLED === "true";
+// An administrator of the deployment under test: a vendor-managed customer's is tenant-admin.
+const adminUsername = process.env.ADMIN_USERNAME || "admin";
 // --image sends the sample receipt (docs/demo/receipt.png) to groq-vision instead of text to groq-llama.
 const imageMode = process.argv.includes("--image");
 const routeId = imageMode ? "groq-vision" : "groq-llama";
@@ -192,7 +194,7 @@ assert(
 );
 
 const adminToken = await login(
-  "admin",
+  adminUsername,
   process.env.ADMIN_DEMO_PASSWORD || "Admin123!",
 );
 const adminModelsResponse = await request("/admin/models", adminToken);
