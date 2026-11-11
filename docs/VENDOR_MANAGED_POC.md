@@ -171,6 +171,7 @@ npm run lint -w @enterprise/web
   - the ledger counts at least 1,120 input tokens for the request.
 
   It then turns images off for that customer through the console API, checks that the next image request is refused without a charge, restores the limits and deletes its chat. The delete is a soft delete, so the image file stays, as in the app. In PowerShell, which drops the `--`, run `node scripts/platform/tenant-smoke.mjs a --images` instead.
+- To send the sample receipt to Groq or OpenRouter through a customer, run `scripts/groq-smoke.mjs --image` or `scripts/openrouter-smoke.mjs --image` with that customer's addresses and administrator: `KEYCLOAK_URL=http://localhost:8180`, `KEYCLOAK_REALM=tenant-<id>`, `API_URL=http://localhost:<apiPort>/api`, `OIDC_REDIRECT_URI=http://localhost:<webPort>`, `ADMIN_USERNAME=tenant-admin` and `ADMIN_DEMO_PASSWORD` set to `TENANT_ADMIN_PASSWORD` from `deploy/tenants/<id>.env`, plus the provider settings from `deploy/platform/.env`. It calls the provider, so get approval first. It enables the model in the customer's registry for the test only, then puts it back.
 
 ## Production exclusions
 
@@ -195,12 +196,13 @@ Chat images verification, on 2026-11-04, used mock models only:
   - That cost $0.000633 and $0.000480 of test credit, at the default sale price; the free tier charged nothing.
   - The demo chat was deleted afterwards.
 
-Groq and OpenRouter images verification, on 2026-11-11, used mock models only:
+Groq and OpenRouter images verification, on 2026-11-11, used mock models, then one approved request each to Groq and OpenRouter:
 - 17 vendor unit tests and all 23 vendor integration tests passed, the latter against a throwaway Postgres. They include a customer allowed 3 images a chat: `/v1/models` offered `groq-vision` 2 and `openrouter-free` 3, 3 images to `groq-vision` were refused before any reservation, and 2 reserved 2,048 tokens each.
 - The API's 218 tests, which compare the vision models' figures in the API, vendor-control and the vendor console, and the console's 34 browser tests passed.
 - After `platform:build`, re-running `tenant:create -- a` added `groq-vision` to customer A's plan, and the first `tenant:create -- b` started customer B with the ACME brand. Customer A's image limits were then changed through the console API to all four models.
 - vendor-control offered customer A `groq-vision` (2 images, 2,048 tokens each) and `openrouter-free` (4, 2,048), and customer B neither. Customer A's API reported the same `maxImages`. Too many images for `local-mock` or `groq-vision`, and an image for customer B's `groq-vision`, were refused with `403`; the credential proxies received no request.
 - `tenant:smoke` passed for customers A and B, and with `--images` for customer A, which then had its four image models back.
 - In Edge, customer A's web showed the default brand in English, with _Qwen3.8 27B (Groq)_ and _OpenRouter Free Models_ tagged _Reads images_; customer B's showed ACME Assistant in Thai, with neither tagged. The console showed customer A's image limits with what Groq and OpenRouter take.
+- With approval, the Groq and OpenRouter smoke tests (`--image`) sent the sample receipt [`docs/demo/receipt.png`](demo/receipt.png) once each through customer A, as its `tenant-admin`. Both answered its total, 670.00. Groq counted 2,027 input and 7 output tokens, and OpenRouter's pick 1,494 and 864 (mostly reasoning). Each request reserved 3,706 input tokens, 2,048 of them for the image, and settled on the provider's count: $0.000206 and $0.000581 of test credit at the placeholder price, while both providers charged nothing. Each credential proxy received exactly one request, and the smoke tests put customer A's model registry back and deleted their chats.
 
 No real payment processing, invoices/tax, refunds, provider invoice reconciliation, cloud deployment, MFA/federated vendor administration, guaranteed uptime/SLA, cross-host HA or automated backups are provided. The vendor realm's password sign-in with a single staff role, and localhost HTTP, are for this local POC only. Use TLS, MFA and finer vendor roles, production database roles, secret management, backups/restore tests, distributed provider quota controls and security review before deployment. See [production gaps](PRODUCTION_GAPS.md).
