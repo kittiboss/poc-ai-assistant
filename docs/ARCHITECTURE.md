@@ -105,15 +105,20 @@ NestJS ──► LiteLLM (internal network only) ──► gemini-proxy ──�
                                          └──► groq-proxy ──► api.groq.com
                                                holds the key, replaces the dummy authorization header
                                                fails closed until Free tier is explicitly confirmed
-                                               allows only chat completions for GROQ_MODEL
+                                               allows only chat completions for GROQ_MODEL and
+                                               GROQ_VISION_MODEL, at most 8 MB a request
+                                               images only for GROQ_VISION_MODEL, at most 3, reasoning off
                                                rejects tools / functions / other endpoint families
                                                clamps output tokens, forces one response
 
                                          └──► openrouter-proxy ──► openrouter.ai
-                                               holds the key, allows only openrouter/free
+                                               holds the key, allows only openrouter/free, at most 8 MB
                                                rejects paid model/fallback/provider overrides
                                                rejects tools / plugins / web search / other endpoints
                                                clamps output tokens, forces one response
+
+groq-proxy and openrouter-proxy accept message parts only as text and as images
+that are base64 data URLs of JPEG / PNG / WebP in user messages (no remote URLs or files)
 ```
 
 The API also enforces an installation-wide daily request and token ceiling across all external providers, computed from usage records, before a request is persisted or streamed. Model availability checks read LiteLLM's configured routes and Ollama's local tag list; they never call a provider. When the gateway gives no answer (unreachable, slower than 1.5 seconds, not ready, a server error), its last answer stands in for up to 60 seconds after it came, so one slow moment does not mark every model unavailable or refuse a chat's images; an answer, a refusal included, is used at once. While no model can be used and one of them is only unavailable, the web checks the list again after 5, 10, 20 and 40 seconds and then every minute, in a visible tab only.

@@ -77,7 +77,7 @@
     "attachDrop": "Drop documents here to attach them",
     "attachDropWithImages": "Drop documents or images here to attach them",
     "attachedFiles": "Attached files",
-    "attachChatLimit": "The files of this chat would exceed its limits: 60,000 characters of text, 6 images or 4 MB of images. Start a new chat for this file.",
+    "attachChatLimit": "The files of this chat would exceed its limits: 60,000 characters of text, 4 MB of images, or the number of images the chosen model takes. Start a new chat for this file, or choose another model.",
     "attachMissing": "An attached file no longer exists. Attach it again.",
     "contextTooLong": "This chat and its files are longer than this model accepts. Choose a model that accepts more text, or start a new chat.",
     "attachRemove": "Remove {name}",

@@ -100,8 +100,34 @@ describe("security and provider configuration", () => {
     );
     expect(config).toContain("model_name: local-mock");
     expect(config).not.toMatch(
-      /model_name:\s*(openai-gpt|anthropic-claude|google-gemini|groq-llama|openrouter-free)/,
+      /model_name:\s*(openai-gpt|anthropic-claude|google-gemini|groq-llama|groq-vision|openrouter-free)/,
     );
+  });
+
+  it("routes Groq's vision model through the same credential proxy in both Groq overlays", () => {
+    const read = (file: string) => readFileSync(resolve(root, file), "utf8");
+    const model = "${GROQ_VISION_MODEL:-qwen/qwen3.8-27b}";
+    for (const [config, overlayFile] of [
+      ["infra/litellm/config.groq.yaml", "docker-compose.groq.yml"],
+      ["infra/litellm/config.external.yaml", "docker-compose.external.yml"],
+    ]) {
+      expect(read(config)).toMatch(
+        /model_name: groq-vision\s+litellm_params:\s+model: os\.environ\/GROQ_VISION_LITELLM_MODEL\s+api_base: os\.environ\/GROQ_PROXY_URL\s+api_key: local-groq-proxy/,
+      );
+      const overlay = read(overlayFile);
+      const proxy = overlay.slice(
+        overlay.indexOf("\n  groq-proxy:"),
+        overlay.indexOf("\n  litellm:"),
+      );
+      const litellm = overlay.slice(
+        overlay.indexOf("\n  litellm:"),
+        overlay.indexOf("\n  backend:"),
+      );
+      const backend = overlay.slice(overlay.indexOf("\n  backend:"));
+      expect(proxy).toContain(`GROQ_VISION_MODEL: ${model}`);
+      expect(litellm).toContain(`GROQ_VISION_LITELLM_MODEL: openai/${model}`);
+      expect(backend).toContain(`GROQ_VISION_MODEL: ${model}`);
+    }
   });
 
   it("uses an isolated free-only credential proxy for OpenRouter", () => {

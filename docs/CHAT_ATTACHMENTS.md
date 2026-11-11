@@ -224,7 +224,7 @@ The API keeps each vision model's figures in code (`apps/api/src/models/vision-m
 - 6 images and 4 MB of images per chat remain the ceiling for every model.
 - Changing `GROQ_VISION_MODEL` or `GEMINI_MODEL` to another model needs its figures checked here.
 - Usage records the tokens the provider reports. The figures above bound the context-limit check and the reservation, and estimate usage only when a provider reports none.
-- In a vendor-managed deployment, vendor-control's `max_images` still decides the images per chat (see [Vendor-managed deployments](#vendor-managed-deployments)); the customer API counts tokens per image from the same table.
+- In a vendor-managed deployment, vendor-control's `max_images` decides the images per chat (see [Vendor-managed deployments](#vendor-managed-deployments)), never more than the model's own here; the customer API counts tokens per image from the same table.
 
 ### Groq and OpenRouter
 

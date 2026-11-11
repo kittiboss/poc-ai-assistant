@@ -8,18 +8,25 @@ import { GatewayService, gatewayError, type GatewayRoute } from '../gateway/gate
 import { UsageService } from '../usage/usage.service';
 import { UsersService } from '../users/users.service';
 import { credentialFor, externalProviderAllowed, imagesAvailable, isExternalProvider, modelAllowedForUser, vendorGateway } from './model-policies';
+import { VISION_MODELS } from './vision-models';
 
 const externalSwitch = () => process.env.ENABLE_EXTERNAL_PROVIDERS === 'true';
 
+/** Whether this deployment may send images to `model` at all: object storage, `vision`, and its figures. */
+const mayReceiveImages = (model: { id: string; capabilities: string[] }) =>
+  imagesAvailable() && model.capabilities.includes('vision') && VISION_MODELS.has(model.id);
+
 /**
- * The images a chat may hold for `model`, or null when it cannot receive them: this deployment needs
- * object storage and the model `vision`; a vendor-managed one also needs `vision` on the gateway's route.
+ * The images a chat may hold for `model`, or null when it cannot receive them: the model's own limit
+ * (VISION_MODELS); a vendor-managed deployment also needs `vision` on the gateway's route, whose limit
+ * may be lower.
  */
 function imageLimitOf(model: { id: string; capabilities: string[] }, routes: Map<string, GatewayRoute>) {
-  if (!imagesAvailable() || !model.capabilities.includes('vision')) return null;
-  if (!vendorGateway()) return MAX_CHAT_IMAGES;
+  if (!mayReceiveImages(model)) return null;
+  const own = Math.min(VISION_MODELS.get(model.id)!.maxImages, MAX_CHAT_IMAGES);
+  if (!vendorGateway()) return own;
   const route = routes.get(model.id);
-  return route?.vision ? Math.min(route.maxImages ?? MAX_CHAT_IMAGES, MAX_CHAT_IMAGES) : null;
+  return route?.vision ? Math.min(route.maxImages ?? own, own) : null;
 }
 
 @Injectable()
@@ -85,7 +92,7 @@ export class ModelsService {
    */
   async imageLimit(model: { id: string; capabilities: string[] }) {
     // The gateway is asked only when its answer decides.
-    const asks = vendorGateway() && imagesAvailable() && model.capabilities.includes('vision');
+    const asks = vendorGateway() && mayReceiveImages(model);
     return imageLimitOf(model, asks ? await this.gateway.routes() : new Map());
   }
 

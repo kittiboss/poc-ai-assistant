@@ -106,6 +106,23 @@ describe('model availability and external provider guardrails', () => {
     expect(gateway.routes).not.toHaveBeenCalled();
   });
 
+  it('holds each model to its own images per chat, and gives none to a vision model without figures', async () => {
+    const service = modelsService(prismaWith({ requests: 0, tokens: 0 }));
+    const vision = (id: string) => ({ id, capabilities: ['chat', 'vision'] });
+    vi.stubEnv('S3_BUCKET', 'attachments');
+    expect(await service.imageLimit(vision('google-gemini'))).toBe(6);
+    expect(await service.imageLimit(vision('groq-vision'))).toBe(2);
+    expect(await service.imageLimit(vision('openrouter-free'))).toBe(4);
+    expect(await service.imageLimit(vision('some-new-model'))).toBeNull();
+    // A platform may lower a model's limit, never raise it.
+    vi.stubEnv('MODEL_ACCESS', 'vendor-gateway');
+    gateway.routes.mockResolvedValueOnce(new Map([['groq-vision', { vision: true, maxImages: 6 }]]));
+    expect(await service.imageLimit(vision('groq-vision'))).toBe(2);
+    gateway.routes.mockClear();
+    expect(await service.imageLimit(vision('some-new-model'))).toBeNull();
+    expect(gateway.routes).not.toHaveBeenCalled();
+  });
+
   it("refuses to enable a model the platform gateway does not route for this organization", async () => {
     vi.stubEnv('MODEL_ACCESS', 'vendor-gateway');
     vi.stubEnv('ENABLE_EXTERNAL_PROVIDERS', 'true');

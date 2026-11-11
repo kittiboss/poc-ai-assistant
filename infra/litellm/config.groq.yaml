@@ -15,6 +15,12 @@ model_list:
       # The real credential is held only by groq-proxy. LiteLLM sends this
       # non-secret placeholder and the proxy replaces it before egress.
       api_key: local-groq-proxy
+  # Groq's vision model, through the same proxy; it takes images only for GROQ_VISION_MODEL.
+  - model_name: groq-vision
+    litellm_params:
+      model: os.environ/GROQ_VISION_LITELLM_MODEL
+      api_base: os.environ/GROQ_PROXY_URL
+      api_key: local-groq-proxy
   # Offline, deterministic embeddings for the product catalog ($0, no network).
   - model_name: mock-embedding
     litellm_params:
