@@ -264,7 +264,7 @@ Groq token counts are stored as `ACTUAL`. The seeded pricing is `$0` pass-throug
 GROQ_KEEP_ENABLED=true npm run test:groq
 ```
 
-`--image` instead sends the sample receipt [`docs/demo/receipt.png`](docs/demo/receipt.png) to **Qwen3.8 27B (Groq)**, checks that Groq counted at least one image (2,048 tokens), and deletes the test chat. It uses about 2,500 of the free tier's 8,000 tokens a minute:
+`--image` instead sends the sample receipt [`docs/demo/receipt.png`](docs/demo/receipt.png) to **Qwen3.8 27B (Groq)**, checks that the reply has the receipt's total (670.00), and deletes the test chat. It used about 2,000 of the free tier's 8,000 tokens a minute on 2026-11-11:
 
 ```bash
 node --env-file=.env scripts/groq-smoke.mjs --image
@@ -300,7 +300,7 @@ The proxy accepts only `model=openrouter/free`; paid model IDs, alternate model 
 OPENROUTER_KEEP_ENABLED=true npm run test:openrouter
 ```
 
-`--image` also checks that the router still takes images at no price, then sends the sample receipt [`docs/demo/receipt.png`](docs/demo/receipt.png) and deletes the test chat. It is one of the 50 free requests a day:
+`--image` also checks that the router still takes images at no price, then sends the sample receipt [`docs/demo/receipt.png`](docs/demo/receipt.png), checks that the reply has its total (670.00; a miss may also mean the router picked a weaker model), and deletes the test chat. It is one of the 50 free requests a day:
 
 ```bash
 node --env-file=.env scripts/openrouter-smoke.mjs --image

@@ -13,6 +13,8 @@ const keepEnabled = process.env.OPENROUTER_KEEP_ENABLED === "true";
 // --image sends the sample receipt (docs/demo/receipt.png) instead of text; the router then picks a
 // free model that takes images.
 const imageMode = process.argv.includes("--image");
+// The sample receipt's total ("670.00 บาท"): reading it shows the image reached the model.
+const receiptTotal = /\b670(\.00)?\b/;
 
 assert(
   openRouterKey,
@@ -230,6 +232,7 @@ const original = (await adminModelsResponse.json()).find(
 assert(original, "openrouter-free is missing from the model registry");
 
 let registryChanged = false;
+let conversation;
 try {
   if (!original.enabled) {
     const enableResponse = await request(
@@ -273,7 +276,7 @@ try {
     201,
     "Could not create the smoke-test conversation",
   );
-  const conversation = await createResponse.json();
+  conversation = await createResponse.json();
   const requestId = randomUUID();
   const streamResponse = await request(
     `/conversations/${conversation.id}/messages`,
@@ -332,11 +335,12 @@ try {
   assert(record, "OpenRouter usage record was not persisted");
   assert.equal(record.provider, "OPENROUTER");
   assert.equal(record.usageKind, "ACTUAL");
-  // A soft delete, as in the web; the receipt is sample data.
+  // The router picks a different free model each time, so a misread may also mean a weaker pick.
   if (imageMode)
-    await request(`/conversations/${conversation.id}`, adminToken, {
-      method: "DELETE",
-    });
+    assert(
+      receiptTotal.test(output.replaceAll(",", "")),
+      `The model OpenRouter picked did not read the sample receipt's total (670.00): ${output}`,
+    );
 
   console.log(
     JSON.stringify(
@@ -365,6 +369,11 @@ try {
     ),
   );
 } finally {
+  // A soft delete, as in the web, also when a check failed; the receipt is sample data.
+  if (imageMode && conversation)
+    await request(`/conversations/${conversation.id}`, adminToken, {
+      method: "DELETE",
+    });
   if (registryChanged && !keepEnabled) {
     const restoreResponse = await request(
       "/admin/models/openrouter-free",

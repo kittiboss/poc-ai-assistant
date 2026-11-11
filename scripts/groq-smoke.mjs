@@ -16,8 +16,8 @@ const routeId = imageMode ? "groq-vision" : "groq-llama";
 const providerModelId = imageMode
   ? process.env.GROQ_VISION_MODEL || "qwen/qwen3.8-27b"
   : groqModel;
-// Groq counts a fixed 2,048 input tokens per image.
-const groqImageTokens = 2048;
+// The sample receipt's total ("670.00 บาท"): reading it shows the image reached the model.
+const receiptTotal = /\b670(\.00)?\b/;
 
 assert(groqKey, "GROQ_API_KEY is missing from the ignored .env file");
 assert.equal(
@@ -207,6 +207,7 @@ const original = (await adminModelsResponse.json()).find(
 assert(original, `${routeId} is missing from the model registry`);
 
 let registryChanged = false;
+let conversation;
 try {
   if (!original.enabled) {
     const enableResponse = await request(
@@ -251,7 +252,7 @@ try {
     201,
     "Could not create the smoke-test conversation",
   );
-  const conversation = await createResponse.json();
+  conversation = await createResponse.json();
   const requestId = randomUUID();
   const streamResponse = await request(
     `/conversations/${conversation.id}/messages`,
@@ -310,16 +311,11 @@ try {
   assert(record, "Groq usage record was not persisted");
   assert.equal(record.provider, "GROQ");
   assert.equal(record.usageKind, "ACTUAL");
-  if (imageMode) {
+  if (imageMode)
     assert(
-      record.inputTokens >= groqImageTokens,
-      `Groq counted ${record.inputTokens} input tokens, fewer than one image (${groqImageTokens}); the image did not reach it`,
+      receiptTotal.test(output.replaceAll(",", "")),
+      `Groq did not read the sample receipt's total (670.00): ${output}`,
     );
-    // A soft delete, as in the web; the receipt is sample data.
-    await request(`/conversations/${conversation.id}`, adminToken, {
-      method: "DELETE",
-    });
-  }
 
   console.log(
     JSON.stringify(
@@ -341,6 +337,11 @@ try {
     ),
   );
 } finally {
+  // A soft delete, as in the web, also when a check failed; the receipt is sample data.
+  if (imageMode && conversation)
+    await request(`/conversations/${conversation.id}`, adminToken, {
+      method: "DELETE",
+    });
   if (registryChanged && !keepEnabled) {
     const restoreResponse = await request(
       `/admin/models/${routeId}`,
