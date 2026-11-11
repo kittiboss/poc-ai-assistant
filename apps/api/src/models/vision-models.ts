@@ -2,8 +2,9 @@
  * What each vision model takes: how many images a chat may hold, and how many input tokens its
  * provider counts per image, whatever the file size. They follow the providers' documentation, not
  * an administrator's choice, and change only with the model, its route and its proxy. A model with
- * `vision` in the registry but no entry here receives no images. See docs/CHAT_ATTACHMENTS.md
- * (Vision models).
+ * `vision` in the registry but no entry here receives no images. vendor-control keeps the same
+ * figures for vendor-managed customers (apps/vendor-control/src/images.mjs), and a test checks that
+ * they agree. See docs/CHAT_ATTACHMENTS.md (Vision models).
  */
 export type VisionFigures = { maxImages: number; imageTokens: number };
 

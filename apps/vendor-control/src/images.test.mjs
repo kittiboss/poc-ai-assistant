@@ -6,6 +6,8 @@ import {
   contentPart,
   defaultImages,
   effectiveImages,
+  imageLimit,
+  imageTokensFor,
   imagesAllowed,
   imagesInput,
 } from "./images.mjs";
@@ -79,7 +81,10 @@ test("parts keep only the fields that are forwarded; images only in user message
 });
 
 test("new tenants may send images to local-mock only; limits are validated and merged", () => {
-  assert.deepEqual([...VISION_MODELS.keys()], ["local-mock", "google-gemini"]);
+  assert.deepEqual(
+    [...VISION_MODELS.keys()],
+    ["local-mock", "google-gemini", "groq-vision", "openrouter-free"],
+  );
   assert.deepEqual(defaultImages(), {
     enabled: true,
     models: ["local-mock"],
@@ -151,4 +156,40 @@ test("a tenant sends images only to vision models of its limits that its plan in
   assert.equal(imagesAllowed(tenant(null), "google-gemini", 1), false);
   for (const model of ["groq-llama", "openrouter-free", "mock-embedding"])
     assert.equal(imagesAllowed(tenant(both), model, 1), false);
+});
+
+test("a model takes no more images than its own, and reserves its own tokens per image", () => {
+  for (const [model, { maxImages, imageTokens }] of VISION_MODELS) {
+    assert.ok(maxImages >= 1 && maxImages <= MAX_IMAGES, model);
+    assert.ok(imageTokens > 0, model);
+  }
+  const vision = [...VISION_MODELS.keys()];
+  const all = { enabled: true, models: vision, maxImages: MAX_IMAGES };
+  const limits = (images) =>
+    Object.fromEntries(
+      vision.map((model) => [model, imageLimit(images, model)]),
+    );
+  assert.deepEqual(limits(all), {
+    "local-mock": 6,
+    "google-gemini": 6,
+    "groq-vision": 2,
+    "openrouter-free": 4,
+  });
+  // A tenant's lower limit wins; a model without figures takes none.
+  assert.deepEqual(limits({ ...all, maxImages: 3 }), {
+    "local-mock": 3,
+    "google-gemini": 3,
+    "groq-vision": 2,
+    "openrouter-free": 3,
+  });
+  assert.equal(imageLimit(all, "groq-llama"), 0);
+  const tenant = { images: all, config: { models: vision } };
+  assert.equal(imagesAllowed(tenant, "groq-vision", 2), true);
+  assert.equal(imagesAllowed(tenant, "groq-vision", 3), false);
+  assert.equal(imagesAllowed(tenant, "openrouter-free", 4), true);
+  assert.equal(imagesAllowed(tenant, "openrouter-free", 5), false);
+  assert.equal(imageTokensFor("google-gemini", 2), 2240);
+  assert.equal(imageTokensFor("groq-vision", 2), 4096);
+  assert.equal(imageTokensFor("openrouter-free", 0), 0);
+  assert.equal(imageTokensFor("groq-llama", 3), 0);
 });

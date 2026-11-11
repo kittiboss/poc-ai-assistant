@@ -100,6 +100,14 @@ test("images reserve fixed tokens each, never their base64 size, and are forward
       ]),
     ) - Buffer.byteLength(JSON.stringify([text]));
   assert.equal(result.input, plain.input + framing + 1120);
+  // Each model reserves its own tokens per image.
+  assert.equal(
+    validateRequest(
+      { ...body, model: "groq-vision", messages: [withImage] },
+      false,
+    ).input,
+    plain.input + framing + 2048,
+  );
   assert.deepEqual(result.upstream.messages, [
     {
       role: "user",

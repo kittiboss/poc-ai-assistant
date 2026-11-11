@@ -1,4 +1,4 @@
-import { VISION_MODELS, contentPart } from "./images.mjs";
+import { contentPart, imageTokensFor } from "./images.mjs";
 
 // All ledger arithmetic uses integer billionths of a simulated USD, never floating point.
 export const SCALE = 1_000_000_000n;
@@ -109,7 +109,7 @@ export function validateRequest(body, embedding) {
     throw new Error("max_tokens must be between 1 and 4096");
   const textInput = Buffer.byteLength(text, "utf8") + 512;
   if (textInput > 250000) throw new Error("Input too large");
-  const input = textInput + images * (VISION_MODELS.get(body.model) ?? 0);
+  const input = textInput + imageTokensFor(body.model, images);
   // Do not forward user-controlled routing, metadata, credentials, tools or fallback parameters.
   const upstream = embedding
     ? {
