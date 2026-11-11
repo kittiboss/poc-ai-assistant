@@ -75,7 +75,7 @@ test.describe('a customer with Groq and OpenRouter in its plan', () => {
       maxImages: 3,
     });
     // Groq takes 2 of the 3; OpenRouter takes 4, so all 3.
-    await expect(fact(page, 'Images per chat')).toContainText('3(groq-vision 2)');
+    await expect(fact(page, 'Images per chat')).toHaveText('3groq-vision: 2');
     const card = page.locator('.ant-card').filter({ hasText: 'Image limits' });
     await expect(card).toContainText(
       '1,120 for local-mock and google-gemini, 2,048 for groq-vision and openrouter-free',

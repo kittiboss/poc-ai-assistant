@@ -175,11 +175,16 @@ function ImagesPerChat({ images, plan }: { images: Tenant['images']; plan: strin
     images.maxImages,
   );
   if (!fewer.length) return images.maxImages;
+  // On a line of its own, so a narrow card never breaks one model from its number.
   return (
-    <span>
-      {images.maxImages}
-      <span className="ms-1.5 text-fg-tertiary">
-        ({fewer.map(({ model, maxImages }) => `${model} ${maxImages}`).join(', ')})
+    <span className="flex flex-col gap-0.5">
+      <span>{images.maxImages}</span>
+      <span className="text-xs text-fg-tertiary">
+        {fewer.map(({ model, maxImages }) => (
+          <span key={model} className="me-2 inline-block whitespace-nowrap">
+            {model}: {maxImages}
+          </span>
+        ))}
       </span>
     </span>
   );
