@@ -6,7 +6,8 @@ import {
 
 const upstreamOrigin = "https://openrouter.ai";
 const upstreamPath = "/api/v1/chat/completions";
-const maxRequestBytes = 2 * 1024 * 1024;
+// Room for a chat's images in base64; the API refuses requests over 7.5 MB before they get here.
+const maxRequestBytes = 8 * 1024 * 1024;
 const forbiddenFields = [
   "tools",
   "tool_choice",
@@ -24,6 +25,19 @@ const forbiddenFields = [
   "reasoning",
   "include",
 ];
+const imageSignatures: Record<string, (head: Buffer) => boolean> = {
+  "image/jpeg": (head) =>
+    head[0] === 0xff && head[1] === 0xd8 && head[2] === 0xff,
+  "image/png": (head) =>
+    head
+      .subarray(0, 8)
+      .equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+  "image/webp": (head) =>
+    head.toString("latin1", 0, 4) === "RIFF" &&
+    head.toString("latin1", 8, 12) === "WEBP",
+};
+const imageDataUrl =
+  /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/]+={0,2})$/;
 
 export type ProxyOptions = {
   apiKey: string;
@@ -46,6 +60,49 @@ export function isAllowedRequest(method: string, requestUrl: string) {
   );
 }
 
+/**
+ * Counts the images in the messages, or returns an error string. Content is text, or text and
+ * image parts; an image is accepted only in a user message, as a base64 data URL whose first bytes
+ * match its declared type. A remote URL (which OpenRouter would fetch) and other parts, such as
+ * `file` (which OpenRouter may hand to a paid PDF parser), never leave the installation.
+ */
+export function countImages(messages: unknown): number | string {
+  if (messages === undefined) return 0;
+  if (!Array.isArray(messages)) return 'Field "messages" must be a list';
+  let images = 0;
+  for (const message of messages) {
+    const { role, content } = (message ?? {}) as {
+      role?: unknown;
+      content?: unknown;
+    };
+    if (
+      content === undefined ||
+      content === null ||
+      typeof content === "string"
+    )
+      continue;
+    if (!Array.isArray(content))
+      return "Message content must be text or a list of parts";
+    for (const part of content) {
+      const { type, image_url: image } = (part ?? {}) as {
+        type?: unknown;
+        image_url?: { url?: unknown };
+      };
+      if (type === "text") continue;
+      if (type !== "image_url")
+        return "Only text and image_url content parts are allowed";
+      if (role !== "user") return "Images are accepted in user messages only";
+      const url = image?.url;
+      const data = typeof url === "string" ? imageDataUrl.exec(url) : null;
+      const head = data && Buffer.from(data[2].slice(0, 16), "base64");
+      if (!data || !head || !imageSignatures[data[1]](head))
+        return "An image must be a base64 data URL of a JPEG, PNG or WebP image";
+      images += 1;
+    }
+  }
+  return images;
+}
+
 /** Enforces the zero-price router and removes all feature/routing escape hatches. */
 export function sanitizeBody(
   raw: Buffer,
@@ -63,6 +120,9 @@ export function sanitizeBody(
   if (forbidden) {
     return `Field "${forbidden}" is disabled by the OpenRouter free-only policy`;
   }
+  // The router picks a free model that takes images when the request has any; the API limits how many.
+  const images = countImages(body.messages);
+  if (typeof images === "string") return images;
 
   const usesCompletionTokens = body.max_completion_tokens !== undefined;
   const requested = Number(
