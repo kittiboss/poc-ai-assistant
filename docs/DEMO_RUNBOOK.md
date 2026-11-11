@@ -1,6 +1,6 @@
 # Demo runbook: vendor-managed POC with file and image attachments
 
-A script for showing the vendor platform and customer A's chat with documents, images and the knowledge base, then customer B, which runs on the same platform with its own brand, models and limits. Every step below was rehearsed on 2026-11-05 with Local Mock, plus three Gemini requests ($0 on the free tier); customer B's steps on 2026-11-11 with Local Mock only. The sample files are in [docs/demo](demo) and are fictional.
+A script for showing the vendor platform and customer A's chat with documents, images and the knowledge base, then customer B, which runs on the same platform with its own brand, models and limits. Every step below was rehearsed on 2026-11-05 with Local Mock, plus three Gemini requests ($0 on the free tier); customer B's steps on 2026-11-11 with Local Mock only, and the optional Groq step the same day with two Groq requests ($0 on the free tier). The sample files are in [docs/demo](demo) and are fictional.
 
 ## Before the demo day
 
@@ -17,6 +17,8 @@ A script for showing the vendor platform and customer A's chat with documents, i
    | Chunk size / overlap | 600 / 120              | Each policy topic becomes its own passage                                 |
 
    If the file is missing, upload [docs/demo/company-policy.md](demo/company-policy.md). Do not upload a Thai PDF: its text comes out with spaces inside words and missing tone marks.
+
+5. For the optional Groq step (2b): `deploy/platform/.env` needs `GROQ_API_KEY` and `GROQ_FREE_TIER_CONFIRMED=true`, so that `platform.mjs up` lists `groq` among the provider proxies. Then, in customer A as `tenant-admin`, _Admin_ → _Models_: switch on _Qwen3.8 27B (Groq)_, which starts off. Switch it off again after the demo if it should not stay on.
 
 ## On the day
 
@@ -65,6 +67,14 @@ Use _Gemini 3.5 Flash-Lite_ for steps 2–4. Gemini's wording varies between run
 4. Expected: ร้านอาหารบ้านตัวอย่าง, 3 พฤศจิกายน 2569, 670.00 บาท (rehearsal: 1,286 tokens in, 6.5 s).
 5. Click the image in the message to open the viewer.
 
+### 2b. The same receipt with Groq (optional)
+
+1. _New chat_, choose _Qwen3.8 27B (Groq)_, untick _Knowledge base_, attach `receipt.png`. The notice above the composer now names GROQ.
+2. Ask the same question: `ใบเสร็จนี้มาจากร้านอะไร วันที่เท่าไร และยอดรวมทั้งสิ้นเท่าไร`
+3. Rehearsal: ร้านอาหารบ้านตัวอย่าง and 670.00 บาท, but the date came out as 3 **พฤษภาคม** 2569 instead of พฤศจิกายน (2,031 tokens in, 1.6 s). Gemini read it right: a free Preview model reads Thai less reliably, which is worth saying rather than hiding.
+4. Optional follow-up in the same chat: `ในใบเสร็จมีรายการอะไรบ้าง ราคาเท่าไร`. Rehearsal: all four items and prices right, then a muddled note on VAT with a phrase in Chinese (2,116 tokens in, 2.7 s).
+5. Customer A's share of Groq is 2,666 tokens a minute, and each message with the receipt takes about 2,100: the two messages above fit in one clock minute, a third in that minute is refused. Groq also takes at most 2 images a chat here.
+
 ### 3. A document in the chat
 
 1. _New chat_, Gemini, _Knowledge base_ unticked.
@@ -108,6 +118,7 @@ Use _Gemini 3.5 Flash-Lite_ for steps 2–4. Gemini's wording varies between run
 | Problem                                                                          | What to do                                                                                                                                                                       |
 | -------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | A model shows _Unavailable_ or "0 model(s) available" right after start          | Wait: the chat page checks again after 5 seconds, then less often. Reload if it stays.                                                                                           |
+| Groq refuses the next message (step 2b)                                          | Customer A's share is 2,666 tokens a minute, about two messages with the receipt. Wait for the next clock minute, or switch to Gemini.                                           |
 | Gemini refuses or is slow (free-tier limits)                                     | Customer A may send Gemini 5 requests a minute and 33 requests or 33,333 tokens a day, rehearsals included. Switch to _Local Mock_, which shows the same flow with a mock reply. |
 | Local Mock refuses: "This chat and its files are longer than this model accepts" | Untick _Knowledge base_. Local Mock holds 8,192 tokens; with the settings above a knowledge question fits, but a file plus retrieved passages can fill them.                     |
 | A review prompt about sensitive information                                      | A message or passage contains something like an email address or phone number, which is checked before anything goes to an external model. The demo files contain none.          |
